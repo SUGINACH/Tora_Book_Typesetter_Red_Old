@@ -1,6 +1,6 @@
 // ui/app.bundle.js — **נוצר אוטומטית** ע"י tools/build-worker-bundle.js (אין לערוך ידנית)
 // חבילת מעטפת ה־UI (המנוע רץ ב־Worker הנפרד)
-// מודולים: 64 · בלי חותמות זמן (דטרמיניזם)
+// מודולים: 65 · בלי חותמות זמן (דטרמיניזם)
 'use strict';
 
 var __crypto = (function () {
@@ -339,6 +339,7 @@ var __paths = {
   "src/engine/output/dom-renderer.js|../decoration/folio": "src/engine/decoration/folio.js",
   "src/engine/output/dom-renderer.js|./line-font": "src/engine/output/line-font.js",
   "src/engine/output/dom-renderer.js|./shaar-content": "src/engine/output/shaar-content.js",
+  "src/engine/output/dom-renderer.js|../layout/inline-item-registry": "src/engine/layout/inline-item-registry.js",
   "src/engine/output/dom-renderer.js|../layout/legacy-imud-flow": "src/engine/layout/legacy-imud-flow.js",
   "src/engine/decoration/page-decorations.js|../layout/page-templates": "src/engine/layout/page-templates.js",
   "src/engine/decoration/asset-registry.js|./svg-sanitize": "src/engine/decoration/svg-sanitize.js",
@@ -356,6 +357,8 @@ var __paths = {
   "src/engine/typography/measure-api.js|./kp-linebreak": "src/engine/typography/kp-linebreak.js",
   "src/engine/typography/measure-api.js|../layout/inline-item-factory": "src/engine/layout/inline-item-factory.js",
   "src/engine/typography/measure-api.js|./kp-linebreak": "src/engine/typography/kp-linebreak.js",
+  "src/engine/layout/inline-item-factory.js|./inline-item-registry": "src/engine/layout/inline-item-registry.js",
+  "src/engine/parser/inline-content.js|../layout/inline-item-registry": "src/engine/layout/inline-item-registry.js",
   "src/engine/decoration/legacy-ornaments.js|./ornament-fit": "src/engine/decoration/ornament-fit.js",
   "src/ui/testing-tab.js|../audit/report-schema": "src/audit/report-schema.js",
   "src/ui/testing-tab.js|../engine/core/ledger": "src/engine/core/ledger.js",
@@ -9372,19 +9375,14 @@ function fontStack(family) {
   return out.join(', ');
 }
 
-const inlineItemRenderers = new Map();
+const {
+  registerRenderer: registerInlineItemAdapter,
+  getInlineItemRenderer,
+  registerInlineItemType
+} = require('../layout/inline-item-registry');
 
 function registerInlineItemRenderer(kind, renderer) {
-  if (typeof kind !== 'string' || !kind.trim()) {
-    throw new TypeError('dom-renderer: inline item kind must be a non-empty string');
-  }
-  if (typeof renderer !== 'function') {
-    throw new TypeError('dom-renderer: inline item renderer must be a function');
-  }
-  inlineItemRenderers.set(kind, renderer);
-  return () => {
-    if (inlineItemRenderers.get(kind) === renderer) inlineItemRenderers.delete(kind);
-  };
+  return registerInlineItemAdapter(kind, 'dom', renderer);
 }
 
 function bytesToBase64(input) {
@@ -9504,7 +9502,7 @@ function renderLine(ln, doc, settings = {}) {
         continue;
       }
 
-      const customRenderer = inlineItemRenderers.get(fragment.kind);
+      const customRenderer = getInlineItemRenderer(fragment.kind, 'dom');
       const customNode = customRenderer ? customRenderer(fragment, doc, settings) : null;
       if (customNode) {
         el.appendChild(customNode);
@@ -10876,7 +10874,7 @@ function renderPage(page, settings, doc, header) {
   return root;
 }
 
-module.exports = { renderPage, renderLine, scrubPUAText, bgRgba, PT_CLASS, renderSpanningBand, renderDecorations, renderPageBackgroundAndShaar, renderShaarContent, renderCustomPageContent, applyCustomStyleSpec, fontStack, registerInlineItemRenderer, bytesToBase64 };
+module.exports = { renderPage, renderLine, scrubPUAText, bgRgba, PT_CLASS, renderSpanningBand, renderDecorations, renderPageBackgroundAndShaar, renderShaarContent, renderCustomPageContent, applyCustomStyleSpec, fontStack, registerInlineItemRenderer, registerInlineItemType, bytesToBase64 };
 
 };
 __modules["src/engine/notes/markers.js"] = function (require, module, exports) {
@@ -12428,6 +12426,200 @@ function shaarFontOf(cls, settings) {
 }
 
 module.exports = { buildShaarBlocks, shaarBoxOf, shaarFontOf, splitPartTitle, MM_TO_PX };
+
+};
+__modules["src/engine/layout/inline-item-registry.js"] = function (require, module, exports) {
+// src/engine/layout/inline-item-registry.js — one registry for mixed inline item adapters (S14)
+'use strict';
+
+const BUILT_IN_KINDS = new Set(['text', 'image', 'anchor', 'glue', 'penalty']);
+const adapters = new Map();
+
+function validateKind(kind) {
+  if (typeof kind !== 'string' || !kind.trim()) {
+    throw new TypeError('inline-item-registry: kind must be a non-empty string');
+  }
+  const normalized = kind.trim();
+  if (BUILT_IN_KINDS.has(normalized)) {
+    throw new TypeError('inline-item-registry: built-in item kind cannot be replaced: ' + normalized);
+  }
+  return normalized;
+}
+
+function emptyEntry() {
+  return { dom: null, pdf: null, validate: null, parse: null, measure: null };
+}
+
+function entryOf(kind) {
+  return adapters.get(kind) || emptyEntry();
+}
+
+function storeIfEmpty(kind, entry) {
+  if (Object.values(entry).some(Boolean)) adapters.set(kind, entry);
+  else adapters.delete(kind);
+}
+
+function registerAdapter(kind, slot, handler) {
+  const normalized = validateKind(kind);
+  if (!['dom', 'pdf', 'validate', 'parse', 'measure'].includes(slot)) {
+    throw new TypeError('inline-item-registry: unsupported adapter slot: ' + slot);
+  }
+  if (typeof handler !== 'function') {
+    throw new TypeError('inline-item-registry: ' + slot + ' adapter must be a function');
+  }
+
+  const prior = entryOf(normalized);
+  if (prior[slot] && prior[slot] !== handler) {
+    throw new Error('inline-item-registry: ' + slot + ' adapter already registered for ' + normalized);
+  }
+  adapters.set(normalized, { ...prior, [slot]: handler });
+
+  return () => {
+    const current = adapters.get(normalized);
+    if (!current || current[slot] !== handler) return;
+    storeIfEmpty(normalized, { ...current, [slot]: null });
+  };
+}
+
+function registerRenderer(kind, target, renderer) {
+  if (target !== 'dom' && target !== 'pdf') {
+    throw new TypeError('inline-item-registry: target must be dom or pdf');
+  }
+  return registerAdapter(kind, target, renderer);
+}
+
+/**
+ * Register one custom inline item with all required output adapters and
+ * optional source parser, measurement resolver and pure payload validator.
+ *
+ * parse(source, index, context) -> null | { consumed:number, item:object }
+ * measure(item, context) -> {widthPx,heightPx,...} | complete measured item
+ * validate(item, context) -> true | void; false rejects the item, throw for detail.
+ * dom(fragment, document, settings) -> DOM Node
+ * pdf(fragment, {pxToPt, pageHeightPt, round2}) -> PDF operator string[]
+ *
+ * A parser claims source only by returning a positive consumed count. The
+ * registry then preserves the exact source slice on the canonical item.
+ */
+function registerInlineItemType(kind, descriptor) {
+  const normalized = validateKind(kind);
+  if (!descriptor || typeof descriptor !== 'object'
+    || typeof descriptor.dom !== 'function'
+    || typeof descriptor.pdf !== 'function') {
+    throw new TypeError('inline-item-registry: a complete item type requires dom and pdf renderers');
+  }
+  const prior = entryOf(normalized);
+  if (Object.values(prior).some(Boolean)) {
+    throw new Error('inline-item-registry: item type already registered: ' + normalized);
+  }
+  for (const slot of ['validate', 'parse', 'measure']) {
+    if (descriptor[slot] != null && typeof descriptor[slot] !== 'function') {
+      throw new TypeError('inline-item-registry: ' + slot + ' adapter must be a function');
+    }
+  }
+
+  const disposers = [];
+  try {
+    for (const slot of ['validate', 'parse', 'measure', 'dom', 'pdf']) {
+      if (typeof descriptor[slot] === 'function') {
+        disposers.push(registerAdapter(normalized, slot, descriptor[slot]));
+      }
+    }
+  } catch (error) {
+    for (let i = disposers.length - 1; i >= 0; i--) disposers[i]();
+    throw error;
+  }
+
+  let active = true;
+  return () => {
+    if (!active) return;
+    active = false;
+    for (let i = disposers.length - 1; i >= 0; i--) disposers[i]();
+  };
+}
+
+function getInlineItemRenderer(kind, target) {
+  if (target !== 'dom' && target !== 'pdf') {
+    throw new TypeError('inline-item-registry: target must be dom or pdf');
+  }
+  const entry = adapters.get(kind);
+  return entry ? entry[target] : null;
+}
+
+function parseInlineItemAt(source, index, context = {}) {
+  const text = String(source == null ? '' : source);
+  if (!Number.isInteger(index) || index < 0 || index >= text.length) return null;
+  for (const [kind, entry] of adapters) {
+    if (!entry.parse) continue;
+    const result = entry.parse(text, index, context);
+    if (result == null) continue;
+    if (!result || typeof result !== 'object'
+      || !Number.isInteger(result.consumed) || result.consumed <= 0
+      || index + result.consumed > text.length
+      || !result.item || typeof result.item !== 'object'
+      || result.item.kind !== kind) {
+      throw new TypeError('inline-item-registry: parser for ' + kind + ' must return {consumed,item} with a matching kind');
+    }
+    const sourceText = text.slice(index, index + result.consumed);
+    return {
+      consumed: result.consumed,
+      item: {
+        ...result.item,
+        sourceText: result.item.sourceText == null ? sourceText : String(result.item.sourceText)
+      }
+    };
+  }
+  return null;
+}
+
+function measureInlineItem(item, context = {}) {
+  if (!item || typeof item !== 'object' || typeof item.kind !== 'string') {
+    throw new TypeError('inline-item-registry: item with kind is required');
+  }
+  const entry = adapters.get(item.kind);
+  if (!entry || !entry.measure) return item;
+  const measured = entry.measure(item, context);
+  if (!measured || typeof measured !== 'object') {
+    throw new TypeError('inline-item-registry: measure adapter must return a measured item object');
+  }
+  return {
+    ...item,
+    ...measured,
+    kind: item.kind,
+    id: item.id,
+    sourceText: item.sourceText,
+    sourceStart: item.sourceStart,
+    sourceEnd: item.sourceEnd
+  };
+}
+
+function validateInlineItem(item, context = {}) {
+  if (!item || typeof item !== 'object' || typeof item.kind !== 'string') {
+    throw new TypeError('inline-item-registry: item with kind is required');
+  }
+  const entry = adapters.get(item.kind);
+  if (!entry || !entry.validate) return true;
+  const result = entry.validate(item, context);
+  if (result === false) {
+    throw new TypeError('inline-item-registry: custom item rejected by validator: ' + item.kind);
+  }
+  return true;
+}
+
+function hasInlineItemType(kind) {
+  const entry = adapters.get(kind);
+  return !!(entry && entry.dom && entry.pdf);
+}
+
+module.exports = {
+  registerInlineItemType,
+  registerRenderer,
+  getInlineItemRenderer,
+  parseInlineItemAt,
+  measureInlineItem,
+  validateInlineItem,
+  hasInlineItemType
+};
 
 };
 __modules["src/engine/layout/legacy-imud-flow.js"] = function (require, module, exports) {
@@ -17386,6 +17578,8 @@ __modules["src/engine/layout/inline-item-factory.js"] = function (require, modul
 // src/engine/layout/inline-item-factory.js — canonical AST → measured inline atoms (S14 P0)
 'use strict';
 
+const { validateInlineItem, measureInlineItem } = require('./inline-item-registry');
+
 const DEFAULT_GLUE_STRETCH = 0.6;
 const DEFAULT_GLUE_SHRINK = 0.5;
 
@@ -17616,10 +17810,16 @@ function createMeasuredInlineItems(runs, options = {}) {
     if (typeof run.kind !== 'string' || !run.kind.trim() || run.id == null) {
       throw new TypeError('inline-item-factory: custom item kinds require kind and stable id');
     }
+    const measured = measureInlineItem(run, {
+      ...options,
+      stage: 'measure'
+    });
+    validateInlineItem(measured, { stage: 'measure', options });
     items.push({
-      ...run,
-      widthPx: finiteNonNegative(run.widthPx, 'custom item width'),
-      heightPx: finiteNonNegative(run.heightPx, 'custom item height')
+      ...measured,
+      kind: run.kind,
+      widthPx: finiteNonNegative(measured.widthPx, 'custom item width'),
+      heightPx: finiteNonNegative(measured.heightPx, 'custom item height')
     });
   }
 
@@ -17951,6 +18151,8 @@ __modules["src/engine/parser/inline-content.js"] = function (require, module, ex
 // src/engine/parser/inline-content.js — canonical inline AST (TextRun / ImageRun), S14 P0
 'use strict';
 
+const { parseInlineItemAt } = require('../layout/inline-item-registry');
+
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg']);
 const IMAGE_LIKE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'tif', 'tiff']);
 
@@ -18049,6 +18251,7 @@ function parseInlineRuns(value, options = {}) {
   const markerRemovals = [];
   const spans = [];
   const images = [];
+  const customItems = [];
   const stack = [];
   const invalidOpens = new Set();
   const configuredTokens = [];
@@ -18118,7 +18321,25 @@ function parseInlineRuns(value, options = {}) {
     }
 
     const marker = markerAt(index);
-    if (!marker) { index++; continue; }
+    if (!marker) {
+      const custom = options.allowCustomItems === false ? null : parseInlineItemAt(source, index, {
+        sourceOffset,
+        availableFamilies,
+        knownFamilies,
+        options
+      });
+      if (custom) {
+        customItems.push({
+          ...custom.item,
+          sourceStart: index + sourceOffset,
+          sourceEnd: index + custom.consumed + sourceOffset
+        });
+        index += custom.consumed;
+        continue;
+      }
+      index++;
+      continue;
+    }
 
     const end = index + marker.token.length;
     markerRemovals.push({ start: index, end });
@@ -18186,6 +18407,7 @@ function parseInlineRuns(value, options = {}) {
   const ends = new Map();
   const removals = new Map();
   const imageAt = new Map();
+  const customAt = new Map();
   const boundaries = new Set([0, source.length]);
   const addTo = (map, at, item) => {
     if (!map.has(at)) map.set(at, []);
@@ -18205,6 +18427,12 @@ function parseInlineRuns(value, options = {}) {
     const localStart = image.sourceStart - sourceOffset;
     const localEnd = image.sourceEnd - sourceOffset;
     imageAt.set(localStart, image);
+    boundaries.add(localStart); boundaries.add(localEnd);
+  }
+  for (const item of customItems) {
+    const localStart = item.sourceStart - sourceOffset;
+    const localEnd = item.sourceEnd - sourceOffset;
+    customAt.set(localStart, item);
     boundaries.add(localStart); boundaries.add(localEnd);
   }
 
@@ -18233,8 +18461,11 @@ function parseInlineRuns(value, options = {}) {
     const beginning = (starts.get(at) || []).slice().sort((a, b) => a.depth - b.depth);
     for (const span of beginning) active.push(span);
 
+    const custom = customAt.get(at);
     const image = imageAt.get(at);
-    if (image) {
+    if (custom) {
+      runs.push({ ...custom });
+    } else if (image) {
       runs.push({ ...image });
     } else {
       const marker = removals.get(at);
@@ -18257,6 +18488,7 @@ function parseInlineRuns(value, options = {}) {
     text,
     warnings,
     hasImages: images.length > 0,
+    hasCustomItems: customItems.length > 0,
     hasFontRanges: spans.some(span => span.available)
   };
 }
@@ -18322,7 +18554,9 @@ function parseInlineParagraph(parts = [], notes = [], options = {}) {
   for (const note of notes) {
     const payload = note && typeof note === 'object' ? note.text : note;
     const sourceStart = note && typeof note === 'object' && Number.isFinite(note.sourceStart) ? note.sourceStart : 0;
-    const parsed = parseInlineRuns(payload, { ...options, sourceOffset: sourceStart, allowImages: true });
+    const parsed = parseInlineRuns(payload, {
+      ...options, sourceOffset: sourceStart, allowImages: true, allowCustomItems: false
+    });
     parsedNotes.push({ sourceStart, sourceEnd: note && typeof note === 'object' ? note.sourceEnd : undefined, runs: parsed.runs });
     warnings.push(...parsed.warnings);
     hasImages = hasImages || parsed.hasImages;
@@ -19109,6 +19343,7 @@ function lineLayoutSignature(line, includeGeometry = false) {
   const fragments = line.fragments.map(fragment => ({
     kind: fragment.kind,
     id: fragment.id == null ? null : fragment.id,
+    layoutKey: fragment.layoutKey == null ? null : fragment.layoutKey,
     resourceId: fragment.resourceId == null ? null : fragment.resourceId,
     text: fragment.kind === 'text' ? fragment.text : null,
     widthPx: fragment.widthPx,
