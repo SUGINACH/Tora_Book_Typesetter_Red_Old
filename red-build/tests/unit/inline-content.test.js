@@ -201,7 +201,7 @@ test('registered custom item syntax becomes one canonical run and is excluded fr
     assert.equal(item.id,'badge:סמל');
     assert.equal(item.layoutKey,'סמל');
     assert.equal(item.sourceText,'[[badge:סמל]]');
-    assert.deepEqual([item.sourceStart,item.sourceEnd],[5,17]);
+    assert.deepEqual([item.sourceStart,item.sourceEnd],[5,18]);
     assert.equal(inlineRunsSourceText(parsed.runs),'לפני  אחרי');
 
     const paragraph = parseInlineParagraph(
