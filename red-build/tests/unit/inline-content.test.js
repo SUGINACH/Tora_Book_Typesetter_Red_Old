@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const { parseInlineRuns, inlineRunsSourceText, inlineParagraphSourceText, inlineNoteSourceText } = require('../../src/engine/parser/inline-content');
 const { tokenize } = require('../../src/engine/parser/block-tokenizer');
 const { tokenizeDoc: tokenizeLegacyDoc } = require('../../src/engine/layout/legacy-imud-flow');
+const { registerInlineItemType } = require('../../src/engine/layout/inline-item-registry');
 
 let passed = 0;
 function test(name, fn) {
@@ -173,6 +174,46 @@ test('canonical tokenizer stores image/font runs separately for paragraph text a
   assert(paragraph.inlineContent.notes[0].runs.some(run =>
     run.kind === 'image' && run.resourcePath === 'notes/note.jpg'
   ));
+});
+
+test('registered custom item syntax becomes one canonical run and is excluded from note parsing', () => {
+  const unregister = registerInlineItemType('badge', {
+    parse(source, index) {
+      const match = source.slice(index).match(/^\\[\\[badge:([^\\]]+)\\]\\]/u);
+      if (!match) return null;
+      const label = match[1];
+      return {
+        consumed: match[0].length,
+        item: {
+          kind:'badge', id:'badge:' + label, layoutKey:label,
+          widthPx:36, heightPx:18, payload:{label}
+        }
+      };
+    },
+    validate:item=>typeof item.payload?.label==='string' && item.layoutKey===item.payload.label,
+    dom:()=>null,
+    pdf:()=>[]
+  });
+  try {
+    const parsed = parseInlineRuns('לפני [[badge:סמל]] אחרי');
+    assert.deepEqual(parsed.runs.map(run=>run.kind),['text','badge','text']);
+    const item = parsed.runs[1];
+    assert.equal(item.id,'badge:סמל');
+    assert.equal(item.layoutKey,'סמל');
+    assert.equal(item.sourceText,'[[badge:סמל]]');
+    assert.deepEqual([item.sourceStart,item.sourceEnd],[5,17]);
+    assert.equal(inlineRunsSourceText(parsed.runs),'לפני  אחרי');
+
+    const paragraph = parseInlineParagraph(
+      [{kind:'text',value:'גוף'}],
+      ['הערה [[badge:אסור]]'],
+      {}
+    );
+    assert.equal(paragraph.parts[0].runs.some(run=>run.kind==='badge'),false);
+    assert.equal(paragraph.notes[0].runs.some(run=>run.kind==='badge'),false);
+  } finally {
+    unregister();
+  }
 });
 
 test('images are not parsed in endnotes and inline tags are not parsed in headings', () => {
