@@ -1,6 +1,8 @@
 // src/engine/parser/inline-content.js — canonical inline AST (TextRun / ImageRun), S14 P0
 'use strict';
 
+const { parseInlineItemAt } = require('../layout/inline-item-registry');
+
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg']);
 const IMAGE_LIKE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'tif', 'tiff']);
 
@@ -99,6 +101,7 @@ function parseInlineRuns(value, options = {}) {
   const markerRemovals = [];
   const spans = [];
   const images = [];
+  const customItems = [];
   const stack = [];
   const invalidOpens = new Set();
   const configuredTokens = [];
@@ -168,7 +171,25 @@ function parseInlineRuns(value, options = {}) {
     }
 
     const marker = markerAt(index);
-    if (!marker) { index++; continue; }
+    if (!marker) {
+      const custom = parseInlineItemAt(source, index, {
+        sourceOffset,
+        availableFamilies,
+        knownFamilies,
+        options
+      });
+      if (custom) {
+        customItems.push({
+          ...custom.item,
+          sourceStart: index + sourceOffset,
+          sourceEnd: index + custom.consumed + sourceOffset
+        });
+        index += custom.consumed;
+        continue;
+      }
+      index++;
+      continue;
+    }
 
     const end = index + marker.token.length;
     markerRemovals.push({ start: index, end });
@@ -236,6 +257,7 @@ function parseInlineRuns(value, options = {}) {
   const ends = new Map();
   const removals = new Map();
   const imageAt = new Map();
+  const customAt = new Map();
   const boundaries = new Set([0, source.length]);
   const addTo = (map, at, item) => {
     if (!map.has(at)) map.set(at, []);
@@ -255,6 +277,12 @@ function parseInlineRuns(value, options = {}) {
     const localStart = image.sourceStart - sourceOffset;
     const localEnd = image.sourceEnd - sourceOffset;
     imageAt.set(localStart, image);
+    boundaries.add(localStart); boundaries.add(localEnd);
+  }
+  for (const item of customItems) {
+    const localStart = item.sourceStart - sourceOffset;
+    const localEnd = item.sourceEnd - sourceOffset;
+    customAt.set(localStart, item);
     boundaries.add(localStart); boundaries.add(localEnd);
   }
 
@@ -283,8 +311,11 @@ function parseInlineRuns(value, options = {}) {
     const beginning = (starts.get(at) || []).slice().sort((a, b) => a.depth - b.depth);
     for (const span of beginning) active.push(span);
 
+    const custom = customAt.get(at);
     const image = imageAt.get(at);
-    if (image) {
+    if (custom) {
+      runs.push({ ...custom });
+    } else if (image) {
       runs.push({ ...image });
     } else {
       const marker = removals.get(at);
@@ -307,6 +338,7 @@ function parseInlineRuns(value, options = {}) {
     text,
     warnings,
     hasImages: images.length > 0,
+    hasCustomItems: customItems.length > 0,
     hasFontRanges: spans.some(span => span.available)
   };
 }
