@@ -190,19 +190,14 @@ function buildToUnicode(font) {
 }
 
 
-const pdfInlineItemRenderers = new Map();
+const {
+  registerRenderer: registerInlineItemAdapter,
+  getInlineItemRenderer,
+  registerInlineItemType
+} = require('../layout/inline-item-registry');
 
 function registerPdfInlineItemRenderer(kind, renderer) {
-  if (typeof kind !== 'string' || !kind.trim()) {
-    throw new TypeError('pdf-writer: inline item kind must be a non-empty string');
-  }
-  if (typeof renderer !== 'function') {
-    throw new TypeError('pdf-writer: inline item renderer must be a function');
-  }
-  pdfInlineItemRenderers.set(kind, renderer);
-  return () => {
-    if (pdfInlineItemRenderers.get(kind) === renderer) pdfInlineItemRenderers.delete(kind);
-  };
+  return registerInlineItemAdapter(kind, 'pdf', renderer);
 }
 
 function asByteView(input) {
@@ -716,7 +711,7 @@ function writePdf(opts) {
             } else if (fragment.kind === 'image') {
               emitImage(fragment);
             } else {
-              const renderer = pdfInlineItemRenderers.get(fragment.kind);
+              const renderer = getInlineItemRenderer(fragment.kind, 'pdf');
               if (!renderer) throw new Error('pdf-writer: no PDF renderer registered for inline item kind ' + fragment.kind);
               const customOps = renderer(fragment, { pxToPt: PX_TO_PT, pageHeightPt: hPt, round2 });
               if (!Array.isArray(customOps) || customOps.some(op => typeof op !== 'string')) {
@@ -1105,4 +1100,4 @@ function writePdf(opts) {
   return pdf.build();
 }
 
-module.exports = { writePdf, PdfBuilder, PX_TO_PT, MM_TO_PT, visualOrderRtl, BRACKET_MIRROR, decodePngForPdf, encodeZlibStored, registerPdfInlineItemRenderer };
+module.exports = { writePdf, PdfBuilder, PX_TO_PT, MM_TO_PT, visualOrderRtl, BRACKET_MIRROR, decodePngForPdf, encodeZlibStored, registerPdfInlineItemRenderer, registerInlineItemType };
