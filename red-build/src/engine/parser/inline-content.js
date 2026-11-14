@@ -172,7 +172,7 @@ function parseInlineRuns(value, options = {}) {
 
     const marker = markerAt(index);
     if (!marker) {
-      const custom = parseInlineItemAt(source, index, {
+      const custom = options.allowCustomItems === false ? null : parseInlineItemAt(source, index, {
         sourceOffset,
         availableFamilies,
         knownFamilies,
@@ -404,7 +404,9 @@ function parseInlineParagraph(parts = [], notes = [], options = {}) {
   for (const note of notes) {
     const payload = note && typeof note === 'object' ? note.text : note;
     const sourceStart = note && typeof note === 'object' && Number.isFinite(note.sourceStart) ? note.sourceStart : 0;
-    const parsed = parseInlineRuns(payload, { ...options, sourceOffset: sourceStart, allowImages: true });
+    const parsed = parseInlineRuns(payload, {
+      ...options, sourceOffset: sourceStart, allowImages: true, allowCustomItems: false
+    });
     parsedNotes.push({ sourceStart, sourceEnd: note && typeof note === 'object' ? note.sourceEnd : undefined, runs: parsed.runs });
     warnings.push(...parsed.warnings);
     hasImages = hasImages || parsed.hasImages;
