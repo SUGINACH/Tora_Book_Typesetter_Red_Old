@@ -19100,7 +19100,7 @@ function reAlignColumns(page) {
  * happens to remain unchanged.
  */
 function lineLayoutSignature(line, includeGeometry = false) {
-  const words = (line.words || []).join('\\u00A7');
+  const words = (line.words || []).join('\u00A7');
   if (!Array.isArray(line.fragments)) return words;
   // Keep the historical content hash stable for ordinary text and note
   // markers. Only truly new inline page-item/font features extend layoutHash.
@@ -19126,7 +19126,7 @@ function lineLayoutSignature(line, includeGeometry = false) {
       fontFamily: segment.fontFamily || null
     })) : null
   }));
-  return words + '\\u00B6' + JSON.stringify({
+  return words + '\u00B6' + JSON.stringify({
     heightPx: line.heightPx,
     aqStretch: line.aqStretch || 1,
     fragments
