@@ -40,7 +40,9 @@ test('layout signatures detect rich font and image geometry changes without chan
     const fragment=kind==='text'
       ? {kind:'text',text:'מילה',widthPx,heightPx:18,gapAfterPx:0,sizePt,
          segments:[{text:'מילה',fontFamily:'Inline Alpha',widthPx,sizePt}]}
-      : {kind:'image',id:'asset-1',resourceId:'asset-1',resourcePath:'a.png',widthPx,heightPx:30,gapAfterPx:0};
+      : kind==='image'
+        ? {kind:'image',id:'asset-1',resourceId:'asset-1',resourcePath:'a.png',widthPx,heightPx:30,gapAfterPx:0}
+        : {kind:'badge',id:'badge-1',layoutKey:String(widthPx),widthPx,heightPx:18,gapAfterPx:0};
     const line={tokenId:'t1',words:['מילה'],heightPx:18,richSignatureRequired:true,fragments:[fragment]};
     return {index:0,type:'regular',columns:[[line]],footnotes:[],sideNotes:[]};
   };
@@ -49,7 +51,10 @@ test('layout signatures detect rich font and image geometry changes without chan
   assert.notEqual(layoutHash([small]),layoutHash([large]));
   assert.notEqual(bodyGeometryHash([small]),bodyGeometryHash([large]));
   const image=makePage(null,50,'image');
+  const badgeA=makePage(null,24,'badge');
+  const badgeB=makePage(null,25,'badge');
   assert.notEqual(layoutHash([small]),layoutHash([image]));
+  assert.notEqual(layoutHash([badgeA]),layoutHash([badgeB]),'custom layoutKey participates in the content hash');
 });
 
 test('projectLine positions text, font segments and images from measured widths only',()=>{
@@ -124,7 +129,7 @@ test('one registration supplies both DOM and PDF adapters for a custom item type
   });
   try{
     const line={kind:'paragraph',heightPx:24,isLast:true,fragments:[
-      {kind:'qr-code',id:'qr-1',payload:{value:'book:1'},widthPx:24,heightPx:24,gapAfterPx:0}
+      {kind:'qr-code',id:'qr-1',layoutKey:'book:1',payload:{value:'book:1'},widthPx:24,heightPx:24,gapAfterPx:0}
     ]};
     const projected=projectLine(line,0,0,100,settings,new MeasureAPI(settings),'right');
     const element=renderLine(projected,doc,settings);
