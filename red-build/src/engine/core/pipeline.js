@@ -139,13 +139,13 @@ function createStyledInlineRuns(parts, options = {}) {
     }
     for (const run of (part.runs || [])) {
       if (!run || typeof run !== 'object') continue;
-      if (run.kind === 'image') {
+      if (run.kind !== 'text') {
+        // Images and registered custom page items already carry their own
+        // identity/payload. Their source command contributes to source offsets
+        // but is not emitted as printable text.
         result.push(run);
         flatOffset += String(run.sourceText || '').length;
         continue;
-      }
-      if (run.kind !== 'text') {
-        throw new TypeError('pipeline: unsupported canonical inline run kind: ' + String(run.kind));
       }
 
       const value = String(run.text || '');
@@ -619,7 +619,12 @@ function typeset(rawText, settingsIn, env = {}) {
     // Roll out the generic atom solver only where a real inline feature needs
     // it. Plain paragraphs retain their locked historical breaks until the
     // all-corpus equivalence gate is intentionally re-baselined.
-    const hasMeasuredInlineFeature = hasInlineImages || hasInlineStyledRuns;
+    const hasCustomInlineRuns = inlineContent.parts.some(part =>
+      part && part.kind === 'text' && (part.runs || []).some(run =>
+        run && run.kind !== 'text' && run.kind !== 'image'
+      )
+    );
+    const hasMeasuredInlineFeature = hasInlineImages || hasInlineStyledRuns || hasCustomInlineRuns;
     const richRunEligible = hasMeasuredInlineFeature
       && inlineContent.parts.length > 0
       && inlineContent.parts.every(part => part && (part.kind === 'text' || part.kind === 'note-ref'))
