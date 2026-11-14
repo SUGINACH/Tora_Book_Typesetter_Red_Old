@@ -3,6 +3,7 @@
 
 const assert = require('node:assert/strict');
 const { createMeasuredInlineItems } = require('../../src/engine/layout/inline-item-factory');
+const { registerInlineItemType } = require('../../src/engine/layout/inline-item-registry');
 
 let passed = 0;
 function test(name, fn) {
@@ -124,6 +125,25 @@ test('inline anchors and future custom item kinds share the same measured-box st
   assert.equal(result.items[1].id,'fn:1');
   assert.equal(result.items[1].widthPx,0);
   assert.equal(result.items[2].payload.value,'1');
+});
+
+test('a registered item type validates its payload in the shared measuring factory', () => {
+  const unregister = registerInlineItemType('validated-card', {
+    validate: item => typeof item.payload?.label === 'string' && item.payload.label.length > 0,
+    dom: () => null,
+    pdf: () => []
+  });
+  try {
+    const valid = createMeasuredInlineItems([
+      {kind:'validated-card',id:'card:1',widthPx:24,heightPx:18,payload:{label:'פריט'}}
+    ], {measureText:measure});
+    assert.equal(valid.items[0].kind,'validated-card');
+    assert.throws(()=>createMeasuredInlineItems([
+      {kind:'validated-card',id:'card:2',widthPx:24,heightPx:18,payload:{label:''}}
+    ], {measureText:measure}),/rejected by validator/);
+  } finally {
+    unregister();
+  }
 });
 
 test('invalid measured widths and incomplete custom items are rejected explicitly', () => {
