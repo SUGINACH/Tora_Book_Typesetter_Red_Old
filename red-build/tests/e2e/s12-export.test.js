@@ -17,6 +17,7 @@ const { projectDocument } = require('../../src/engine/output/geometry-projector'
 const { exportHtml, exportPdf, exportProjectZip, importProjectZip } = require('../../src/engine/output/export-api');
 const { assertOfflineSafe } = require('../../src/engine/output/html-export');
 const { parseCustomStyles } = require('../../src/engine/extensions/style-schema');
+const { registerInlineItemType } = require('../../src/engine/layout/inline-item-registry');
 const { buildTtfFixture } = require('../fixtures/gen_ttf_fixture');
 
 const ART = path.join(__dirname, '..', 'artifacts');
@@ -745,6 +746,96 @@ describe('S14 — inline segment fonts survive complete PDF export', () => {
       assert(line, 'projected PDF model retains the inline family key on the measured subsegment');
     } finally {
       clearRegisteredFonts();
+    }
+  });
+});
+
+describe('S14 — custom inline page items use one registration through the complete engine', () => {
+  it('parses, measures, paginates, renders and exports a registered item without engine-specific branches', () => {
+    if (!HAS_DEJAVU) { console.error('  [מדלג — DejaVu לא במערכת]'); return; }
+
+    const calls = { parse:0, measure:0, validate:0, dom:0, pdf:0 };
+    const unregister = registerInlineItemType('qr-code-e2e', {
+      parse(source, index) {
+        const prefix = '⟦qr:';
+        if (!source.startsWith(prefix, index)) return null;
+        const end = source.indexOf('⟧', index + prefix.length);
+        if (end < 0) return null;
+        const value = source.slice(index + prefix.length, end);
+        if (!value || value.includes('⟦') || value.includes('⟧')) return null;
+        calls.parse++;
+        const token = source.slice(index, end + 1);
+        return {
+          consumed: token.length,
+          item: {
+            kind:'qr-code-e2e',
+            id:'qr:' + value,
+            layoutKey:value,
+            payload:{value}
+          }
+        };
+      },
+      measure(item) {
+        calls.measure++;
+        return { widthPx:32, heightPx:22, layoutKey:item.layoutKey };
+      },
+      validate(item) {
+        calls.validate++;
+        return typeof item.payload?.value === 'string' && item.layoutKey === item.payload.value;
+      },
+      dom(fragment, document) {
+        calls.dom++;
+        const node = document.createElement('span');
+        node.className = 'custom-qr-code';
+        node.textContent = 'QR:' + fragment.payload.value;
+        return node;
+      },
+      pdf(fragment, context) {
+        calls.pdf++;
+        const scale = context.pxToPt;
+        const x = fragment.x * scale;
+        const y = context.pageHeightPt - (fragment.y + fragment.heightPx) * scale;
+        const width = fragment.widthPx * scale;
+        const height = fragment.heightPx * scale;
+        return [
+          '0 0 0 rg ' + context.round2(x) + ' ' + context.round2(y) + ' '
+            + context.round2(width) + ' ' + context.round2(height) + ' re f',
+          '% QR-CODE:' + fragment.payload.value
+        ];
+      }
+    });
+
+    try {
+      const settings = getDefaultSettings();
+      const source = 'טקסט לפני ⟦qr:book-17⟧ וטקסט אחרי הפריט';
+      const result = typeset(source, settings, { noRecommendations:true });
+      assert(result.contentPreserved === true, 'custom source syntax is not lost as body text');
+      const pageLines = result.pages.flatMap(page => page.columns.flat());
+      const item = pageLines.flatMap(line => line.fragments || [])
+        .find(fragment => fragment.kind === 'qr-code-e2e');
+      assert(item, 'custom item survives measurement, Knuth–Plass and DP page planning');
+      assertEq(item.id, 'qr:book-17');
+      assertEq(item.layoutKey, 'book-17');
+      assertEq(item.widthPx, 32);
+      assertEq(item.heightPx, 22);
+      assert(Number.isFinite(item.x), 'the shared geometry projector assigns an x coordinate');
+
+      const html = exportHtml(result, settings, makeDoc(), { title:'Custom item integration' });
+      assert(calls.dom > 0 && html.includes('QR:book-17'), 'the registered DOM renderer is used by standalone HTML');
+      assert(!html.includes('⟦qr:book-17⟧'), 'the source command itself is not printed');
+
+      const pdf = exportPdf(source, settings, fs.readFileSync(DEJAVU), 'DejaVu Sans');
+      assert(pdf.ok, 'PDF export: ' + pdf.error);
+      assert(calls.pdf > 0, 'the registered PDF renderer is invoked');
+      assert(pdf.bytes.toString('latin1').includes('% QR-CODE:book-17'), 'custom PDF operators reach the written content stream');
+      const projectedItem = pdf.projected.pages.flatMap(page => page.lines)
+        .flatMap(line => line.fragments || [])
+        .find(fragment => fragment.kind === 'qr-code-e2e');
+      assert(projectedItem, 'custom item remains in the projected PDF model');
+      assert(calls.parse >= 2 && calls.measure >= 2 && calls.validate >= 2,
+        'each typeset path runs the same parser, measurement and validation adapters');
+    } finally {
+      unregister();
     }
   });
 });
