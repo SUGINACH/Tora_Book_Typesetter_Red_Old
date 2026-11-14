@@ -179,7 +179,7 @@ test('canonical tokenizer stores image/font runs separately for paragraph text a
 test('registered custom item syntax becomes one canonical run and is excluded from note parsing', () => {
   const unregister = registerInlineItemType('badge', {
     parse(source, index) {
-      const match = source.slice(index).match(/^\\[\\[badge:([^\\]]+)\\]\\]/u);
+      const match = source.slice(index).match(/^\[\[badge:([^\]]+)\]\]/u);
       if (!match) return null;
       const label = match[1];
       return {
