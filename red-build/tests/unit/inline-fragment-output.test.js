@@ -3,7 +3,8 @@
 
 const assert = require('node:assert/strict');
 const { projectLine } = require('../../src/engine/output/geometry-projector');
-const { renderLine, registerInlineItemRenderer, bytesToBase64 } = require('../../src/engine/output/dom-renderer');
+const { renderLine, bytesToBase64 } = require('../../src/engine/output/dom-renderer');
+const { registerInlineItemType } = require('../../src/engine/layout/inline-item-registry');
 const { layoutHash, bodyGeometryHash } = require('../../src/engine/layout/dp-planner');
 const { MeasureAPI } = require('../../src/engine/typography/measure-api');
 const { getDefaultSettings } = require('../../src/engine/core/settings-registry');
@@ -110,12 +111,16 @@ test('DOM renderer keeps inline font subsegments and renders an image from local
   assert.equal(image.style.height,'54px');
 });
 
-test('registered custom inline renderer is an explicit extension point',()=>{
+test('one registration supplies both DOM and PDF adapters for a custom item type',()=>{
   const settings=getDefaultSettings();
-  const unregister=registerInlineItemRenderer('qr-code',(item,document)=>{
-    const canvas=document.createElement('canvas');
-    canvas.dataset.value=item.payload.value;
-    return canvas;
+  const unregister=registerInlineItemType('qr-code',{
+    validate:item=>typeof item.payload?.value==='string',
+    dom:(item,document)=>{
+      const canvas=document.createElement('canvas');
+      canvas.dataset.value=item.payload.value;
+      return canvas;
+    },
+    pdf:(item,context)=>['% qr-code '+item.payload.value]
   });
   try{
     const line={kind:'paragraph',heightPx:24,isLast:true,fragments:[
