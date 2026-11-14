@@ -2,7 +2,8 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { writePdf, decodePngForPdf, registerPdfInlineItemRenderer } = require('../../src/engine/output/pdf-writer');
+const { writePdf, decodePngForPdf } = require('../../src/engine/output/pdf-writer');
+const { registerInlineItemType } = require('../../src/engine/layout/inline-item-registry');
 const { crc32 } = require('../../src/engine/import/zip-reader');
 const { getDefaultSettings } = require('../../src/engine/core/settings-registry');
 
@@ -106,10 +107,13 @@ test('custom inline PDF items require an explicit renderer instead of disappeari
     pageSizeMm:{w:210,h:297},font:fakeFont(),settings:getDefaultSettings()
   }),/no PDF renderer registered/);
 
-  const unregister=registerPdfInlineItemRenderer('qr-code',(item,ctx)=>[
-    'q 20 0 0 20 10 200 cm',
-    '% registered qr renderer'
-  ]);
+  const unregister=registerInlineItemType('qr-code',{
+    dom:()=>null,
+    pdf:(item,ctx)=>[
+      'q 20 0 0 20 10 200 cm',
+      '% registered qr renderer'
+    ]
+  });
   try{
     const bytes=writePdf({
       pages:[fakePage([{kind:'qr-code',id:'qr:1',x:10,y:20,widthPx:20,heightPx:20}])],
