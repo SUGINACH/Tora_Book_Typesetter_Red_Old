@@ -105,19 +105,14 @@ function fontStack(family) {
   return out.join(', ');
 }
 
-const inlineItemRenderers = new Map();
+const {
+  registerRenderer: registerInlineItemAdapter,
+  getInlineItemRenderer,
+  registerInlineItemType
+} = require('../layout/inline-item-registry');
 
 function registerInlineItemRenderer(kind, renderer) {
-  if (typeof kind !== 'string' || !kind.trim()) {
-    throw new TypeError('dom-renderer: inline item kind must be a non-empty string');
-  }
-  if (typeof renderer !== 'function') {
-    throw new TypeError('dom-renderer: inline item renderer must be a function');
-  }
-  inlineItemRenderers.set(kind, renderer);
-  return () => {
-    if (inlineItemRenderers.get(kind) === renderer) inlineItemRenderers.delete(kind);
-  };
+  return registerInlineItemAdapter(kind, 'dom', renderer);
 }
 
 function bytesToBase64(input) {
@@ -237,7 +232,7 @@ function renderLine(ln, doc, settings = {}) {
         continue;
       }
 
-      const customRenderer = inlineItemRenderers.get(fragment.kind);
+      const customRenderer = getInlineItemRenderer(fragment.kind, 'dom');
       const customNode = customRenderer ? customRenderer(fragment, doc, settings) : null;
       if (customNode) {
         el.appendChild(customNode);
@@ -1609,4 +1604,4 @@ function renderPage(page, settings, doc, header) {
   return root;
 }
 
-module.exports = { renderPage, renderLine, scrubPUAText, bgRgba, PT_CLASS, renderSpanningBand, renderDecorations, renderPageBackgroundAndShaar, renderShaarContent, renderCustomPageContent, applyCustomStyleSpec, fontStack, registerInlineItemRenderer, bytesToBase64 };
+module.exports = { renderPage, renderLine, scrubPUAText, bgRgba, PT_CLASS, renderSpanningBand, renderDecorations, renderPageBackgroundAndShaar, renderShaarContent, renderCustomPageContent, applyCustomStyleSpec, fontStack, registerInlineItemRenderer, registerInlineItemType, bytesToBase64 };
