@@ -1200,10 +1200,24 @@ function typeset(rawText, settingsIn, env = {}) {
     const hasInlineImages = inlineImageRuns.length > 0;
     const allInlineImagesResolved = !hasInlineImages
       || inlineImageRuns.every(run => resolvedInlineImageBoxes.has(run));
+    const bodySizePt = Number(settings['body-font-size-pt']);
+    const hasInlineStyledRuns = inlineContent.parts.some(part =>
+      part && part.kind === 'text' && (part.runs || []).some(run =>
+        run && run.kind === 'text' && (
+          (run.fontFamily && run.fontFamily !== settings['body-font']) ||
+          (run.sizePt != null && Number(run.sizePt) !== bodySizePt)
+        )
+      )
+    );
     const richNoteMode = notesMode !== 'inline'
       && (settings['footnotes-enabled'] || notesMode === 'endnotes');
     const richNotesEligible = !hasInlineNotes || richNoteMode;
-    const richRunEligible = inlineContent.parts.length > 0
+    // Roll out the generic atom solver only where a real inline feature needs
+    // it. Plain paragraphs retain their locked historical breaks until the
+    // all-corpus equivalence gate is intentionally re-baselined.
+    const hasMeasuredInlineFeature = hasInlineImages || hasInlineStyledRuns;
+    const richRunEligible = hasMeasuredInlineFeature
+      && inlineContent.parts.length > 0
       && inlineContent.parts.every(part => part && (part.kind === 'text' || part.kind === 'note-ref'))
       && richNotesEligible
       && allInlineImagesResolved
@@ -1215,7 +1229,6 @@ function typeset(rawText, settingsIn, env = {}) {
     const richNoteMarkers = new Map();
 
     if (richRunEligible) {
-      const bodySizePt = Number(settings['body-font-size-pt']);
       const richRuns = [];
       let canAttachMarkerBackward = false;
       let ordinaryGlueAfterMarker = false;
@@ -1284,14 +1297,7 @@ function typeset(rawText, settingsIn, env = {}) {
           ln.tokenId = t.id;
           ln.part = currentPart;
           ln.sizePt = bodySizePt;
-          ln.richSignatureRequired = hasInlineImages || inlineContent.parts.some(part =>
-            part && part.kind === 'text' && (part.runs || []).some(run =>
-              run && run.kind === 'text' && (
-                (run.fontFamily && run.fontFamily !== settings['body-font']) ||
-                (run.sizePt != null && Number(run.sizePt) !== bodySizePt)
-              )
-            )
-          );
+          ln.richSignatureRequired = hasMeasuredInlineFeature;
         }
         stampMeasureW(lines, colW);
         usedMeasuredInlineLayout = true;
@@ -1352,7 +1358,7 @@ function typeset(rawText, settingsIn, env = {}) {
           // footnotes / endnotes: only the marker is pushed in the body (counted once — at the anchor);
           // the text of the note flows to its display location (gutter / pages of notes — D-30).
           if (!richNoteMarkers.has(p.noteIndex)) {
-            notes.push({ text: String(noteRaw).replace(/\\uE000/g, ' '), marker, tokenId: t.id, noteIndex: p.noteIndex, part: currentPart || 1 });
+            notes.push({ text: String(noteRaw).split(String.fromCharCode(0xE000)).join(' '), marker, tokenId: t.id, noteIndex: p.noteIndex, part: currentPart || 1 });
             bodyMarkers.push(marker);
           }
           allWords.push(marker);
