@@ -1,6 +1,8 @@
 // src/engine/layout/inline-item-factory.js — canonical AST → measured inline atoms (S14 P0)
 'use strict';
 
+const { validateInlineItem } = require('./inline-item-registry');
+
 const DEFAULT_GLUE_STRETCH = 0.6;
 const DEFAULT_GLUE_SHRINK = 0.5;
 
@@ -231,6 +233,7 @@ function createMeasuredInlineItems(runs, options = {}) {
     if (typeof run.kind !== 'string' || !run.kind.trim() || run.id == null) {
       throw new TypeError('inline-item-factory: custom item kinds require kind and stable id');
     }
+    validateInlineItem(run, { stage: 'measure' });
     items.push({
       ...run,
       widthPx: finiteNonNegative(run.widthPx, 'custom item width'),
