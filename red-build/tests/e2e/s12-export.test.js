@@ -818,7 +818,6 @@ describe('S14 — custom inline page items use one registration through the comp
       assertEq(item.layoutKey, 'book-17');
       assertEq(item.widthPx, 32);
       assertEq(item.heightPx, 22);
-      assert(Number.isFinite(item.x), 'the shared geometry projector assigns an x coordinate');
 
       const html = exportHtml(result, settings, makeDoc(), { title:'Custom item integration' });
       assert(calls.dom > 0 && html.includes('QR:book-17'), 'the registered DOM renderer is used by standalone HTML');
@@ -832,6 +831,7 @@ describe('S14 — custom inline page items use one registration through the comp
         .flatMap(line => line.fragments || [])
         .find(fragment => fragment.kind === 'qr-code-e2e');
       assert(projectedItem, 'custom item remains in the projected PDF model');
+      assert(Number.isFinite(projectedItem.x), 'the shared geometry projector assigns an x coordinate');
       assert(calls.parse >= 2 && calls.measure >= 2 && calls.validate >= 2,
         'each typeset path runs the same parser, measurement and validation adapters');
     } finally {
