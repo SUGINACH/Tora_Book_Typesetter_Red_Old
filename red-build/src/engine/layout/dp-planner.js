@@ -59,6 +59,7 @@ function lineLayoutSignature(line, includeGeometry = false) {
   const fragments = line.fragments.map(fragment => ({
     kind: fragment.kind,
     id: fragment.id == null ? null : fragment.id,
+    layoutKey: fragment.layoutKey == null ? null : fragment.layoutKey,
     resourceId: fragment.resourceId == null ? null : fragment.resourceId,
     text: fragment.kind === 'text' ? fragment.text : null,
     widthPx: fragment.widthPx,
