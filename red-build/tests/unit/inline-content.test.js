@@ -2,7 +2,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { parseInlineRuns, inlineRunsSourceText, inlineParagraphSourceText, inlineNoteSourceText } = require('../../src/engine/parser/inline-content');
+const { parseInlineRuns, parseInlineParagraph, inlineRunsSourceText, inlineParagraphSourceText, inlineNoteSourceText } = require('../../src/engine/parser/inline-content');
 const { tokenize } = require('../../src/engine/parser/block-tokenizer');
 const { tokenizeDoc: tokenizeLegacyDoc } = require('../../src/engine/layout/legacy-imud-flow');
 const { registerInlineItemType } = require('../../src/engine/layout/inline-item-registry');
