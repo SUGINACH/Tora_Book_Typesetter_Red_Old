@@ -13,6 +13,8 @@
 const { typeset } = require('../engine/core/pipeline');
 const { serializeTypesetResult, validateRequest, progressMessage } = require('./worker-protocol');
 const { createInlineAssetResolver } = require('../engine/import/document-assets');
+// Explicit Worker-side bootstrap: parser and measure adapters must exist in this realm.
+require('../engine/layout/inline-item-types');
 
 let cancelledJobs = new Set();
 
