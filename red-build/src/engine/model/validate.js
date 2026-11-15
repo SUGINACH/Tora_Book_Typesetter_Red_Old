@@ -47,6 +47,7 @@ function validateDocumentModel(model) {
   // ── בלוקים ──
   let lastWasHeading = false;  // שתי כותרות רצופות מאותה רמה בלי טקסט ביניהן — מבנה לא תקין (תנאי המשתמש)
   let lastHeadingLevel = null;
+  let sinceHeading = []; // בלוקים שאינם תוכן גוף אמיתי בין שתי כותרות
   for (const b of model.blocks || []) {
     const where = `block[${b && b.order}]`;
     if (!b || typeof b !== 'object') { err('block-invalid', where, 'בלוק אינו אובייקט.'); continue; }
@@ -66,14 +67,33 @@ function validateDocumentModel(model) {
       if (!hasText) err('heading-without-text', where, 'כותרת ללא טקסט ממשי — מבנה לא תקין (כותרת שתוכנה ריק אינה חוקית).');
       // שתי כותרות רצופות מאותה רמה ללא תוכן ביניהן — מבנה לא תקין מבחינת המשתמש.
       if (lastWasHeading && lastHeadingLevel === b.level) {
-        err('consecutive-headings-no-text', where, `שתי כותרות רצופות מרמה ${b.level} ללא טקסט ביניהן — מסמך הבדיקה חייב מבנה תקין.`);
+        const sep = sinceHeading.length ? ` (ביניהן רק: ${sinceHeading.join(', ')})` : '';
+        err('consecutive-headings-no-text', where, `שתי כותרות רצופות מרמה ${b.level} ללא טקסט גוף ביניהן${sep} — מסמך הבדיקה חייב מבנה תקין.`);
       }
     }
     if (b.parentId != null && !blockIds.has(b.parentId)) {
       err('block-parent-orphan', where, `parentId לא קיים כבלוק: ${b.parentId}.`);
     }
-    lastWasHeading = b.kind === 'heading';
-    if (lastWasHeading) lastHeadingLevel = b.level;
+    // הכרעה סופית (ביקורת שלב 2, §3): "טקסט בין כותרות" = תוכן גוף אמיתי
+    // במסלול התוכן. גוף הערת-סיון, שורת editorial (מוסרת מהפלט) והוריית
+    // עמודי-הערות אינם תוכן כזה — הם שקופים לעילות "שתי כותרות
+    // רצופות מאותו רמה ללא טקסט ביניהן": גם בלוקים כאלה בין הכותרות
+    // נחשבות רצופות. בנוסף, פסקה ללא טקסט ממשי אינה "טקסט בין הכותרות".
+    if (b.kind === 'heading') {
+      lastWasHeading = true;
+      lastHeadingLevel = b.level;
+      sinceHeading = [];
+    } else if (b.kind === 'endnote' || b.kind === 'editorial' || b.kind === 'endnoteClass') {
+      sinceHeading.push(b.kind); // שקוף — לא מאפס "כותרת אחרונה"
+    } else {
+      const hasRealText = (b.items || []).some(it => it.kind === 'text' && it.payload && typeof it.payload.text === 'string' && it.payload.text.trim().length > 0);
+      if (hasRealText) {
+        lastWasHeading = false;
+        sinceHeading = [];
+      } else {
+        sinceHeading.push(b.kind);
+      }
+    }
 
     // ── פריטים ──
     let prevOrder = -1;

@@ -14,7 +14,7 @@ const { BLOCK_KINDS } = require('./kinds');
  * רווח בין-חלקי / קידומת כותרת. כיסוי חסר או כפול = שגיאת כיסוי (throw) —
  * לעולם לא השלמה שקטה.
  * @param {object} block
- * @param {object} [model] — לחיפוש גופי ההערות של הבלוק (או block._notes שהוזרק)
+ * @param {object} [model] — לחיפוש גופי ההערות של הבלוק (חיובי לפסקאות עם סמני הערה — ממשק מפורש, בלי הזרקה לתוך הבלוק)
  * @returns {string} השורה הקנונית (אחרי הסרת editorials בפסקאות)
  */
 function rebuildCanonicalLine(block, model) {
@@ -71,7 +71,7 @@ function rebuildCanonicalLine(block, model) {
 }
 
 function blockNotesOf(block, model) {
-  if (block._notes) return block._notes;
+  // טוהר: אין עוד מסלול הזרקת שדות זמניים לבלוקים — model הוא הממשק המפורש היחיד לגופי הערות.
   if (model && Array.isArray(model.notes)) return model.notes.filter(n => n.parentId === block.id);
   return [];
 }
@@ -139,7 +139,7 @@ function invertStage1(pre, stage1) {
 
 /**
  * שחזור המסמך המלא מהמודל — תו-מול-תו.
- * @param {object} model — פלט buildDocumentModel (חייב _notesByBlock פנימי או notes)
+ * @param {object} model — פלט buildDocumentModel (גופי ההערות מאותרים מ-model.notes בלבד)
  */
 function reconstructSource(model) {
   const notesByBlock = new Map();
@@ -166,8 +166,7 @@ function reconstructSource(model) {
     } else if (sk.kind === 'body') {
       const blk = blockBySkeleton.get(sk.lineIndex);
       if (!blk) throw new Error(`roundtrip: block missing for body line ${sk.lineIndex}`);
-      blk._notes = notesByBlock.get(blk.id) || [];
-      const canonical = rebuildCanonicalLine(blk);
+      const canonical = rebuildCanonicalLine(blk, model); // טוהר: הערות בממשק הקיים, ללא שינוי המודל
       const pre = invertStage2(canonical, blk.source.stage2, blk.source.preLength);
       const rawLine = invertStage1(pre, blk.source);
       lines[sk.lineIndex] = { text: rawLine, eol: eolOf(model, sk.lineIndex) };

@@ -1,8 +1,8 @@
 {
   "tool": "cross-check",
   "schema": 1,
-  "started": "2026-11-15T18:17:27.003Z",
-  "commit": "5d7728b",
+  "started": "2026-11-15T19:21:32.059Z",
+  "commit": "1a6170f",
   "node": "v24.22.2",
   "corpora": [
     {
@@ -14,7 +14,7 @@
       "lockHash": "80f9ed6c",
       "contentPreserved": true,
       "hashOk": true,
-      "ms": 74
+      "ms": 83
     },
     {
       "name": "very_long (DP)",
@@ -25,7 +25,7 @@
       "lockHash": "77d5d5d3",
       "contentPreserved": true,
       "hashOk": true,
-      "ms": 2948
+      "ms": 3350
     },
     {
       "name": "very_long (legacy, run-ours = corpus-invariants CI)",
@@ -33,23 +33,23 @@
       "legacy": true,
       "profile": "imud-legacy",
       "pages": 695,
-      "layoutHash": "legacy-287c1",
-      "lockHash": "legacy-287c1",
+      "layoutHash": "legacy-7dd45",
+      "lockHash": "legacy-7dd45",
       "contentPreserved": true,
       "hashOk": true,
-      "ms": 5189
+      "ms": 5476
     }
   ],
   "bundles": [
     {
       "file": "red-build/ui/app.bundle.js",
-      "sha256": "5b5db1d9bdc775a1",
-      "bytes": 1228166
+      "sha256": "f4b166e137a43967",
+      "bytes": 1229633
     },
     {
       "file": "red-build/ui/engine-worker.bundle.js",
-      "sha256": "b03061813efadd70",
-      "bytes": 1265414
+      "sha256": "626b95fd69f2edcf",
+      "bytes": 1267745
     }
   ],
   "live": null,

@@ -326,4 +326,115 @@ describe('שלב 2 — חוזה הרחבה (registry) ותנאי הסרת adapte
   });
 });
 
+describe('שלב 2 — טוהר הנתיב היציאה (D-S2P1): אין מצב גלובאלי ואין שינוי קלט', () => {
+
+  // טוהר 1: modelToTokens אינו משנה את המודל המקורי — השוואת deep snapshot לפנות ואחרי.
+  // מכסה גם את reconstructSource (הפונקציה השנייה שהזריקה פעם blk._notes).
+  for (const [name, raw] of Object.entries(SAMPLES)) {
+    it(`modelToTokens אינו משנה את המודל [מדגם: ${name}]`, () => {
+      const model = buildDocumentModel(raw, {});
+      const snapshot = JSON.stringify(model);
+      modelToTokens(model);
+      assertEq(JSON.stringify(model), snapshot, `המודל השתנה בעקבות ה-adapter [${name}]`);
+      reconstructSource(model);
+      assertEq(JSON.stringify(model), snapshot, `המודל השתנה בעקבות reconstructSource [${name}]`);
+      // המודל נקי משדות זמניים שהוזרקו בעבר
+      assert(!snapshot.includes('_notes'), `נמצא שדה זמני _notes במודל [${name}]`);
+    });
+  }
+
+  // טוהר 2: שתי קריות חוזרות מחזירות פלט זהה (אין מצב שדולף בין קריאות).
+  it('שתי קריות חוזרות מחזירות זרם זהה בדיוק', () => {
+    for (const [name, raw] of Object.entries(SAMPLES)) {
+      const model = buildDocumentModel(raw, {});
+      const first = JSON.stringify(modelToTokens(model));
+      const second = JSON.stringify(modelToTokens(model));
+      assertEq(second, first, `פלט שני שונה מפלט ראשון [${name}]`);
+    }
+  });
+
+  // טוהר 3: קריות משולבבות על שני מסמכים שונים אינן משפיעות זו על זו.
+  // הפרופיל: A→B→A→B — הפלט של כל מסמך יציב לאורך כל הרצפים, והמונה אינו דולף בין מסמכים.
+  it('קריות משולבבות על שני מסמכים נפרדות זו מזו', () => {
+    const rawA = SAMPLES.endnotes;
+    const rawB = SAMPLES.editorial;
+    const modelA = buildDocumentModel(rawA, {});
+    const modelB = buildDocumentModel(rawB, {});
+    const a1 = JSON.stringify(modelToTokens(modelA));
+    const b1 = JSON.stringify(modelToTokens(modelB));
+    const a2 = JSON.stringify(modelToTokens(modelA));
+    const b2 = JSON.stringify(modelToTokens(modelB));
+    assertEq(a2, a1, 'מסמך A הושפע ממסמך B');
+    assertEq(b2, b1, 'מסמך B הושפע ממסמך A');
+    // זהות טוקנים מתחילות מ-t1 בכל קריאה — אין דליפת מעצם מודול רצוף.
+    const bTokens = JSON.parse(b1);
+    assert(bTokens.length > 0 && bTokens[0].id === 't1', 'המונה הגלובאלי דלף לקריאה השנייה');
+  });
+
+  // טוהר 4: מזהי הטוקנים זהות לטוקניזר הישיר — רצף t1…tN מתוך המודל ולא מתוך מצב משותף.
+  it('מזהי הטוקנים זהות לטוקניזר הישיר (t1…tN)', () => {
+    for (const [name, raw] of Object.entries(SAMPLES)) {
+      const { bodyLines } = lexDocument(raw, {});
+      const orig = tokenize(bodyLines, {});
+      const derived = modelToTokens(buildDocumentModel(raw, {}));
+      assertEq(derived.length, orig.length, `מספר טוקנים שונה [${name}]`);
+      for (let k = 0; k < orig.length; k++) {
+        assertEq(derived[k].id, orig[k].id, `מזהה טוקן ${k} שונה [${name}]`);
+        assertEq(derived[k].id, `t${k + 1}`, `הרצף שבור [${name}] במקום ${k}`);
+      }
+    }
+  });
+
+  // טוהר 5: המודל נשאר תקין אחרי adapter + round-trip + validation.
+  it('המודל תקין אחרי adapter, round-trip וולידציה', () => {
+    for (const [name, raw] of Object.entries(SAMPLES)) {
+      const model = buildDocumentModel(raw, {});
+      const derived = modelToTokens(model);
+      assert(derived.length > 0, `פלט ריק [מדגם: ${name}]`);
+      assertEq(reconstructSource(model), raw, `round-trip נשבר אחרי ה-adapter [${name}]`);
+      const v = validateDocumentModel(model);
+      assert(v.ok, `ולידציה נכשלה אחרי ה-adapter [${name}]: ${JSON.stringify(v.errors)}`);
+      // ולידציה על מודל מודור — פונקציה טהורה מקבלת קלט לא פגוע.
+      const fresh = buildDocumentModel(raw, {});
+      assert(validateDocumentModel(fresh).ok, `מודל טרי נפגע [מדגם: ${name}]`);
+      assertEq(JSON.stringify(fresh), JSON.stringify(model), `מודל טרי שונה ממודל שעבר דרך ה-adapter [${name}]`);
+    }
+  });
+  // ביקורת שלב 2 (§3): הכרעה סמנטית מפורשת — "טקסט בין כותרות" = תוכן גוף אמיתי.
+  // גוף הערת-סיום, שורת editorial והוריית עמודי-הערות אינם תוכן כזה — הם שקופים לכלל.
+  it('הערת-סיום בלבד בין שתי כותרות מאותו רמה — מדווח במפורש', () => {
+    const raw = 'כותרת 3 - ראשונה\nהערת סיום - תוכן הערה בלבד\nכותרת 3 - שנייה\n';
+    const v = validateDocumentModel(buildDocumentModel(raw, {}));
+    assert(!v.ok, 'הפרה סמנטית לא נתפסה');
+    assert(v.errors.some(e => e.code === 'consecutive-headings-no-text'), 'קוד שגיאה שגוי');
+    assert(v.errors.some(e => e.message.includes('endnote')), 'ההודיעות לא מציין את המפריד הטכני');
+  });
+
+  it('שורת editorial בלבד בין שתי כותרות מאותו רמה — מדווח (האדיטוריאל מוסר מהפלט)', () => {
+    const raw = 'כותרת 4 - ראשונה\n##הערת עורך שלמה##\nכותרת 4 - שנייה\n';
+    const v = validateDocumentModel(buildDocumentModel(raw, {}));
+    assert(!v.ok && v.errors.some(e => e.code === 'consecutive-headings-no-text'), 'לא נתפס');
+  });
+
+  it('הוריית עמודי-הערות בלבד בין שתי כותרות מאותו רמה — מדווח', () => {
+    const raw = 'כותרת 2 - ראשונה\nהערות סיום - כותרת\nכותרת 2 - שנייה\n';
+    const v = validateDocumentModel(buildDocumentModel(raw, {}));
+    assert(!v.ok && v.errors.some(e => e.code === 'consecutive-headings-no-text'), 'לא נתפס');
+  });
+
+  it('הערת-סיום + פסקה אמיתית בין הכותרות — תקין (הפסקה היא תוכן אמיתי)', () => {
+    const raw = 'כותרת 3 - ראשונה\nהערת סיום - תוכן הערה\nטקסט גוף אמיתי ביניהן.\nכותרת 3 - שנייה\n';
+    const v = validateDocumentModel(buildDocumentModel(raw, {}));
+    assert(v.ok, 'מסמך תקין נדחה: ' + JSON.stringify(v.errors));
+  });
+
+  it('רמות שונות דרך הערת-סיום — תקיד (הכלל חל רק על אותה רמה)', () => {
+    const raw = 'כותרת 3 - ראשונה\nהערת סיום - תוכן הערה\nכותרת 4 - שונה רמה\n';
+    const v = validateDocumentModel(buildDocumentModel(raw, {}));
+    assert(v.ok, 'נדחה שלא לצורך: ' + JSON.stringify(v.errors));
+  });
+});
+
 report('s2-model');
+
+

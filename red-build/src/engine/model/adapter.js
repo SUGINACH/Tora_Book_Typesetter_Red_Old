@@ -14,18 +14,18 @@
 const { BLOCK_KINDS } = require('./kinds');
 const { rebuildCanonicalLine } = require('./roundtrip');
 
-let tokenSeq = 0;
-function mkToken(type, payload) {
-  return { id: `t${++tokenSeq}`, type, ...payload };
-}
-
 /**
  * modelToTokens — בונה את זרם הטוקנים ההיסטורי מהמודל הקנוני.
- * הפונקציה טהורה ודטרמיניסטית; סדר הפליטה זהה לסדר הטוקניזר המקורי.
+ * הפונקציה טהורה ודטרמיניסטית: אין מצב מודול-גלובלי (מונה הטוקנים מקומי לקריאה
+ * באמצעות closure), המודל המקורי אינו משתנה (ההערות מועברות ל-rebuildCanonicalLine
+ * כפרמטר model מפורש — ממשק קיים), וסדר הפליטה זהה לסדר הטוקניזר המקורי.
  * @param {object} model — פלט buildDocumentModel
  */
 function modelToTokens(model) {
-  tokenSeq = 0;
+  // טוהר: מונה הזהויות מקומי לקריאה — קריאות מקבילות/חוזרות/משולבבות אינן
+  // משפיעות זו על זו, והזהויות זהות לטוקניזר הישיר (t1, t2, …).
+  let tokenSeq = 0;
+  const mkToken = (type, payload) => ({ id: `t${++tokenSeq}`, type, ...payload });
   const notesByBlock = new Map();
   for (const n of model.notes || []) {
     if (!notesByBlock.has(n.parentId)) notesByBlock.set(n.parentId, []);
@@ -33,7 +33,6 @@ function modelToTokens(model) {
   }
   const tokens = [];
   for (const blk of model.blocks) {
-    blk._notes = notesByBlock.get(blk.id) || [];
     if (blk.kind === BLOCK_KINDS.EDITORIAL) {
       for (const seg of blk.syntax.editorialSegments || []) {
         tokens.push(mkToken('editorial', { text: seg.text.slice(2, -2), removed: true }));
@@ -67,14 +66,15 @@ function modelToTokens(model) {
       const parts = [];
       const notes = [];
       const noteIndexByRef = new Map();
+      const blkNotes = notesByBlock.get(blk.id) || []; // טוהר: חיפוש מקומי — בלי שינוי המודל
       // השורה הקנונית המשוחזרת — ערכי החלקים נחתכים ממנה (כמו הטוקניזר:
       // הטקסט כולל תחביר סמני הגופן/תמונות שטרם נצרך ישירות במסלול ה-DP).
-      const lineText = rebuildCanonicalLine(blk);
+      const lineText = rebuildCanonicalLine(blk, model); // הערות כפרמטר מפורש
       for (const rec of blk.syntax.partRecords || []) {
         if (rec.kind === 'text') {
           parts.push({ kind: 'text', value: lineText.slice(rec.start, rec.end) });
         } else {
-          const note = blk._notes.find(n => n.id === rec.noteRef);
+          const note = blkNotes.find(n => n.id === rec.noteRef);
           if (!note) throw new Error(`adapter: note body missing for ${rec.noteRef}`);
           if (!noteIndexByRef.has(note.id)) {
             noteIndexByRef.set(note.id, notes.length);
@@ -83,7 +83,7 @@ function modelToTokens(model) {
           parts.push({ kind: 'note-ref', noteIndex: noteIndexByRef.get(note.id) });
         }
       }
-      const raw = rebuildCanonicalLine(blk);
+      const raw = rebuildCanonicalLine(blk, model);
       tokens.push(mkToken('paragraph', { parts, notes, unmatchedClosers: blk.syntax.unmatchedClosers || [], raw }));
       continue;
     }

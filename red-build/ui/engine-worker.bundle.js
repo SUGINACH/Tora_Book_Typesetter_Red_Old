@@ -3963,18 +3963,18 @@ __modules["src/engine/model/adapter.js"] = function (require, module, exports) {
 const { BLOCK_KINDS } = require('./kinds');
 const { rebuildCanonicalLine } = require('./roundtrip');
 
-let tokenSeq = 0;
-function mkToken(type, payload) {
-  return { id: `t${++tokenSeq}`, type, ...payload };
-}
-
 /**
  * modelToTokens — בונה את זרם הטוקנים ההיסטורי מהמודל הקנוני.
- * הפונקציה טהורה ודטרמיניסטית; סדר הפליטה זהה לסדר הטוקניזר המקורי.
+ * הפונקציה טהורה ודטרמיניסטית: אין מצב מודול-גלובלי (מונה הטוקנים מקומי לקריאה
+ * באמצעות closure), המודל המקורי אינו משתנה (ההערות מועברות ל-rebuildCanonicalLine
+ * כפרמטר model מפורש — ממשק קיים), וסדר הפליטה זהה לסדר הטוקניזר המקורי.
  * @param {object} model — פלט buildDocumentModel
  */
 function modelToTokens(model) {
-  tokenSeq = 0;
+  // טוהר: מונה הזהויות מקומי לקריאה — קריאות מקבילות/חוזרות/משולבבות אינן
+  // משפיעות זו על זו, והזהויות זהות לטוקניזר הישיר (t1, t2, …).
+  let tokenSeq = 0;
+  const mkToken = (type, payload) => ({ id: `t${++tokenSeq}`, type, ...payload });
   const notesByBlock = new Map();
   for (const n of model.notes || []) {
     if (!notesByBlock.has(n.parentId)) notesByBlock.set(n.parentId, []);
@@ -3982,7 +3982,6 @@ function modelToTokens(model) {
   }
   const tokens = [];
   for (const blk of model.blocks) {
-    blk._notes = notesByBlock.get(blk.id) || [];
     if (blk.kind === BLOCK_KINDS.EDITORIAL) {
       for (const seg of blk.syntax.editorialSegments || []) {
         tokens.push(mkToken('editorial', { text: seg.text.slice(2, -2), removed: true }));
@@ -4016,14 +4015,15 @@ function modelToTokens(model) {
       const parts = [];
       const notes = [];
       const noteIndexByRef = new Map();
+      const blkNotes = notesByBlock.get(blk.id) || []; // טוהר: חיפוש מקומי — בלי שינוי המודל
       // השורה הקנונית המשוחזרת — ערכי החלקים נחתכים ממנה (כמו הטוקניזר:
       // הטקסט כולל תחביר סמני הגופן/תמונות שטרם נצרך ישירות במסלול ה-DP).
-      const lineText = rebuildCanonicalLine(blk);
+      const lineText = rebuildCanonicalLine(blk, model); // הערות כפרמטר מפורש
       for (const rec of blk.syntax.partRecords || []) {
         if (rec.kind === 'text') {
           parts.push({ kind: 'text', value: lineText.slice(rec.start, rec.end) });
         } else {
-          const note = blk._notes.find(n => n.id === rec.noteRef);
+          const note = blkNotes.find(n => n.id === rec.noteRef);
           if (!note) throw new Error(`adapter: note body missing for ${rec.noteRef}`);
           if (!noteIndexByRef.has(note.id)) {
             noteIndexByRef.set(note.id, notes.length);
@@ -4032,7 +4032,7 @@ function modelToTokens(model) {
           parts.push({ kind: 'note-ref', noteIndex: noteIndexByRef.get(note.id) });
         }
       }
-      const raw = rebuildCanonicalLine(blk);
+      const raw = rebuildCanonicalLine(blk, model);
       tokens.push(mkToken('paragraph', { parts, notes, unmatchedClosers: blk.syntax.unmatchedClosers || [], raw }));
       continue;
     }
@@ -4066,7 +4066,7 @@ const { BLOCK_KINDS } = require('./kinds');
  * רווח בין-חלקי / קידומת כותרת. כיסוי חסר או כפול = שגיאת כיסוי (throw) —
  * לעולם לא השלמה שקטה.
  * @param {object} block
- * @param {object} [model] — לחיפוש גופי ההערות של הבלוק (או block._notes שהוזרק)
+ * @param {object} [model] — לחיפוש גופי ההערות של הבלוק (חיובי לפסקאות עם סמני הערה — ממשק מפורש, בלי הזרקה לתוך הבלוק)
  * @returns {string} השורה הקנונית (אחרי הסרת editorials בפסקאות)
  */
 function rebuildCanonicalLine(block, model) {
@@ -4123,7 +4123,7 @@ function rebuildCanonicalLine(block, model) {
 }
 
 function blockNotesOf(block, model) {
-  if (block._notes) return block._notes;
+  // טוהר: אין עוד מסלול הזרקת שדות זמניים לבלוקים — model הוא הממשק המפורש היחיד לגופי הערות.
   if (model && Array.isArray(model.notes)) return model.notes.filter(n => n.parentId === block.id);
   return [];
 }
@@ -4191,7 +4191,7 @@ function invertStage1(pre, stage1) {
 
 /**
  * שחזור המסמך המלא מהמודל — תו-מול-תו.
- * @param {object} model — פלט buildDocumentModel (חייב _notesByBlock פנימי או notes)
+ * @param {object} model — פלט buildDocumentModel (גופי ההערות מאותרים מ-model.notes בלבד)
  */
 function reconstructSource(model) {
   const notesByBlock = new Map();
@@ -4218,8 +4218,7 @@ function reconstructSource(model) {
     } else if (sk.kind === 'body') {
       const blk = blockBySkeleton.get(sk.lineIndex);
       if (!blk) throw new Error(`roundtrip: block missing for body line ${sk.lineIndex}`);
-      blk._notes = notesByBlock.get(blk.id) || [];
-      const canonical = rebuildCanonicalLine(blk);
+      const canonical = rebuildCanonicalLine(blk, model); // טוהר: הערות בממשק הקיים, ללא שינוי המודל
       const pre = invertStage2(canonical, blk.source.stage2, blk.source.preLength);
       const rawLine = invertStage1(pre, blk.source);
       lines[sk.lineIndex] = { text: rawLine, eol: eolOf(model, sk.lineIndex) };
@@ -8718,6 +8717,14 @@ const H2_SPAN_EXEMPT = (
 // **S4.14:** span 34px + רווח 4px = 38 — נמדד בכל 13 מופעי block-h3-span
 // של הייחוס (מרחק תווית-span → תווית-block תמיד 38.0). היה 40 (+2px לכל span).
 const H3_SPAN_H = 38;
+// **D-S2H3 (ממצא משתמש מאומת):** גובה שורת ה-span לבדה (34) מופרד מהרווח התחתון (4).
+// עד לתיקון: כל שורת כותרת נדחפה פס 38 מלא — והרווח המבני פעל בין שורות הכותרת
+// ולא בינה לתוכן שאחריה. התיקון: pitch בין-שורות = 34 (גובה השורה); הרווח (4px) פעם
+// אחת בלבד, בתוך הפס האחרון (38=34+4). כותרת חד-שורתית נותרת זהה לחלוטין
+// ((n-1)*34+38 = 38 — פס יחיד ובלוק נפתח בסופו) — הכיוול S4.14 שמור.
+// חוזה סמנטי זה הוא גם החוזה של מנוע השורות המאוחד (שלב 4): הכותרת = פריט אחד
+// עם מקטעי שורה; הרווח התחתון שלה אחרי השורה האחרונה בלבד.
+const H3_SPAN_LINE_H = 34;
 const H0_AREA_H = 249.2;   // **S4.19:** זרימת ההקדמה מתחילה ב-356.4px — המדידה מהייחוס
 // (עמ' 10, שורות ההקדמה 2-3): הייחוס יושב 9.7-10.2px מתחת ל-348 הקודם; גם לדף
 // ה-h0 יש spacer (הכותרת ב-309 = 107.2+201.3+0.5) + כותרת (27.2) + שוליים (20)
@@ -10058,7 +10065,7 @@ function legacyTypeset(rawText, settings, env) {
           // ולכן מאוזן לפני השבירה (PT-06: "הטורים שלפניו מאוזנים" — גם כשה-H3
           // עצמו נופל לעמוד הבא). finalizeBlock עם nextTok=tok (h3=span)
           // מאזן דרך מסלול nextIsSpan.
-          if (colBottom() - curY < 60 + (spanLines.length - 1) * H3_SPAN_H) {
+          if (colBottom() - curY < 60 + (spanLines.length - 1) * H3_SPAN_LINE_H) {
             // **S74 (בעיה 6 — אלמנת כותרת בסוף טור):** כותרות inline שנצברו
             // בסוף הטור חוזרות עם ה-span לעמוד הבא — אחרת הן נותרות אלמנות
             // בתחתית הטור (המקור מגלגל כותרות-זנב בכל נקודת יציאה מהמילוי).
@@ -10066,10 +10073,14 @@ function legacyTypeset(rawText, settings, env) {
             finalizeBlock(block, tok, false);
             break fillPage;
           }
+          // **D-S2H3:** שורות ביניים בגובה השורה בלבד (34) — אין רווח מבני בין שורות הכותרת;
+          // הפס האחרון נושא 38 (34+4) — הרווח התחתון פעם אחת, אחרי השורה האחרונה, לפני התוכן שאחריו.
+          // כותרת חד-שורתית: (n-1)*34+38 = 38 — זהה לגיאומטריה הקודמת (נעילת הכיוול S4.14).
           for (let li = 0; li < spanLines.length; li++) {
-            stack.push({ type: 'span', text: spanLines[li], y: curY + li * H3_SPAN_H, h: H3_SPAN_H, tokenId: li === 0 ? tok.id : null });
+            const isLastLine = li === spanLines.length - 1;
+            stack.push({ type: 'span', text: spanLines[li], y: curY + li * H3_SPAN_LINE_H, h: isLastLine ? H3_SPAN_H : H3_SPAN_LINE_H, tokenId: li === 0 ? tok.id : null });
           }
-          openBlock(curY + spanLines.length * H3_SPAN_H);
+          openBlock(curY + (spanLines.length - 1) * H3_SPAN_LINE_H + H3_SPAN_H);
           ti++;
           continue;
         }
