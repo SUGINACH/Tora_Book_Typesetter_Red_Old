@@ -1,6 +1,6 @@
 // ui/engine-worker.bundle.js — **נוצר אוטומטית** ע"י tools/build-worker-bundle.js (אין לערוך ידנית)
 // חבילת ה־Worker (המנוע המלא — אין לטעון בחוט ה־UI)
-// מודולים: 70 · בלי חותמות זמן (דטרמיניזם)
+// מודולים: 71 · בלי חותמות זמן (דטרמיניזם)
 'use strict';
 
 var __crypto = (function () {
@@ -295,6 +295,7 @@ var __paths = {
   "src/ui/engine-worker-main.js|../engine/core/pipeline": "src/engine/core/pipeline.js",
   "src/ui/engine-worker-main.js|./worker-protocol": "src/ui/worker-protocol.js",
   "src/ui/engine-worker-main.js|../engine/import/document-assets": "src/engine/import/document-assets.js",
+  "src/ui/engine-worker-main.js|../engine/layout/inline-item-types": "src/engine/layout/inline-item-types.js",
   "src/ui/engine-worker-main.js|../engine/typography/measure-api": "src/engine/typography/measure-api.js",
   "src/ui/engine-worker-main.js|../engine/decoration/asset-registry": "src/engine/decoration/asset-registry.js",
   "src/ui/engine-worker-main.js|../engine/output/export-api": "src/engine/output/export-api.js",
@@ -302,6 +303,7 @@ var __paths = {
   "src/engine/core/pipeline.js|../parser/dfa-lexer": "src/engine/parser/dfa-lexer.js",
   "src/engine/core/pipeline.js|../parser/block-tokenizer": "src/engine/parser/block-tokenizer.js",
   "src/engine/core/pipeline.js|../parser/inline-content": "src/engine/parser/inline-content.js",
+  "src/engine/core/pipeline.js|../layout/inline-item-types": "src/engine/layout/inline-item-types.js",
   "src/engine/core/pipeline.js|../import/document-assets": "src/engine/import/document-assets.js",
   "src/engine/core/pipeline.js|../parser/bracket-scanner": "src/engine/parser/bracket-scanner.js",
   "src/engine/core/pipeline.js|../typography/measure-api": "src/engine/typography/measure-api.js",
@@ -464,6 +466,8 @@ __modules["src/ui/engine-worker-main.js"] = function (require, module, exports) 
 const { typeset } = require('../engine/core/pipeline');
 const { serializeTypesetResult, validateRequest, progressMessage } = require('./worker-protocol');
 const { createInlineAssetResolver } = require('../engine/import/document-assets');
+// Explicit Worker-side bootstrap: parser and measure adapters must exist in this realm.
+require('../engine/layout/inline-item-types');
 
 let cancelledJobs = new Set();
 
@@ -627,6 +631,8 @@ const { getDefaultSettings, derivePlacementFlags } = require('./settings-registr
 const { lexDocument } = require('../parser/dfa-lexer');
 const { tokenize, contentHash, normalizeText } = require('../parser/block-tokenizer');
 const { inlineParagraphSourceText, inlineNoteSourceText, inlineRunsSourceText } = require('../parser/inline-content');
+// Load the same project item adapters in headless/Node and in the browser Worker.
+require('../layout/inline-item-types');
 const { resolveInlineImageRun } = require('../import/document-assets');
 const { scanBrackets } = require('../parser/bracket-scanner');
 const { MeasureAPI, resolveMeasureImpl, registeredFonts } = require('../typography/measure-api');
@@ -3405,6 +3411,10 @@ function registerRenderer(kind, target, renderer) {
  *
  * A parser claims source only by returning a positive consumed count. The
  * registry then preserves the exact source slice on the canonical item.
+ *
+ * Registration is realm-local: this module is instantiated separately in the
+ * headless process, browser UI and Worker. Project-defined item modules belong
+ * in inline-item-types.js so the same descriptor is evaluated in all realms.
  */
 function registerInlineItemType(kind, descriptor) {
   const normalized = validateKind(kind);
@@ -3536,6 +3546,20 @@ module.exports = {
   validateInlineItem,
   hasInlineItemType
 };
+
+};
+__modules["src/engine/layout/inline-item-types.js"] = function (require, module, exports) {
+// src/engine/layout/inline-item-types.js — shared registration entry for project inline items (S14)
+// This module is deliberately imported by the headless pipeline, browser UI and engine Worker.
+// Add each project item module exactly once below. The module is evaluated independently in
+// each JavaScript realm, so its parser/measure/DOM/PDF callbacks are registered where needed.
+// Never send callbacks through postMessage: Worker messages carry data, not executable code.
+'use strict';
+
+// To add a project item, create a module under src/engine/layout/inline-items/
+// and add its import here (once). That module calls registerInlineItemType(kind, descriptor).
+// Keep its parser deterministic and its measurement independent of the DOM.
+module.exports = {};
 
 };
 __modules["src/engine/import/document-assets.js"] = function (require, module, exports) {

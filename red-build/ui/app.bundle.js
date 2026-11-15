@@ -1,6 +1,6 @@
 // ui/app.bundle.js — **נוצר אוטומטית** ע"י tools/build-worker-bundle.js (אין לערוך ידנית)
 // חבילת מעטפת ה־UI (המנוע רץ ב־Worker הנפרד)
-// מודולים: 65 · בלי חותמות זמן (דטרמיניזם)
+// מודולים: 66 · בלי חותמות זמן (דטרמיניזם)
 'use strict';
 
 var __crypto = (function () {
@@ -298,6 +298,7 @@ var __paths = {
   "src/ui/browser-entry.js|./imud-library": "src/ui/imud-library.js",
   "src/ui/browser-entry.js|./settings-persistence": "src/ui/settings-persistence.js",
   "src/ui/browser-entry.js|../engine/output/html-export": "src/engine/output/html-export.js",
+  "src/ui/browser-entry.js|../engine/layout/inline-item-types": "src/engine/layout/inline-item-types.js",
   "src/ui/app-shell.js|../engine/core/settings-registry": "src/engine/core/settings-registry.js",
   "src/ui/app-shell.js|../engine/output/project-io": "src/engine/output/project-io.js",
   "src/ui/app-shell.js|./status-strip": "src/ui/status-strip.js",
@@ -412,6 +413,8 @@ const { WorkerEngineClient } = require('./worker-client');
 const { createImudLibrary } = require('./imud-library');
 const { createSettingsPersistence } = require('./settings-persistence'); // **S6.1 (פער 2):** SRS §17.1
 const { BASE_CSS } = require('../engine/output/html-export');
+// The UI realm needs the DOM adapter for the same custom item types as the Worker.
+require('../engine/layout/inline-item-types');
 
 /** **03.11(ג) תיקון קטסטרופת התצוגה:** הזרקת BASE_CSS — מקור הכללים של העמודים
  * (טורים/שורות/פסים/עיטורים/שערים) המשמש את הייצוא העצמאי — גם לתצוגה החיה.
@@ -12502,6 +12505,10 @@ function registerRenderer(kind, target, renderer) {
  *
  * A parser claims source only by returning a positive consumed count. The
  * registry then preserves the exact source slice on the canonical item.
+ *
+ * Registration is realm-local: this module is instantiated separately in the
+ * headless process, browser UI and Worker. Project-defined item modules belong
+ * in inline-item-types.js so the same descriptor is evaluated in all realms.
  */
 function registerInlineItemType(kind, descriptor) {
   const normalized = validateKind(kind);
@@ -24118,6 +24125,20 @@ function createImudLibrary(engine) {
 }
 
 module.exports = { createImudLibrary, DESIGN_FILES };
+
+};
+__modules["src/engine/layout/inline-item-types.js"] = function (require, module, exports) {
+// src/engine/layout/inline-item-types.js — shared registration entry for project inline items (S14)
+// This module is deliberately imported by the headless pipeline, browser UI and engine Worker.
+// Add each project item module exactly once below. The module is evaluated independently in
+// each JavaScript realm, so its parser/measure/DOM/PDF callbacks are registered where needed.
+// Never send callbacks through postMessage: Worker messages carry data, not executable code.
+'use strict';
+
+// To add a project item, create a module under src/engine/layout/inline-items/
+// and add its import here (once). That module calls registerInlineItemType(kind, descriptor).
+// Keep its parser deterministic and its measurement independent of the DOM.
+module.exports = {};
 
 };
 
