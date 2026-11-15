@@ -171,6 +171,7 @@ function measureInlineItem(item, context = {}) {
     ...measured,
     kind: item.kind,
     id: item.id,
+    layoutKey: item.layoutKey,
     sourceText: item.sourceText,
     sourceStart: item.sourceStart,
     sourceEnd: item.sourceEnd
