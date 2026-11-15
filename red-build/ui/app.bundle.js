@@ -1,6 +1,6 @@
 // ui/app.bundle.js — **נוצר אוטומטית** ע"י tools/build-worker-bundle.js (אין לערוך ידנית)
 // חבילת מעטפת ה־UI (המנוע רץ ב־Worker הנפרד)
-// מודולים: 61 · בלי חותמות זמן (דטרמיניזם)
+// מודולים: 62 · בלי חותמות זמן (דטרמיניזם)
 'use strict';
 
 var __crypto = (function () {
@@ -368,12 +368,16 @@ var __paths = {
   "src/engine/layout/dp-planner.js|./ordering": "src/engine/layout/ordering.js",
   "src/engine/layout/dp-planner.js|./balancing": "src/engine/layout/balancing.js",
   "src/engine/layout/dp-planner.js|./footnote-budget": "src/engine/layout/footnote-budget.js",
+  "src/engine/layout/dp-planner.js|./constraint-matrix": "src/engine/layout/constraint-matrix.js",
   "src/engine/layout/protections-matrix.js|./balancing": "src/engine/layout/balancing.js",
   "src/engine/layout/protections-matrix.js|./column-flow": "src/engine/layout/column-flow.js",
+  "src/engine/layout/protections-matrix.js|./constraint-matrix": "src/engine/layout/constraint-matrix.js",
   "src/engine/layout/protections-matrix.js|../notes/markers": "src/engine/notes/markers.js",
   "src/engine/layout/balancing.js|./column-flow": "src/engine/layout/column-flow.js",
+  "src/engine/layout/balancing.js|./constraint-matrix": "src/engine/layout/constraint-matrix.js",
   "src/engine/layout/column-flow.js|./page-templates": "src/engine/layout/page-templates.js",
   "src/engine/layout/candidate-generator.js|./column-flow": "src/engine/layout/column-flow.js",
+  "src/engine/layout/candidate-generator.js|./constraint-matrix": "src/engine/layout/constraint-matrix.js",
   "src/ui/caret-map.js|../engine/parser/dfa-lexer": "src/engine/parser/dfa-lexer.js",
   "src/engine/output/export-api.js|../core/settings-registry": "src/engine/core/settings-registry.js",
   "src/engine/output/export-api.js|./dom-renderer": "src/engine/output/dom-renderer.js",
@@ -17894,6 +17898,7 @@ const { MARK_TAG } = require('../notes/markers');
 const { moveLineForward } = require('./ordering');
 const { optimalSplit } = require('./balancing'); // **EXT-8:** חלוקה גלובלית אופטימלית
 const { getFootnotesReservedHeight, noteHeight } = require('./footnote-budget');
+const CM = require('./constraint-matrix'); // **דוח 06 (2026-11-15):** מקור האמת המספרי לאילוצי מדיניות
 
 /** חתימת פריסה דטרמיניסטית — ללא Date/random (REQ-GOV determinism).
  * תיקון S7-E2E: tokenId נמצא ב‑meta של pushLines (לא על השורה עצמה) — יש לחלץ משם,
@@ -17988,7 +17993,14 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
   const lineH = Math.round(settings['body-font-size-pt'] * (96 / 72) * settings['body-line-height']);
   const imbMax = settings['imbalance-max-delta-px'];
 
+  // **FX-1 (דוח 06, פרק 4):** נעילת ליווי — הטור שאומת למחסנית כותרת+ליווי הוא
+  // startCol של ההצבה עד השלמת שורות הליווי; נאפס בכל עמוד חדש.
+  let escortLockCol = 0;
+  let escortLinesNeeded = 0;
+
   function newPage(type = PAGE_TYPES.REGULAR) {
+    escortLockCol = 0;
+    escortLinesNeeded = 0;
     const isRecto = pages.length % 2 === 0; // עמוד 1 = recto
     const tpl = buildPageTemplate(type, settings, isRecto);
     return { index: pageIdx++, type, template: tpl, columns: Array.from({ length: tpl.columns.length }, () => []), footnotes: [], sideNotes: [], headingsOnPage: [], balanceInfo: null, fnReservedHeightPx: 0, chapterOpening: false };
@@ -18031,11 +18043,17 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
     return reserved;
   }
 
-  function ensureRoom(neededLines, opts = {}) {
-    void opts;
+  /**
+   * **FX-5/FX-1 (דוח 06, פרק 4):** בדיקת קיבולת ב-yPx אמיתיים. הגרסה ההיסטורית
+   * (`ensureRoom(neededLines)`) מדדה `neededLines × lineH` בעוד ההצבה צורכת
+   * heightPx — פער היחידות יצר עמודים ריקים פנטום (בלוק שנכנס פיזית
+   * "נכשל" בבדיקה) ובדיקות ליווי שקרסו על כותרות גבוהות מ-lineH.
+   * המחסנית כוללת את פער הכניסה של הבלוק (CM.stackHeightPx).
+   */
+  function ensureRoomFor(stackPx, fromCol = 0) {
     const cap = colCapacity(cur.template, cur);
-    for (let c = 0; c < cur.columns.length; c++) {
-      if (cap - usedHeight(cur.columns[c], cur) >= neededLines * lineH - 0.5) return c;
+    for (let c = fromCol; c < cur.columns.length; c++) {
+      if (cap - usedHeight(cur.columns[c], cur) >= stackPx - CM.CAPACITY_EPS) return c;
     }
     return -1;
   }
@@ -18076,19 +18094,29 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
     pages.push(cur);
   }
 
-  function pushLines(lines, meta = {}) {
+  function pushLines(lines, meta = {}, opts = {}) {
     // grid-block-gap-pct: מרווח בין־בלוקי נצרך כאן — שורה ראשונה של בלוק חדש
     // סופגת את ה‑gap (פרופורציונלי לגובה שורה), כך שתקציב הטור כולל אותו.
+    // **FX-1 (דוח 06):** startCol — הצבה מכוונת-ליווי: הטור שאומת למחסנית
+    // כותרת+ליווי הוא נקודת הפתיחה. סדר הקריאה נשמר מבנית — אין הצבה
+    // לטור מוקדם יותר מנקודת הפתיחה.
+    const startCol = Math.max(0, Math.min(opts.startCol != null ? opts.startCol : escortLockCol, cur.columns.length - 1));
     const gap = meta.firstOfBlock ? blockGapPx(settings, lineH) : 0;
     let pendingGap = gap;
     for (const ln of lines) {
       let placed = false;
-      for (let c = 0; c < cur.columns.length && !placed; c++) {
+      for (let c = startCol; c < cur.columns.length && !placed; c++) {
         const needPx = ln.heightPx + pendingGap - 0.5;
         if (colCapacity(cur.template, cur) - usedHeight(cur.columns[c], cur) >= needPx) {
           cur.columns[c].push({ ...ln, meta, seq: seqCounter++ });
           pendingGap = 0;
           placed = true;
+          // נעילת ליווי: שורות גוף ראשונות אחרי הכותרת מקריעות את המונה;
+          // בהשלמת שורות הליווי — שחרור הנעילה (ההצבה חוזרת לזרימה חופשית).
+          if (escortLinesNeeded > 0 && ln.kind !== 'heading') {
+            escortLinesNeeded--;
+            if (escortLinesNeeded === 0) escortLockCol = 0;
+          }
         }
       }
       if (!placed) {
@@ -18113,7 +18141,12 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
   const pendingBarNotes = [];
   function reserveNotes(blk) {
     const notes = (blk.notes || []);
-    if (!notes.length) return;
+    if (!notes.length) return null;
+    // **FX-3 (דוח 06, פרק 4):** תמונת-מצב לשחזור דטרמיניסטי — ההתחייבות
+    // חייבת להיות הפיכה כל עוד הפסקה עודנה בהכרעת מיקום. snap.clean=false
+    // אחרי פעולות בעלות תופעות לוואי (פיצול/העברה/החזרה לגוף) — אין שחזור
+    // אחריהן (המשכים שנוצרו, מצב הבלוק וה-ledger אינם הפיכים בבטחה).
+    const snap = { clean: true, footLenBefore: cur.footnotes.length, fnBefore: cur.fnReservedHeightPx || 0, pendingBefore: pendingBarNotes.slice() };
     // המשכים מהעמוד הקודם קודם כל (שמירת סדר ההערות)
     const queue = [...pendingBarNotes.splice(0), ...notes];
     const barMax = settings['fn-layout-mode'] === 'continuous'
@@ -18154,19 +18187,64 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
           const restText = words.slice(cutIdx).join(' ');
           cur.footnotes.push({ ...n, text: firstText, heightPx: linesFit * fnLH, lineH: fnLH, mode: 'split-first', linesShown: linesFit });
           pendingBarNotes.push({ ...n, text: restText, isContinuation: true, continuationOf: n.tokenId, mode: 'split-rest' });
+          snap.clean = false; // נוצר המשך חדש — אין שחזור בטוח
           eventLog.emit('notes-budget', 'fn-split', { token: n.tokenId, marker: n.marker, barMax, firstWords: cutIdx }, cur.index);
           continue;
         }
         if (settings['long-footnote-policy'] === 'move-whole') {
           pendingBarNotes.push({ ...n, mode: 'moved-whole', deferredToNextPage: true });
+          snap.clean = false; // הועברה לעמוד הבא — אין שחזור בטוח
           eventLog.emit('notes-budget', 'fn-moved-whole', { token: n.tokenId, marker: n.marker }, cur.index);
           continue;
         }
-        if (settings['long-footnote-policy'] === 'reject-to-body' && rejectToBody(n, `bar overflow ${h}>${barMax}`)) continue;
+        if (settings['long-footnote-policy'] === 'reject-to-body' && rejectToBody(n, `bar overflow ${h}>${barMax}`)) {
+          snap.clean = false; // מוטציית בלוק+lines — אין שחזור בטוח
+          continue;
+        }
       }
       cur.footnotes.push({ ...n, heightPx: h, lineH: Math.round((settings['body-font-size-pt'] * 0.8) * (96 / 72) * 1.25), isContinuation: isCont, mode: isCont ? 'split-rest' : 'normal' });
     }
     recomputeFnBudget(cur); // probe==reserved — פונקציה אחת (unified) לשני הצרכים
+    return snap;
+  }
+
+  /**
+   * **FX-3 (דוח 06):** שחזור דטרמיניסטי של התחייבות הערות — רק מנתיב snap.clean
+   * (המשכים קודמים מוחזרים לתור; פעולות עם תופעות לוואי אינן הפיכות).
+   */
+  function uncommitNotes(page, snap) {
+    page.footnotes.length = snap.footLenBefore;
+    page.fnReservedHeightPx = snap.fnBefore;
+    pendingBarNotes.length = 0;
+    for (const p of snap.pendingBefore) pendingBarNotes.push(p);
+  }
+
+  /** **FX-3 (דוח 06, פרק 4):** אינדקס שורת הסמן הראשונה של הבלוק (-1 אם אין). */
+  function firstMarkerLineOf(blk) {
+    return (blk.lines || []).findIndex(ln => (ln.words || []).some(w => String(w).includes(MARK_TAG)));
+  }
+
+  /**
+   * **FX-3 (דוח 06):** התחייבות הערות בעמוד שבו שורת הסמן עומדת להיות מוצבת,
+   * עם נסיגה דטרמיניסטית חד-פעמית אם התקציב חסם את שורת הסמן. F-17 נשמר
+   * לעמוד ההערה: התקציב נסגר בטרם שורת הסמן ושארית שורות הבלוק.
+   * @param {object} blk — הפסקה
+   * @param {object|null} markerLine — שורת הסמן (null ⇒ שורה ראשונה של הבלוק)
+   */
+  function reserveAtMarker(blk, markerLine) {
+    const snap = reserveNotes(blk);
+    if (!snap) return;
+    const isFirst = !markerLine;
+    const stack = CM.stackHeightPx([markerLine || blk.lines[0]], isFirst ? blockGapPx(settings, lineH) : 0);
+    if (snap.clean && ensureRoomFor(stack) === -1) {
+      uncommitNotes(cur, snap);
+      flushPage(); cur = newPage(PAGE_TYPES.REGULAR);
+      reserveNotes(blk);
+      if (ensureRoomFor(stack) === -1) {
+        // מצב פתולוגי (הערה בגודל עמוד): מתועד, לא שקט
+        ledger.create('fn-degenerate', blk.tokenId, cur.index, { reservedPx: cur.fnReservedHeightPx }, 'notes-budget');
+      }
+    }
   }
 
   /**
@@ -18261,6 +18339,9 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
       }
       if (cs.layoutMode === 'side-note' && blk.asSideNote) {
         // הפסקה הופכת הערת צד מעוגנת לפסקה הבאה שאחריה (המארחת) — דפוס H7
+        // **FX-3:** הערות פנימיות של פסקת צד מחויבות כאן — הענף continue
+        // מדלג על ההצבה הרגילה (התנהגות קודמת נשמרת).
+        if ((blk.notes || []).length) reserveNotes(blk);
         const host = blocks.slice(bi + 1).find(b => b.kind === 'paragraph' && !(b.customStyle && b.customStyle.layoutMode === 'side-note'));
         cur.sideNotes.push({
           text: blk.lines.map(l => (l.words || []).join(' ')).join(' ').trim(),
@@ -18286,8 +18367,10 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
       }
     }
 
-    // תקציב הערות לפני מיקום (F-17 probe==reserved, כולל מדיניות הערה ארוכה)
-    if (blk.kind === 'paragraph') reserveNotes(blk);
+    // **FX-3 (דוח 06, פרק 4):** התחייבות ההערות הועברה להכרעת המיקום (להלן,
+    // אחרי ensureRoomFor/findSplit) — בעבר רצה כאן, לפני שהיה ידוע היכן
+    // הפסקה תוצב: פסקה שנדחקה כולה לעמוד הבא הותירה את הערותיה מאחור
+    // (סמן בעמוד N+1, טקסט ההערה במרזב עמוד N).
 
     // **03.11(ד) — span_1col של המקור ל-H3–H6 (mode=full-width):** עד כאן כותרת
     // שנמדדה ברוחב מלא (674px) הוצבה בטור של 270px — שורה ברוחב 471px בטור
@@ -18343,41 +18426,68 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
       }
     }
 
-    // REQ-BAL-10: heading escort ≥2 שורות אחרי כותרת H1–H6 באותו טור.
+    // REQ-BAL-10: heading escort — ≥ESCORT_MIN_LINES שורות אחרי כותרת H1–H6
+    // באותו טור. **FX-1 (דוח 06, פרק 4):** הבדיקה מודדת מעתה את המחסנית
+    // הפיזית האמיתית (גבהי הכותרת + פערי כניסה + שורות הליווי) ותוצאתה
+    // מנוצלת להצבה מכוונת (escortLockCol/startCol) — בדיקה שאינה קשורה
+    // להצבה יוצרת כותרות יתומות שאין להן תיקון (הוכח: FX-1).
     if (blk.kind === 'heading' && blk.level <= 6) {
       const following = (next && next.lines) ? next.lines.length : 0;
       if (following >= 1) {
-        const needLines = 1 + Math.min(2, following); // כותרת + 2 שורות ליווי (או כמה שיש)
-        let room = ensureRoom(needLines);
+        const escortN = Math.min(CM.ESCORT_MIN_LINES, following);
+        const escortStack = CM.escortStackHeightPx(blk, next, () => blockGapPx(settings, lineH));
+        let pushed = false;
+        let room = ensureRoomFor(escortStack);
         if (room === -1) {
           flushPage(); cur = newPage(blk.level === 2 ? PAGE_TYPES.SIGN_OPEN : PAGE_TYPES.REGULAR);
-          room = ensureRoom(needLines);
-          if (room !== -1) {
-            eventLog.emit('page-plan', 'heading-escort-push', { token: blk.tokenId, page: cur.index }, cur.index);
-          } else {
-            const rec = ledger.create('heading-escort', blk.tokenId, cur.index, { linesNeeded: needLines, capacityPx: colCapacity(cur.template, cur), lineHPx: lineH }, 'protections');
-            ledger.transition(rec.issue_id, 'correction-blocked', 'protections', 'no column fits heading+escort even on fresh page (oversized block)');
-          }
+          room = ensureRoomFor(escortStack);
+          pushed = true;
+        }
+        if (room !== -1) {
+          eventLog.emit('page-plan', pushed ? 'heading-escort-push' : 'heading-escort-directed', { token: blk.tokenId, page: cur.index, col: room, stackPx: Math.round(escortStack) }, cur.index);
+          escortLockCol = room;      // הצבה מכוונת: הכותרת ושורות הליווי — בטור שאומת
+          escortLinesNeeded = escortN;
+        } else {
+          const rec = ledger.create('heading-escort', blk.tokenId, cur.index, { stackPx: Math.round(escortStack), capacityPx: colCapacity(cur.template, cur) }, 'protections');
+          ledger.transition(rec.issue_id, 'correction-blocked', 'protections', 'no column fits heading+escort even on fresh page (oversized block)');
         }
       }
     }
 
     // REQ-BAL-01: candidate search עם capacityBefore/capacityAfter + הקשר הבלוק הבא
-    const need = blk.lines.length;
-    let chosenCol = ensureRoom(need);
+    // **FX-5 (דוח 06):** הקיבולת נמדדת ב-yPx אמיתיים (גבהים + פער כניסה) —
+    // לא בהמרת lineH; בלוק שנכנס פיזית לא יידחק עוד לעמוד חדש (עמוד ריק פנטום).
+    const needStack = CM.stackHeightPx(blk.lines, blockGapPx(settings, lineH));
+    let chosenCol = ensureRoomFor(needStack);
     if (chosenCol === -1) {
       const splitAt = findSplit(blk, cur, colCapacity, usedHeight, lineH, ledger, eventLog, settings, generateCandidates);
       if (splitAt > 0) {
+        // **FX-3:** ההערות מחויבות לעמוד של החלק שבו שורת הסמן:
+        // הסמן בחלק הראשון ⇒ כאן; הסמן בהמשך ⇒ בעמוד החדש (לאחר ה-flush).
+        const splitMIdx = (blk.kind === 'paragraph' && (blk.notes || []).length && settings['footnotes-enabled'])
+          ? firstMarkerLineOf(blk) : -1;
+        if (blk.kind === 'paragraph' && splitMIdx < splitAt) reserveNotes(blk);
         pushLines(blk.lines.slice(0, splitAt - 1), { tokenId: blk.tokenId, part: 'first' });
         pushLines([blk.lines[splitAt - 1]], { tokenId: blk.tokenId, part: 'first', isLast: true });
         flushPage(); cur = newPage(PAGE_TYPES.REGULAR);
+        if (blk.kind === 'paragraph' && splitMIdx >= splitAt) reserveNotes(blk);
         pushLines(blk.lines.slice(splitAt), { tokenId: blk.tokenId, part: 'rest' });
         continue;
       }
+      // הבלוק כולו עובר עמוד ⇒ ההערות יחויבו לעמוד החדש (להלן) — לא לישן (FX-3)
       flushPage(); cur = newPage(PAGE_TYPES.REGULAR);
       chosenCol = 0;
     }
-    pushLines(blk.lines, { tokenId: blk.tokenId, firstOfBlock: true, docPart: blk.part });
+    // **FX-3 (דוח 06, פרק 4):** התחייבות הערות בעמוד שבו שורת הסמן נוחתת בפועל.
+    // שורות שלפני הסמן ממלאות את העמודים הקודמים בלי תקציב (ההערה לא תשהה
+    // שם); התקציב נסגר בטרם שורת הסמן ושארית השורות — F-17 נשמר לעמוד ההערה.
+    const hasNotes = blk.kind === 'paragraph' && (blk.notes || []).length && settings['footnotes-enabled'];
+    const mIdx = hasNotes ? Math.max(0, firstMarkerLineOf(blk)) : 0;
+    if (hasNotes && mIdx > 0) {
+      pushLines(blk.lines.slice(0, mIdx), { tokenId: blk.tokenId, firstOfBlock: true, docPart: blk.part }, { startCol: escortLockCol });
+    }
+    if (hasNotes) reserveAtMarker(blk, mIdx > 0 ? blk.lines[mIdx] : null);
+    pushLines(blk.lines.slice(mIdx), { tokenId: blk.tokenId, docPart: blk.part, ...(mIdx > 0 ? {} : { firstOfBlock: true }) }, { startCol: escortLockCol });
 
     if (blk.sideNoteText) cur.sideNotes.push({ text: blk.sideNoteText, anchorToken: blk.tokenId });
   }
@@ -18409,6 +18519,23 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
   }
 
   // S5.1.4 + S5.1.5: הגנות AFTER every mutation, ואז לולאת נסיגה מאוחדת עם גלאי תנודה
+  // **FX-2 (דוח 06, פרק 4):** תיקוני רישום-בלבד מסומנים mutates:false — לולאת
+  // הנסיגה לא תתייג עוד הפרה סטטית (שאין לה תיקון פעיל) כ"תנודה בין תיקונים
+  // מתחרים". התווית ההיסטורית היתה אבחון שקרי: שום תיקון לא רץ.
+  const markNoLegalSplit = (violations, c) => {
+    for (const v of violations) {
+      const rec = c.ledger.issues.get(v.ledgerRef);
+      if (rec) c.ledger.transition(rec.issue_id, 'correction-blocked', 'protections', 'no legal split exists (documented compromise)');
+    }
+  };
+  markNoLegalSplit.mutates = false;
+  const markReadingOrderBlocked = (violations, c) => {
+    for (const v of violations) {
+      const rec = c.ledger.issues.get(v.ledgerRef);
+      if (rec) c.ledger.transition(rec.issue_id, 'correction-blocked', 'protections', 'line moved backward in reading order (bug-guard P0-3; not auto-repaired)');
+    }
+  };
+  markReadingOrderBlocked.mutates = false;
   const assess = (page, s, lg) => runProtections(page, s, lg).violations;
   const retreat = runRetreatLoop({
     pages, settings, ledger, eventLog,
@@ -18419,24 +18546,9 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
           if (pg) balancePageSafe(pg, c.settings, c.ledger);
         }
       },
-      'reading-order-break': (violations, c) => {
-        for (const v of violations) {
-          const rec = c.ledger.issues.get(v.ledgerRef);
-          if (rec) c.ledger.transition(rec.issue_id, 'correction-blocked', 'protections', 'line moved backward in reading order (bug-guard P0-3; not auto-repaired)');
-        }
-      },
-      'widow-bottom': (violations, c) => {
-        for (const v of violations) {
-          const rec = c.ledger.issues.get(v.ledgerRef);
-          if (rec) c.ledger.transition(rec.issue_id, 'correction-blocked', 'protections', 'no legal split exists (documented compromise)');
-        }
-      },
-      'orphan-top': (violations, c) => {
-        for (const v of violations) {
-          const rec = c.ledger.issues.get(v.ledgerRef);
-          if (rec) c.ledger.transition(rec.issue_id, 'correction-blocked', 'protections', 'no legal split exists (documented compromise)');
-        }
-      }
+      'reading-order-break': markReadingOrderBlocked,
+      'widow-bottom': markNoLegalSplit,
+      'orphan-top': markNoLegalSplit
     },
     assess
   });
@@ -18494,12 +18606,21 @@ function balancePageSafe(page, settings, ledger) {
   return true;
 }
 
-/** בחירת נקודת פיצול עם הגנות widow/orphan (≥2 שורות לכל צד). */
+/** בחירת נקודת פיצול עם הגנות widow/orphan (≥WIDOW_ORPHAN_MIN שורות לכל צד).
+ * **FX-5 (דוח 06):** maxFit נספר מהגבהים האמיתיים (עם פער הכניסה) —
+ * לא מהמרת lineH; המרת היחידות ההיסטורית פסלה פיצולים חוקיים. */
 function findSplit(blk, cur, colCapacity, usedHeight, lineH, ledger, eventLog, settings = {}, candidatesFn = null) {
   const cap = colCapacity(cur.template, cur);
   const free = cap - usedHeight(cur.columns[cur.columns.length - 1], cur);
-  const maxFit = Math.floor(free / lineH);
-  if (maxFit < 2 || blk.lines.length - maxFit < 2) return 0; // אין פיצול חוקי → הזזה מלאה
+  let maxFit = 0;
+  let acc = blockGapPx(settings, lineH); // פער הכניסה של החלק הראשון
+  for (const ln of blk.lines) {
+    const h = ln.heightPx || 0;
+    if (acc + h > free + CM.CAPACITY_EPS) break;
+    acc += h;
+    maxFit++;
+  }
+  if (maxFit < CM.WIDOW_ORPHAN_MIN || blk.lines.length - maxFit < CM.WIDOW_ORPHAN_MIN) return 0; // אין פיצול חוקי → הזזה מלאה
 
   if (candidatesFn) {
     const cands = candidatesFn(blk, maxFit, cap, settings, ledger);
@@ -18535,6 +18656,7 @@ __modules["src/engine/layout/protections-matrix.js"] = function (require, module
 
 const { usedHeight, pageImbalance } = require('./balancing');
 const { colCapacityOf } = require('./column-flow'); // **S5.2 (P-2):** קיבולת טור — מקור יחיד
+const { ESCORT_MIN_LINES, WIDOW_ORPHAN_MIN } = require('./constraint-matrix'); // **דוח 06:** מקור אמת מספרי אחיד
 const { MARK_TAG } = require('../notes/markers');
 
 /** עמודים מבניים שאינם זרימת-תוכן — כותרת בודדת בהם היא מכוונת-עיצוב,
@@ -18583,7 +18705,7 @@ const CHECKS = {
       if (first.meta && first.meta.part === 'rest') {
         let run = 0;
         for (const l of col) { if (l.meta && l.meta.tokenId === first.meta.tokenId) run++; else break; }
-        if (run < 2) {
+        if (run < WIDOW_ORPHAN_MIN) {
           if (settings['prevent-widows-top'] && first.isLast) {
             violations.push({ kind: 'widow-top', target: `page#${page.index}c${c}`, page: page.index, evidence: { run }, ledgerRef: ledger.create('widow-top', `p${page.index}c${c}`, page.index, { run }, 'protections').issue_id });
           } else if (settings['prevent-orphans-top'] && settings['widow-strictness'] !== 'relaxed') {
@@ -18598,7 +18720,7 @@ const CHECKS = {
       // (אותה גיאומטריה) בעדיפות כששני המתגים דלוקים — לא דיווח כפול.
       if (last.meta && last.meta.part === 'first') {
         const sameTokenInCol = col.filter(x => x.meta && x.meta.tokenId === last.meta.tokenId).length;
-        if (sameTokenInCol === 1) {
+        if (sameTokenInCol < WIDOW_ORPHAN_MIN) {
           if (settings['prevent-orphans-bottom']) {
             violations.push({ kind: 'orphan-bottom', target: `page#${page.index}c${c}`, page: page.index, evidence: { sameTokenInCol }, ledgerRef: ledger.create('orphan-bottom', `p${page.index}c${c}`, page.index, { sameTokenInCol }, 'protections').issue_id });
           } else if (settings['prevent-widows-bottom']) {
@@ -18623,7 +18745,7 @@ const CHECKS = {
         const ln = col[i];
         if (ln.kind === 'heading' && ln.level <= 6) {
           const after = col.slice(i + 1).filter(x => x.kind !== 'heading').length;
-          if (after < 2) {
+          if (after < ESCORT_MIN_LINES) {
             violations.push({ kind: 'heading-escort', target: `${ln.tokenId || lineToken(ln)}@p${page.index}c${c}`, page: page.index, evidence: { linesAfter: after }, ledgerRef: ledger.create('heading-escort', ln.tokenId || lineToken(ln), page.index, { linesAfter: after }, 'protections').issue_id });
           }
         }
@@ -18811,6 +18933,7 @@ __modules["src/engine/layout/balancing.js"] = function (require, module, exports
 // (moveLineForward אינו נדרש עוד באיזון: optimalSplit מכסה את מרחב המצבים כולו — EXT-8)
 
 const { colCapacityOf } = require('./column-flow'); // **S5.2 (P-2):** קיבולת הטור — מקור יחיד
+const { escortCleanBoundary } = require('./constraint-matrix'); // **דוח 06:** גבול פיצול מודע-ליווי
 
 function usedHeight(col) {
   // **EXT-20:** גובה בפועל — כולל מקדם ה-AQ האנכי (לפני ה-AQ כל המקדמים 1).
@@ -18875,7 +18998,10 @@ function optimalSplit(cols, opts = {}) {
     const H1 = total - pre[k] + extraLast;
     if (H0 > cap + 0.5 || H1 > cap + 0.5) continue; // קיבולת קשה (REQ-BAL-09)
     const delta = Math.abs(H0 - H1);
-    const clean = cleanBoundary(k);
+    // **דוח 06 (פרק 4 — סתירת ליווי×איזון):** גבול "נקי" הוא גם נקי מווידוא/
+    // יתום (קיים) וגם מכותרת שנותרה עם <ESCORT_MIN_LINES שורות בטור המקור —
+    // אחרת האיזון עצמו יוצר הפרת heading-escort שאין לה תיקון.
+    const clean = cleanBoundary(k) && escortCleanBoundary(seq, k);
     const score = (clean ? 0 : 1) * 1e9 + delta;
     if (
       !best ||
@@ -19160,6 +19286,112 @@ function colCapacityOf(page, opts = {}) {
 module.exports = { columnWidths, blockGapPx, isFullWidthBlock, colCapacityOf, buildPageTemplate };
 
 };
+__modules["src/engine/layout/constraint-matrix.js"] = function (require, module, exports) {
+// src/engine/layout/constraint-matrix.js — Unified layout-policy constraint matrix
+// (Forensic audit 2026-11-15, Chapter 5 Stage A — audits/06_FORENSIC_UNIFICATION_AUDIT_2026-11-15.md)
+'use strict';
+
+/**
+ * **מקור האמת המספרי היחיד לאילוצי מדיניות הפריסה.**
+ *
+ * לפני המודול הזה, אותם פרמטרים מספריים היו מפוזרים כ-literals בחמישה
+ * קבצים ללא קישור ביניהם (dp-planner: ensureRoom/findSplit, balancing:
+ * cleanBoundary, protections-matrix: headingEscort/widowOrphan,
+ * candidate-generator: עונש strict מת — ראה FX-4). כל צרכן עבר לקרוא מכאן.
+ *
+ * עקרונות:
+ *  - **אין שינוי ערכים** בשלב A — רק סילוק כפילות (ערכי ברירת המחדל זהים
+ *    ל-literals שהוחלפו; השוואת hash לפני/אחרי בבדיקות הרגרסיה).
+ *  - **יחידות yPx אמיתיות** בלבד: כל פונקציית גובה כאן מקבלת שורות עם
+ *    heightPx ומחזירה סכום פיזי — לא המרות lineH (שורש FX-5: עמוד ריק
+ *    פנטום מפער יחידות בין ensureRoom ל-pushLines).
+ *  - **אילוץ מוכרז כקשה או כעדין**: hard ⇒ פוסל פיצול/הצבה; soft ⇒ עונש
+ *    סופי. ההכרזה חיה כאן, לא בראש של הצרכן.
+ */
+
+/** מינימום שורות ליווי אחרי כותרת H1-H6 באותו טור (REQ-BAL-10). */
+const ESCORT_MIN_LINES = 2;
+
+/** מינימום שורות מכל צד של גבול פיצול פסקה (widow/orphan קלאסי). */
+const WIDOW_ORPHAN_MIN = 2;
+
+/** סבילות השוואת קיבולת (px) — כמו ב-dp-planner.flushPage/pushLines. */
+const CAPACITY_EPS = 0.5;
+
+/**
+ * האם חיתוך במקום `cut` משאיר יתום בראש היעד (שורת המשך בודדת)?
+ * תיקון FX-4: התנאי ההיסטורי `cut < 2` היה בלתי-ספיק לעולם (הלולאה
+ * ב-candidate-generator מתחילה ב-cut = 2) — עונש strict מעולם לא נשרף.
+ */
+function orphanAtDestination(lineCount, cut) {
+  return lineCount - cut < WIDOW_ORPHAN_MIN;
+}
+
+/**
+ * גובה מחסנית אמיתי (yPx) של קבוצת שורות, כולל פער הכניסה של הבלוק.
+ * זהו ניפוץ הכפילוּת "יחידות lineH מול heightPx" (FX-1/FX-5): הבדיקה
+ * וההצבה מודדות מעתה באותה יחידה — הגובה הפיזי שייצרך בפועל.
+ *
+ * @param {Array<{heightPx:number}>} lines
+ * @param {number} [admissionGapPx=0] — blockGapPx של הבלוק (שער כניסה בלבד —
+ *   כמקובל עד שלב B; ראה FX-6 בדוח).
+ */
+function stackHeightPx(lines, admissionGapPx = 0) {
+  let h = admissionGapPx;
+  for (const ln of lines) h += (ln && ln.heightPx) || 0;
+  return h;
+}
+
+/**
+ * גובה המחסנית שחייבת להיכנס **בטור אחד** כדי לקיים ליווי כותרת:
+ * כל שורות הכותרת + פער הכניסה שלה + min(escort, following) שורות הליווי
+ * + פער הכניסה של בלוק הליווי. (הבדיקה ההיסטורית מדדה 1+2 ביחידות lineH —
+ * והתעלמה מגובה הכותרת האמיתי ומפער הליווי.)
+ *
+ * @param {object} headBlock — בלוק הכותרת {lines}
+ * @param {object|null} nextBlock — הבלוק העוקב {lines}
+ * @param {(block)=>number} gapOf — פער כניסה פר-בלוק (blockGapPx(settings,lineH))
+ */
+function escortStackHeightPx(headBlock, nextBlock, gapOf) {
+  const following = nextBlock && nextBlock.lines ? nextBlock.lines.length : 0;
+  if (following < 1) return stackHeightPx(headBlock.lines, gapOf(headBlock));
+  const escortN = Math.min(ESCORT_MIN_LINES, following);
+  return stackHeightPx(headBlock.lines, gapOf(headBlock))
+    + stackHeightPx(nextBlock.lines.slice(0, escortN), gapOf(nextBlock));
+}
+
+/**
+ * האם גבול פיצול (מקום k ברצף הקריאה) משאיר כותרת ללא ליווי מספק בטור
+ * המקור (col0 = seq[0..k))? תיקון הסתירה שהוכחה בפרק 4: optimalSplit סימן
+ * גבול "נקי" גם כשהוא מותיר כותרת בתחתית הטור עם <2 שורות אחריה —
+ * heading-escort שאין לו תיקון. מעתה גבול כזה איננו "clean" (עדיפות
+ * לקסיקוגרפית קיימת: clean קודם ל-|Δ|).
+ */
+function escortCleanBoundary(seq, k) {
+  // סריקה לאחור מסוף col0: כותרת בטווח של ESCORT_MIN_LINES+1 שורות אחרונות
+  for (let i = Math.max(0, k - (ESCORT_MIN_LINES + 1)); i < k; i++) {
+    const ln = seq[i];
+    if (!ln || ln.kind !== 'heading') continue;
+    let nonHeadingAfter = 0;
+    for (let j = i + 1; j < k; j++) {
+      if (seq[j] && seq[j].kind !== 'heading') nonHeadingAfter++;
+    }
+    if (nonHeadingAfter < ESCORT_MIN_LINES) return false;
+  }
+  return true;
+}
+
+module.exports = {
+  ESCORT_MIN_LINES,
+  WIDOW_ORPHAN_MIN,
+  CAPACITY_EPS,
+  orphanAtDestination,
+  stackHeightPx,
+  escortStackHeightPx,
+  escortCleanBoundary,
+};
+
+};
 __modules["src/engine/layout/retreat-loop.js"] = function (require, module, exports) {
 // src/engine/layout/retreat-loop.js — Unified retreat loop + oscillation detector (S5.1.5, K-3)
 'use strict';
@@ -19187,6 +19419,11 @@ const OSCILLATION_WINDOW = 4;
 function runRetreatLoop(ctx) {
   const { pages, settings, ledger, eventLog, repairFns, assess } = ctx;
   const history = []; // [{signature}]
+  // **FX-2 (דוח 06, פרק 4):** האם רץ תיקון משנה-פריסה (mutates !== false) באיטרציה
+  // שהקליטה כל חתימה. חתימה חוזרת בלי מוטציה מאז שנראתה = הפרה סטטית (אין
+  // תיקון פעיל) — לא "תנודה בין תיקונים מתחרים" (התווית ההיסטורית שקרה
+  // אבחונית: שום תיקון לא רץ ושום דבר לא השתנה).
+  const historyMutated = []; // [bool] מקביל ל-history
   let iteration = 0;
   let lastSignature = null;
   /** מפת רישומים מהרצה זו: kind@target → record (למניעת כפילויות בין resolved↔persists). */
@@ -19235,8 +19472,19 @@ function runRetreatLoop(ctx) {
 
     // זיהוי תנודה: החתימה חוזרת על עצמה בתוך חלון
     const recent = history.slice(-OSCILLATION_WINDOW);
-    if (recent.some(h => h === signature)) {
-      // ping-pong → הקפאת הפשרה הטובה ביותר שנצפתה.
+    const repeatIdx = recent.findIndex(h => h === signature);
+    if (repeatIdx !== -1) {
+      const histIdx = history.length - recent.length + repeatIdx;
+      if (!historyMutated[histIdx]) {
+        // **FX-2 (דוח 06):** הפרה סטטית — החתימה חוזרת בלי שאף תיקון משנה-פריסה
+        // רץ מאז שנראתה. הקפאה מתועדת עם סיבה מדויקת (לא תיוג של תחרות שלא היתה).
+        const persisted = recordRemaining(ledger, allViolations, 'protections', `static violation @iter${iteration} (no mutating repair)`, seen);
+        const rec = ledger.create('rollback-compromise', `loop@iter${iteration}`, null, { signature, reason: 'static violation' }, 'protections');
+        ledger.transition(rec.issue_id, 'correction-blocked', 'protections', 'violation persists unchanged — no mutating repair available (documented compromise)');
+        eventLog.emit('protections', 'retreat-static', { iteration, signature });
+        return { converged: false, iterations: iteration, compromise: rec.issue_id, persisted, frozenSignatures: history };
+      }
+      // ping-pong אמיתי (מוטציה רצה והחתימה חזרה) → הקפאת הפשרה הטובה ביותר שנצפתה.
       // **רישום הנשאר:** כל ההפרות בחתימה זו נמשכות — נרשמות עכשיו ל‑ledger האמיתי.
       const persisted = recordRemaining(ledger, allViolations, 'protections', `oscillation freeze @iter${iteration}`, seen);
       const rec = ledger.create('rollback-compromise', `loop@iter${iteration}`, null, { signature }, 'protections');
@@ -19246,6 +19494,7 @@ function runRetreatLoop(ctx) {
     }
 
     history.push(signature);
+    historyMutated.push(false);
     lastSignature = signature;
 
     // הפעלת תיקונים לפי סדר עדיפות קבוע (דטרמיניסטי): parens → reading-order → widows → headings → balance
@@ -19255,7 +19504,10 @@ function runRetreatLoop(ctx) {
     for (const kind of order) {
       if (!kinds.has(kind) || !repairFns[kind]) continue;
       const ofKind = allViolations.filter(v => v.kind === kind);
-      repairFns[kind](ofKind, ctx);
+      const fn = repairFns[kind];
+      fn(ofKind, ctx);
+      // **FX-2:** תיקון שמסומן mutates:false אינו משנה פריסה — אינו ראיה לתחרות
+      if (fn.mutates !== false) historyMutated[historyMutated.length - 1] = true;
       repairedAny = true;
       // הפרות מסוג זה טופלו — נרשמות ל‑ledger האמיתי כ‑resolved שקוף
       // (הן היו אמיתיות; רישום התיקון הוא חלק מהשקיפות, לא הסתרה).
@@ -19322,6 +19574,7 @@ __modules["src/engine/layout/candidate-generator.js"] = function (require, modul
 'use strict';
 
 const { blockGapPx } = require('./column-flow');
+const { orphanAtDestination } = require('./constraint-matrix'); // **FX-4 (דוח 06):** עונש strict ממקור אחיד
 
 /**
  * מחזיר מועמדי פיצול לבלוק בתוך טור:
@@ -19349,8 +19602,11 @@ function generateCandidates(blk, cur, colCapacityPx, settings, ledger) {
     }
     // justify capability: האם הטור שלפני יכול להצדיק (להגיע לקצה) — p376-class reasoning
     const capacityBefore = colCapacityPx - before;
+    // **FX-4 (דוח 06, פרק 4):** העונש ההיסטורי `cut < 2` היה בלתי-ספיק לעולם
+    // (הלולאה מתחילה ב-cut = 2) — widow-strictness=strict לא שינה דבר.
+    // התנאי הנכון: החלק השני קצר מהמינימום ⇒ יתום בראש היעד.
     const score = Math.abs(capacityBefore - (colCapacityPx - after))
-      + (settings['widow-strictness'] === 'strict' && cut < 2 ? 1e9 : 0);
+      + (settings['widow-strictness'] === 'strict' && orphanAtDestination(blk.lines.length, cut) ? 1e9 : 0);
     out.push({ cut, before, after, capacityBefore, capacityAfter: colCapacityPx - after, score });
   }
   out.sort((a, b) => a.score - b.score);
