@@ -9504,19 +9504,21 @@ function renderLine(ln, doc, settings = {}) {
 
       const customRenderer = getInlineItemRenderer(fragment.kind, 'dom');
       const customNode = customRenderer ? customRenderer(fragment, doc, settings) : null;
-      if (customNode) {
-        el.appendChild(customNode);
-      } else {
-        const placeholder = doc.createElement('span');
-        placeholder.className = 'inline-item inline-item--custom';
-        placeholder.dataset.inlineKind = fragment.kind;
-        if (fragment.id != null) placeholder.dataset.inlineId = String(fragment.id);
-        placeholder.style.display = 'inline-block';
-        placeholder.style.width = String(fragment.widthPx) + 'px';
-        placeholder.style.height = String(fragment.heightPx) + 'px';
-        placeholder.style.verticalAlign = 'middle';
-        el.appendChild(placeholder);
-      }
+      // The measured rectangle is the layout contract. A renderer supplies
+      // content only; it cannot silently replace the dimensions reserved by
+      // Knuth–Plass or diverge from the PDF projector.
+      const wrapper = doc.createElement('span');
+      wrapper.className = 'inline-item inline-item--custom';
+      wrapper.dataset.inlineKind = fragment.kind;
+      if (fragment.id != null) wrapper.dataset.inlineId = String(fragment.id);
+      wrapper.style.display = 'inline-block';
+      wrapper.style.boxSizing = 'border-box';
+      wrapper.style.width = String(fragment.widthPx) + 'px';
+      wrapper.style.height = String(fragment.heightPx) + 'px';
+      wrapper.style.verticalAlign = 'middle';
+      wrapper.style.position = 'relative';
+      if (customNode) wrapper.appendChild(customNode);
+      el.appendChild(wrapper);
     }
   } else {
   // **D-42:** מילים בתוך סוגריים — span.w--paren עם font-size בסקאלה (geometry-neutral).
@@ -17821,11 +17823,15 @@ function createMeasuredInlineItems(runs, options = {}) {
     if (typeof run.kind !== 'string' || !run.kind.trim() || run.id == null) {
       throw new TypeError('inline-item-factory: custom item kinds require kind and stable id');
     }
+    // Invalid plugin payloads must never reach a measurement callback.
+    // Validate semantic input first, then validate the measured result again
+    // before admitting its dimensions to the shared line solver.
+    validateInlineItem(run, { stage: 'before-measure', options });
     const measured = measureInlineItem(run, {
       ...options,
       stage: 'measure'
     });
-    validateInlineItem(measured, { stage: 'measure', options });
+    validateInlineItem(measured, { stage: 'after-measure', options });
     items.push({
       ...measured,
       kind: run.kind,
