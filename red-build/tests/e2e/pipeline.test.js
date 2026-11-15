@@ -175,7 +175,7 @@ describe('e2e-pipeline', () => {
       'פסקה רגילה ראשונה עם מילים רבות שנועדה לבדוק את מנוע שבירת השורות המשותף.',
       'פסקה רגילה שנייה ממשיכה את המסמך ומוודאת שאין חזרה למסלול מילים מקביל.',
       'פסקה רגילה שלישית בודקת את שימור התוכן ואת יציבות המודל לאחר תכנון העמוד.'
-    ].join('\\n\\n');
+    ].join('\n\n');
     const result = typeset(source, settings, { noRecommendations:true });
     const lines = result.pages.flatMap(page => page.columns.flat())
       .filter(line => line.kind === 'paragraph');
