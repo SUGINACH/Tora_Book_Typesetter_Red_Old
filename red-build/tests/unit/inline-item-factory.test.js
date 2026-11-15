@@ -189,7 +189,7 @@ test('measurement cannot rewrite custom item identity or its layout key', () => 
         layoutKey:'chapter-4:badge-v1',
         sourceText:'⟦badge:chapter-4⟧',
         sourceStart:12,
-        sourceEnd:31,
+        sourceEnd:29,
         payload:{chapter:4}
       }
     ], { measureText:measure });
@@ -197,7 +197,7 @@ test('measurement cannot rewrite custom item identity or its layout key', () => 
     assert.equal(item.id,'item:chapter-4');
     assert.equal(item.layoutKey,'chapter-4:badge-v1');
     assert.equal(item.sourceText,'⟦badge:chapter-4⟧');
-    assert.deepEqual([item.sourceStart,item.sourceEnd],[12,31]);
+    assert.deepEqual([item.sourceStart,item.sourceEnd],[12,29]);
     assert.deepEqual([item.widthPx,item.heightPx],[31,19]);
   } finally {
     unregister();
