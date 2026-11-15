@@ -69,6 +69,10 @@ function registerRenderer(kind, target, renderer) {
  *
  * A parser claims source only by returning a positive consumed count. The
  * registry then preserves the exact source slice on the canonical item.
+ *
+ * Registration is realm-local: this module is instantiated separately in the
+ * headless process, browser UI and Worker. Project-defined item modules belong
+ * in inline-item-types.js so the same descriptor is evaluated in all realms.
  */
 function registerInlineItemType(kind, descriptor) {
   const normalized = validateKind(kind);
