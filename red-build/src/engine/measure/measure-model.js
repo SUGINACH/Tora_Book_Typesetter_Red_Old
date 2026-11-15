@@ -14,8 +14,30 @@
  * + אבחנים. פריט שלא ניתן למדידה מקבל רשומת דחייה מפורשת — לא נעלם.
  */
 
-const { measureItem, environmentFingerprint } = require('../typography/measure-api');
+const { measureItem, environmentFingerprint, deepFreeze } = require('../typography/measure-api');
 const fontResolver = require('../typography/font-resolver');
+
+/** **תיקון ביקורת PR #22 (immutability):** תצוגת Map קריאה-בלבד של תוצאות
+ * המדידה. Object.freeze על Map אינו חוסם set/delete/clear — כאן הם זורקים.
+ * ממשק הקריאה זהה לבדיקות ולצרכנים (שלב 4): get/has/size/keys/values/
+ * entries/forEach/[Symbol.iterator]. בלי עלות יצירה — עטיפה דקה על המפה הפנימית. */
+class ReadOnlyMeasuredMap {
+  constructor(map) {
+    this._map = map || new Map();
+    Object.freeze(this);
+  }
+  get size() { return this._map.size; }
+  get(key) { return this._map.get(key); }
+  has(key) { return this._map.has(key); }
+  keys() { return this._map.keys(); }
+  values() { return this._map.values(); }
+  entries() { return this._map.entries(); }
+  forEach(fn, thisArg) { return this._map.forEach(fn, thisArg); }
+  [Symbol.iterator]() { return this._map[Symbol.iterator](); }
+  set() { throw new TypeError('measureDocumentModel: \u05de\u05e4\u05ea \u05d4\u05de\u05d3\u05d9\u05d3\u05d5\u05ea \u05d1\u05dc\u05ea\u05d9-\u05e0\u05d9\u05ea\u05df \u05dc\u05e9\u05d9\u05e0\u05d5\u05d9 (immutable)'); }
+  delete() { throw new TypeError('measureDocumentModel: \u05de\u05e4\u05ea \u05d4\u05de\u05d3\u05d9\u05d3\u05d5\u05ea \u05d1\u05dc\u05ea\u05d9-\u05e0\u05d9\u05ea\u05df \u05dc\u05e9\u05d9\u05e0\u05d5\u05d9 (immutable)'); }
+  clear() { throw new TypeError('measureDocumentModel: \u05de\u05e4\u05ea \u05d4\u05de\u05d3\u05d9\u05d3\u05d5\u05ea \u05d1\u05dc\u05ea\u05d9-\u05e0\u05d9\u05ea\u05df \u05dc\u05e9\u05d9\u05e0\u05d5\u05d9 (immutable)'); }
+}
 
 /**
  * measureDocumentModel — מודד את כל פריטי המסמך.
@@ -26,7 +48,7 @@ const fontResolver = require('../typography/font-resolver');
  */
 function measureDocumentModel(model, ctx = {}) {
   if (!model || !Array.isArray(model.blocks)) {
-    return { ok: false, measured: new Map(), rejected: [{ code: 'no-model', message: 'measureDocumentModel: מודל חסר' }], stats: { items: 0, measured: 0, rejected: 0 }, environmentFingerprint: environmentFingerprint() };
+    return { ok: false, measured: new ReadOnlyMeasuredMap(new Map()), rejected: deepFreeze([{ code: 'no-model', message: 'measureDocumentModel: מודל חסר' }]), stats: deepFreeze({ items: 0, measured: 0, rejected: 0 }), environmentFingerprint: environmentFingerprint() };
   }
   const settings = ctx.settings || {};
   const dir = ctx.direction || 'rtl';
@@ -73,10 +95,14 @@ function measureDocumentModel(model, ctx = {}) {
     }
   }
 
+  // **תיקון ביקורת PR #22:** הפלט כוולו בלתי-ניתן לשינוי — המפה בתצוגה
+  // קריאה-בלבד, הדחיות והסטטיסטיקה הוקפאו עמוקות (הערות
+  // הדחיה הן מחרוזות/מספרים בלבד).
   return {
     ok: rejected.length === 0,
-    measured, rejected,
-    stats: { items: count, measured: measured.size, rejected: rejected.length },
+    measured: new ReadOnlyMeasuredMap(measured),
+    rejected: deepFreeze(rejected),
+    stats: deepFreeze({ items: count, measured: measured.size, rejected: rejected.length }),
     environmentFingerprint: env
   };
 }

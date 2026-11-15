@@ -22,6 +22,8 @@ const fm = require('./font-metrics');
 /** רשומות ה-resolver: fontId → record; alias (שם משפחה) → fontId. */
 const _fonts = new Map();
 const _aliases = new Map();
+/** מנעול סנכרון ניקוי דו-כיווני font-resolver ↔ measure-api (מונע נצנוץ). */
+let _clearSync = false;
 
 /**
  * רישום גופן קנוני — בתים אמיתיים + כינוי.
@@ -71,7 +73,9 @@ function registerFont(alias, bytes, meta = {}) {
     // (ליתור forFamily/resolveMeasureImpl) — בלי פירוח חורג (מנוע מחזור טעינה: require עצם בזמן הקריאה).
     try {
       const ma = require('./measure-api');
-      ma.restoreFontRegistration(alias, parsed.font);
+      // **תיקון ביקורת PR #22:** מועברים גם הבתים — כדי שזהות התוכן של הרישום
+      // תישמר במדווק גם בצד measure-api (חית סביבה ומפתח מטמון).
+      ma.restoreFontRegistration(alias, parsed.font, bytes);
     } catch (_) { /* measure-api טעון לא נטען (מחזור) — הרישום יושלם בטעינתו */ }
   }
   return { ok: true, fontId, record, isNew };
@@ -132,11 +136,47 @@ function fontIdOfAlias(alias) {
   return _aliases.get(String(alias)) || null;
 }
 
-function clearFontResolver() { _fonts.clear(); _aliases.clear(); }
+/** **תיקון ביקורת PR #22 (סנכרון ניקוי):** ניקוי ה-resolver מסונכרן גם למרשמות
+ * measure-api — אין מצב שבו ה-resolver נקי אך המדידה עדיין מודדת דרך רישום ישן, ולהפך
+ * (clearRegisteredFonts מסונכרן בחזרה). המנעול מונע נצנוץ אינסופי. */
+function clearFontResolver() {
+  _fonts.clear();
+  _aliases.clear();
+  if (_clearSync) return;
+  _clearSync = true;
+  try {
+    const ma = require('./measure-api');
+    ma.clearRegisteredFonts();
+  } catch (_) { /* measure-api לא נטען — אין מה לסנכרן */ }
+  finally { _clearSync = false; }
+}
+
+/** **תיקון ביקורת PR #22:** הסרת כינוי בודד — מסונכרנת גם למרשמות measure-api
+ * (unregisterFont שם). רשומת הגופן נשארת כל עוד יש לה כינויים אחרים (אותה זהות
+ * תוכן תחת כמה כינויים היא מצב חוקי). */
+function unregisterAlias(alias) {
+  const a = String(alias);
+  const fontId = _aliases.get(a);
+  if (fontId == null) return { ok: false, code: 'unknown-alias', alias: a };
+  _aliases.delete(a);
+  const rec = _fonts.get(fontId);
+  if (rec) {
+    rec.aliases = rec.aliases.filter((x) => x !== a);
+    if (!rec.aliases.length) _fonts.delete(fontId); // אין עוד כינוי — הרשומה מתפנה
+  }
+  if (_clearSync) return { ok: true, removed: a, fontId };
+  _clearSync = true;
+  try {
+    const ma = require('./measure-api');
+    ma.unregisterFont(a);
+  } catch (_) { /* measure-api לא נטען */ }
+  finally { _clearSync = false; }
+  return { ok: true, removed: a, fontId };
+}
 function fontCount() { return _fonts.size; }
 function aliasCount() { return _aliases.size; }
 
 module.exports = {
   registerFont, resolveFont, resolveFontById, fontOf, fontIdOfAlias,
-  clearFontResolver, fontCount, aliasCount
+  clearFontResolver, unregisterAlias, fontCount, aliasCount
 };

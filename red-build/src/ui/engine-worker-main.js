@@ -15,17 +15,42 @@ const { serializeTypesetResult, validateRequest, progressMessage } = require('./
 
 let cancelledJobs = new Set();
 
-/** טיפול register-font (03.11): רישום TTF למדידת גופן אמיתי בעימוד שיידרש. */
+// **שלב 3 (§3.1-2 — תיקון ביקורת PR #22):** מטמון נכסי מסמך בצד ה-Worker. אותו
+// transport (אותם מזהים+בתים) אינו מנותח מחדש ואינו מועבר שוב לפענוח בכל בקשה.
+// זהו cache טהור של ה-deserialization בלבד: מקור האמת הוא הזהות הכתובת-תוכן
+// שבהודעה עצמה — לא נוצר רישום נכסים מקבילי ולא נשמרים נתיבים מקומיים.
+// ה-fingerprint נגזר מהמזהים ואורכי הבתים — אין טחינת תוכן נוספת לכל בקשה.
+let _docAssetsCache = null; // { fingerprint, resolver }
+function _resolverForAssets(assetsMsg) {
+  if (!assetsMsg || !Array.isArray(assetsMsg.assets) || !assetsMsg.assets.length) return null;
+  const fp = assetsMsg.assets.map((a) => `${a && a.assetId}:${(a && a.bytes && a.bytes.byteLength) || 0}`).join('|');
+  if (_docAssetsCache && _docAssetsCache.fingerprint === fp) return _docAssetsCache.resolver;
+  const { AssetResolver } = require('../engine/assets/asset-resolver');
+  const resolver = AssetResolver.fromTransport(assetsMsg);
+  if (resolver.transportReport && resolver.transportReport.ok === false) {
+    // פער הובלה אינו נבלע בשקט: נרשם לאבחון (הדחיות יצופו בדחיית מדידה מפורשת
+    // של הפריטים שהתייחסו לנכסים החסרים — הכיסוי המלא נסגר בשער הצריכה של שלב 4).
+    console.warn('[engine-worker] asset transport rejections:', JSON.stringify(resolver.transportReport.rejected));
+  }
+  _docAssetsCache = { fingerprint: fp, resolver };
+  return resolver;
+}
+
+/** טיפול register-font (03.11): רישום TTF למדידת גופן אמיתי בעימוד שיידרש.
+ * **תיקון ביקורת PR #22 (מקור סמכות יחיד):** הרישום עובר דרך ה-Font Resolver
+ * הקנוני (זהות content-addressed + שרשרת fallback מאובחנת) — ה-resolver מסנכרן
+ * את מרשמי measure-api בעצמו (single entry point); לא נוצר מרשם מקבילי.
+ * ה-fontId חוזר ל-UI כך שזהות הגופן זהה בשני הצדדים (מוכח בבדיקות E2E). */
 function handleRegisterFont(msg, post) {
   try {
-    const { registerFont } = require('../engine/typography/measure-api');
+    const fontResolver = require('../engine/typography/font-resolver');
     const u8 = msg.bytes instanceof ArrayBuffer ? new Uint8Array(msg.bytes) : new Uint8Array(msg.bytes.buffer, msg.bytes.byteOffset, msg.bytes.length);
-    const reg = registerFont(msg.name, u8);
+    const reg = fontResolver.registerFont(msg.name, u8, { source: 'worker-register-font' });
     if (reg.ok) {
-      const glyphCount = reg.profile && reg.profile.font && reg.profile.font.numGlyphs != null ? reg.profile.font.numGlyphs : null;
-      post({ type: 'register-font-result', jobId: msg.jobId, name: msg.name, ok: true, glyphCount });
+      const glyphCount = reg.record && reg.record.numGlyphs != null ? reg.record.numGlyphs : null;
+      post({ type: 'register-font-result', jobId: msg.jobId, name: msg.name, ok: true, glyphCount, fontId: reg.fontId });
     } else {
-      post({ type: 'register-font-result', jobId: msg.jobId, name: msg.name, ok: false, error: reg.error || 'register-failed' });
+      post({ type: 'register-font-result', jobId: msg.jobId, name: msg.name, ok: false, error: reg.code || reg.message || 'register-failed', code: reg.code || null });
     }
   } catch (e) {
     post({ type: 'register-font-result', jobId: msg.jobId, name: msg.name, ok: false, error: e && e.message ? e.message : String(e) });
@@ -90,12 +115,10 @@ function createEngineWorkerMain(post) {
     const jobId = msg.jobId;
     try {
       // **שלב 3 (§3.1-2):** נכסי מסמך שהועברו בפרוטוקול — נבנים ל-AssetResolver בצד ה-Worker
-      // (זהות תוכן משוחזרת; אין גישש למערכת הקבצים ואין נתיבים מקומיים).
-      let docAssets = null;
-      if (msg.assets && msg.assets.schema === 'asset-transport-v1' && Array.isArray(msg.assets.assets) && msg.assets.assets.length) {
-        const { AssetResolver } = require('../engine/assets/asset-resolver');
-        docAssets = AssetResolver.fromTransport(msg.assets);
-      }
+      // (זהות תוכן מאומתת מחדש מהבתים; אין גישה למערכת הקבצים ואין נתיבים מקומיים).
+      // תיקון ביקורת PR #22: ההודעה מגיעה מהלקוח החי (requestTypeset.assets) ולא
+      // רק תיאורטית; ה-resolver משוחזר במטמון לפי זהות ה-transport (בלי פענוח חוזר).
+      const docAssets = _resolverForAssets(msg.assets);
       const result = typeset(msg.text, msg.settings, {
         onProgress: (info) => {
           if (!cancelledJobs.has(jobId)) post(progressMessage(jobId, info));

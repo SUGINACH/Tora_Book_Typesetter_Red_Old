@@ -351,11 +351,14 @@ var __paths = {
   "src/engine/layout/legacy-imud-flow.js|../decoration/legacy-ornaments": "src/engine/decoration/legacy-ornaments.js",
   "src/engine/typography/measure-api.js|./measure-table": "src/engine/typography/measure-table.js",
   "src/engine/typography/measure-api.js|./font-metrics": "src/engine/typography/font-metrics.js",
+  "src/engine/typography/measure-api.js|../assets/hash256": "src/engine/assets/hash256.js",
   "src/engine/typography/measure-api.js|./kp-linebreak": "src/engine/typography/kp-linebreak.js",
   "src/engine/typography/measure-api.js|./units": "src/engine/typography/units.js",
   "src/engine/typography/measure-api.js|./font-resolver": "src/engine/typography/font-resolver.js",
   "src/engine/typography/font-resolver.js|../assets/hash256": "src/engine/assets/hash256.js",
   "src/engine/typography/font-resolver.js|./font-metrics": "src/engine/typography/font-metrics.js",
+  "src/engine/typography/font-resolver.js|./measure-api": "src/engine/typography/measure-api.js",
+  "src/engine/typography/font-resolver.js|./measure-api": "src/engine/typography/measure-api.js",
   "src/engine/typography/font-resolver.js|./measure-api": "src/engine/typography/measure-api.js",
   "src/engine/decoration/legacy-ornaments.js|./ornament-fit": "src/engine/decoration/ornament-fit.js",
   "src/ui/testing-tab.js|../audit/report-schema": "src/audit/report-schema.js",
@@ -16094,6 +16097,7 @@ __modules["src/engine/typography/measure-api.js"] = function (require, module, e
 
 const { charWidthEm, FONT_PROFILES } = require('./measure-table');
 const fm = require('./font-metrics');
+const { sha256Hex } = require('../assets/hash256');
 
 // **S5.2 (תיקון 5 — tracking שאין לאף מרנדר):** ברירת המחדל הייתה 0.02em —
 // המדידה "הרחיבה" כל שורה ב~2% יחסית לדיו: אף מרנדר (DOM/PDF) אינו מצייר
@@ -16104,6 +16108,22 @@ const DEFAULT_TRACKING = 0; // em
 
 /** גופנים רשומים (פרופיל → פרנסר). ההרשמה מפורשת — אין טעינת רשת (offline). */
 const registeredFonts = new Map();
+/** **תיקון ביקורת PR #22 (מפתח מטמון):** זהות תוכן לכל רישום — `fnt-<sha256[:14]>`
+ * (אותה נוסחה כמו font-resolver). השם הוא כינוי בלבד; החית של הסביבה ומפתח
+ * המטמון נגזרים מהזהות, לא מהשם — שני קבצים שונים תחת אותו שם לא יחלקו מדידות. */
+const _fontContentIds = new Map();
+/** מנעול סנכרון ניקוי דו-כיווני measure-api ↔ font-resolver (מונע נצנוץ). */
+let _fontClearSync = false;
+/** מזכר חית סביבה (מבוטל בכל שינוי רישום) — מדידות רבות לא ימיינו שמות שוב ושוב. */
+let _envFpMemo = null;
+
+/** טביעת מבנה לגופן שנרשם ללא בתים (שחזור) — חלשה מזהות-תוכן אך דטרמיניסטית. */
+function _structuralFontFp(font) {
+  if (!font) return 'none';
+  return `u${font.unitsPerEm || 0}g${font.numGlyphs || 0}a${font.ascender || 0}d${font.descender || 0}`;
+}
+
+function _invalidateEnvFp() { _envFpMemo = null; }
 
 /**
  * רישום גופן למדידת אמת (S12.1-5). קלט: בתים בלבד (Uint8Array/Buffer).
@@ -16113,6 +16133,8 @@ function registerFont(profileName, bytes) {
   const res = fm.parseFont(bytes);
   if (!res.ok) return { ok: false, error: res.error };
   registeredFonts.set(String(profileName), res.font);
+  _fontContentIds.set(String(profileName), `fnt-${sha256Hex(bytes).slice(0, 14)}`);
+  _invalidateEnvFp();
   // **S6.0 (R7-L2):** גם רישום מנקה את מטמון ה-API-פר-משפחה — בעבר רק
   // ההסרה ניקתה ⇒ רישום מחדש של אותה משפחה החזיר מופע ישן מהמטמון
   // (קשור לגופן הקודם) והמדידה המשיכה במטריקות הישנות.
@@ -16129,20 +16151,52 @@ function registerFont(profileName, bytes) {
 /** **S6.0 (R2-C1):** שחזור רישום קודם אחרי שימוש זמני (exportPdf) —
  * font=null ⇒ הסרה רגילה. מונע מצב שבו ייצוא מוחק ל-worker את רישום
  * הגופן של התצוגה החיה (המדידה היתה נופלת בשקט ל'table'). */
-function restoreFontRegistration(profileName, font) {
+function restoreFontRegistration(profileName, font, bytes) {
   if (!font) { unregisterFont(profileName); return; }
-  registeredFonts.set(String(profileName), font);
+  const name = String(profileName);
+  registeredFonts.set(name, font);
+  if (bytes && bytes.length) {
+    _fontContentIds.set(name, `fnt-${sha256Hex(bytes).slice(0, 14)}`);
+  } else {
+    // בלי בתים: זהות מדויקת אם ה-resolver מחזיק את אותו פרנסר תחת הכינוי; אחרת — מבנית
+    let cid = null;
+    const fid = fontResolver.fontIdOfAlias(name);
+    if (fid && fontResolver.fontOf(fid) === font) cid = fid;
+    _fontContentIds.set(name, cid || `struct-${_structuralFontFp(font)}`);
+  }
   if (String(profileName) === 'Frank Ruhl Libre') fm.setMissingGlyphFallbackFont(font);
   _familyApiCache.clear();
+  _invalidateEnvFp();
 }
 
-/** הסרת גופן רשום (בדיקות). */
+/** הסרת גופן רשום. **תיקון ביקורת PR #22 (סנכרון ניקוי):** מסונכרן גם ל-font-resolver
+ * (הסרת הכינוי) — אין מצב שבו ה-resolver אומר "לא רשום" אך המדידה עדיין מודדת
+ * דרך רישום ישן, ולהפך. */
 function unregisterFont(profileName) {
-  registeredFonts.delete(String(profileName));
-  if (String(profileName) === 'Frank Ruhl Libre') fm.setMissingGlyphFallbackFont(null);
+  const name = String(profileName);
+  registeredFonts.delete(name);
+  _fontContentIds.delete(name);
+  if (name === 'Frank Ruhl Libre') fm.setMissingGlyphFallbackFont(null);
   _familyApiCache.clear(); // **S5.2:** מטמון ה-API-פר-משפחה נגרר אחרי ההרשמה
+  _invalidateEnvFp();
+  if (!_fontClearSync) {
+    _fontClearSync = true;
+    try { fontResolver.unregisterAlias(name); } catch (_) { /* מחזור טעינה — יסונכרן בטעינתו */ }
+    finally { _fontClearSync = false; }
+  }
 }
-function clearRegisteredFonts() { registeredFonts.clear(); fm.setMissingGlyphFallbackFont(null); _familyApiCache.clear(); }
+function clearRegisteredFonts() {
+  registeredFonts.clear();
+  _fontContentIds.clear();
+  fm.setMissingGlyphFallbackFont(null);
+  _familyApiCache.clear();
+  _invalidateEnvFp();
+  if (!_fontClearSync) {
+    _fontClearSync = true;
+    try { fontResolver.clearFontResolver(); } catch (_) { /* מחזור טעינה */ }
+    finally { _fontClearSync = false; }
+  }
+}
 
 class MeasureAPI {
   constructor(settings, impl = 'table') {
@@ -16337,32 +16391,115 @@ const fontResolver = require('./font-resolver');
 /** גרסת מנוע המדידה — חלק ממפתח המטמון ומחית הסביבה (§3.1-10). */
 const MEASURE_ENGINE_VERSION = 'measure-v1(item+style+env;advance/ink-split)';
 
-/** חית סביבת מדידה: יחידות + גרסת מנוע + מימוש + טביעת סט הגופנים הרשומים.
- * סט גופנים שונה ⇒ חית שונה ⇒ אין שיתוף מטמון שגוי בין סביבות הגדרה. */
+/** חית סביבת מדידה: יחידות + גרסת מנוע + מימוש + זהויות-תוכן של הגופנים הרשומים.
+ * **תיקון ביקורת PR #22:** הזהות היא content-addressed (`fnt-<sha256[:14]>`) — לא
+ * שם+מספר-גליפים בלבד. סט גופנים שונה (או אותו שם עם בתים שונים) ⇒ חית שונה
+ * ⇒ אין שיתוף מטמון שגוי בין סביבות הגדרה. */
 function environmentFingerprint(extra = '') {
+  if (!extra && _envFpMemo) return _envFpMemo;
   const fams = Array.from(registeredFonts.keys()).sort();
-  const fontsFp = fams.length ? fams.map((f) => `${f}:${(registeredFonts.get(f).numGlyphs || 0)}`).join('|') : 'none';
-  return `${MEASURE_ENGINE_VERSION}|${UNITS_VERSION}|fonts=${fontsFp}${extra ? '|' + extra : ''}`;
+  const fontsFp = fams.length
+    ? fams.map((f) => `${f}=${_fontContentIds.get(f) || 'struct-' + _structuralFontFp(registeredFonts.get(f))}`).join('|')
+    : 'none';
+  const fp = `${MEASURE_ENGINE_VERSION}|${UNITS_VERSION}|fonts=${fontsFp}${extra ? '|' + extra : ''}`;
+  if (!extra) _envFpMemo = fp;
+  return fp;
 }
 
-/** מפתח מלא למטמון מדידת פריט (§3.1-10): תוכן + גופן + גודל/סגנון + שפה/כיוון
- * + נכס + גרסת מנוע + חית סביבה. אין שיתוף בין פריטים בעלי זהות/הקשר שונים. */
+/** **תיקון ביקורת PR #22 (סריאליזציה קנונית):** מחרוזת דטרמיניסטית ויציבה-בין-
+ * סביבות: מפתחות אובייקט ממוינים רקורסיבית (סדר הכנסה אינו חלק מהתוכן); סדר
+ * מערכים נשמר (הסדר חלק מהתוכן — ריצות טקסט); בתים (TypedArray/Buffer) נטחנים
+ * לזהות תוכן (אורך+SHA-256) — לא מחרוזת תלוית-סביבה; פונקציות/סמלים — שם טיפוס.
+ * מחליף את JSON.stringify הלא-יציב שעמד קודם במפתח המטמון. */
+function _canonicalStringify(value, depth = 0) {
+  if (value === null) return 'null';
+  const t = typeof value;
+  if (t === 'string') return JSON.stringify(value);
+  if (t === 'number' || t === 'boolean' || t === 'undefined') return String(value);
+  if (t === 'bigint') return `${value}n`;
+  if (t === 'function' || t === 'symbol') return `<${t}>`;
+  if (depth > 32) return '<deep>';
+  if (Array.isArray(value)) return '[' + value.map((v) => _canonicalStringify(v, depth + 1)).join(',') + ']';
+  if (value instanceof ArrayBuffer) return `ab(${value.byteLength})`;
+  if (ArrayBuffer.isView(value)) {
+    const u8 = value instanceof Uint8Array ? value : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    return `bytes(${u8.length}):${sha256Hex(u8)}`;
+  }
+  if (t === 'object') {
+    const keys = Object.keys(value).sort();
+    return '{' + keys.map((k) => JSON.stringify(k) + ':' + _canonicalStringify(value[k], depth + 1)).join(',') + '}';
+  }
+  return String(value);
+}
+
+/** זהות נכס content-addressed לפי שרשרת המועמדים של הפריט — מה-resolver בלבד
+ * (הזהות מחושבת מהבתים, לא מההצהרה). אותה הפניה (resourcePath) עם תוכן נכס
+ * אחר ⇒ מזהה אחר ⇒ מפתח מטמון אחר. פותר את הפגם שבו item.id לבדו קבע את המפתח. */
+function _assetIdentityFp(item, ctx) {
+  const ar = ctx && ctx.assetResolver;
+  if (!ar || !item || item.kind !== 'image') return '';
+  const p = item.payload || {};
+  const cands = [];
+  if (p.contentAssetId != null) cands.push(String(p.contentAssetId));
+  if (p.assetId != null) cands.push(String(p.assetId));
+  if (p.resourcePath != null) cands.push(String(p.resourcePath));
+  if (!cands.length) return 'no-candidates';
+  for (const c of cands) {
+    let r = null;
+    try { r = c.startsWith('ast-') ? ar.resolveById(c) : ar.resolve(c); } catch (_) { r = null; }
+    if (r && r.ok) return `id:${r.assetId}`;
+  }
+  return 'unresolved(' + cands.join('|') + ')';
+}
+
+/** מפתח מטמון מדידת פריט (§3.1-10) — **קנוני ודטרמיניסטי**.
+ * **תיקון שורש (ביקורת PR #22):** הקוד הקודם השתמש ב-item.id לבדו כשקיים מזהה —
+ * שני פריטים בעלי אותו מזהה ו-payload שונה (טקסט/תמונה/widthPct/ריצות גופן/
+ * אילוצי רוחב) קיבלו את אותה מדידה. כעת המזהה הוא רכיב אחד מיני רבים:
+ * (1) item.id אם קיים; (2) טביעת payload מלאה (טקסט, ריצות, widthPct, מזהי נכסים);
+ * (3) סוג הפריט; (4) טביעת סגנון מלאה (גודל, גובה-שורה, משקל, family);
+ * (5) זהויות גופן קנוניות — fontIds כתובות-תוכן + חית סביבה מזהויות-תוכן;
+ * (6) זהות נכס content-addressed מה-resolver (שרשרת המועמדים);
+ * (7) שפה וכיוון; (8) אילוצי מדידה מלאים (availableWidth/fit/align/widthPct)
+ * + מפתח הקשר; (9) גרסת מנוע המדידה; (10) חית סביבה **חיה** (מחושבת כעת
+ * מהרישומים בפועל — לא הצהרת caller) + חית ההקשר שהועברה. */
 function _itemCacheKey(item, style, ctx) {
-  const content = item && item.id ? item.id : JSON.stringify(item && item.payload || item);
-  const fonts = (style && style.fontIds || []).join(',');
+  const it = item || {};
   return [
+    'item-key-v2',
     MEASURE_ENGINE_VERSION,
-    ctx && ctx.environmentFingerprint || 'no-env',
-    content,
-    fonts,
-    style && style.sizePt,
-    style && style.lineHeight,
-    style && style.weight || '',
-    ctx && ctx.language || '',
-    ctx && ctx.direction || '',
-    ctx && ctx.assetId || '',
-    ctx && ctx.constraintsKey || ''
+    environmentFingerprint(),
+    (ctx && ctx.environmentFingerprint) || '',
+    it.kind || '',
+    it.id != null ? String(it.id) : '',
+    sha256Hex(_canonicalStringify(it.payload !== undefined ? it.payload : it)),
+    sha256Hex(_canonicalStringify(it.constraints || null)),
+    sha256Hex(_canonicalStringify(style || null)),
+    (ctx && ctx.direction) || '',
+    (ctx && ctx.language) || '',
+    sha256Hex(_canonicalStringify((ctx && ctx.constraints) || null)),
+    (ctx && ctx.constraintsKey) || '',
+    (ctx && ctx.assetId) != null ? String(ctx.assetId) : '',
+    _assetIdentityFp(item, ctx)
   ].join('~');
+}
+
+/** **תיקון ביקורת PR #22 (immutability אמיתי):** הקפאה עמוקה — כל המבנים
+ * הפנימיים: inkBounds, segments וכל אובייקט segment, breakOpportunities וכל
+ * הזדמנות, diagnostics, natural, fit, placement. ידידותי למחזורים (seen)
+ * ודלג מוקדם על אובייקטים שכבר הוקפאו. */
+function _deepFreeze(value, seen) {
+  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
+  if (seen === undefined) seen = new Set();
+  else if (seen.has(value)) return value;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) _deepFreeze(value[i], seen);
+  } else {
+    for (const k of Object.keys(value)) _deepFreeze(value[k], seen);
+  }
+  Object.freeze(value);
+  return value;
 }
 
 /**
@@ -16530,13 +16667,13 @@ function measureItem(item, style, ctx) {
   }
 
   if (out && out.ok) {
-    out.environmentFingerprint = (ctx && ctx.environmentFingerprint) || environmentFingerprint();
+    // החית המתועדת בתוצאה = הסביבה החיה שבה נמדד בפועל (לא הצהרת ה-caller)
+    out.environmentFingerprint = environmentFingerprint();
     out.measureEngineVersion = MEASURE_ENGINE_VERSION;
-    Object.freeze(out);
-    Object.freeze(out.inkBounds);
-    if (out.segments) Object.freeze(out.segments);
-    if (out.breakOpportunities) Object.freeze(out.breakOpportunities);
+    _deepFreeze(out);
     _itemMeasureCache.set(key, out);
+  } else if (out) {
+    _deepFreeze(out); // דחייה — גם היא בלתי-ניתנת לשינוי (אותו חוזה)
   }
   return out;
 }
@@ -16582,7 +16719,8 @@ function fontResolverAliasOf(fontId) {
 module.exports = {
   MeasureAPI, registerFont, unregisterFont, clearRegisteredFonts, restoreFontRegistration,
   charWidthEm, registeredFonts, resolveMeasureImpl,
-  measureItem, environmentFingerprint, MEASURE_ENGINE_VERSION, itemCacheStats, clearItemMeasureCache
+  measureItem, environmentFingerprint, MEASURE_ENGINE_VERSION, itemCacheStats, clearItemMeasureCache,
+  deepFreeze: _deepFreeze, canonicalStringify: _canonicalStringify
 };
 
 };
@@ -17011,6 +17149,87 @@ module.exports = {
 };
 
 };
+__modules["src/engine/assets/hash256.js"] = function (require, module, exports) {
+// src/engine/assets/hash256.js — SHA-256 על בתים, סביבת-אגנוסטי (שלב 3)
+'use strict';
+
+/**
+ * מטרה: זהות נכס/גופן יציבה ודטרמיניסטית מהתוכן (content-addressed) — **בלי
+ * תלות ב-Node crypto** (ה-Worker בדפדפן) ובלי מודולים חיצוניים.
+ * ב-Node, כש-crypto זמין, נעשה שימוש בו (מהיר יותר) — הפלט זהה ביט-לביט
+ * למימוש הטהור (נעול בבדיקות שלב 3: hash256-vs-crypto).
+ */
+
+const K = new Uint32Array([
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+]);
+
+function rotr(x, n) { return ((x >>> n) | (x << (32 - n))) >>> 0; }
+
+/** sha256Hex(bytes) — הקס של 64 תווים. bytes: Uint8Array/Buffer/Array-like/string (UTF-8). */
+function sha256Hex(bytes) {
+  // קלט מחרוזת — קידוד UTF-8 מפורש (מונע המרה שקטה לאפסים)
+  if (typeof bytes === 'string') {
+    bytes = typeof TextEncoder !== 'undefined' ? new TextEncoder().encode(bytes) : Buffer.from(bytes, 'utf8');
+  }
+  // Node fast-path — פלט זהה ביט-לביט (נעול בבדיקה)
+  if (typeof require === 'function') {
+    try {
+      const crypto = require('crypto');
+      if (crypto && crypto.createHash) return crypto.createHash('sha256').update(bytes).digest('hex');
+    } catch (_) { /* דפדפן/bundle — המימוש הטהור להלן */ }
+  }
+
+  const b = bytes;
+  const len = b.length;
+  // פדינג: 0x80, אפסים, ואורך-ביטים בן 64 ביט בסוף. מספר הבלוקים = מספר שלם.
+  const bitLenHi = Math.floor(len / 0x20000000);
+  const bitLenLo = (len << 3) >>> 0;
+  const totalLen = (((len + 9) + 63) & ~63);
+  const padded = new Uint8Array(totalLen);
+  if (len) padded.set(b.subarray ? b.subarray(0, len) : Array.prototype.slice.call(b, 0, len), 0);
+  padded[len] = 0x80;
+  const dv = new DataView(padded.buffer);
+  dv.setUint32(totalLen - 8, bitLenHi, false);
+  dv.setUint32(totalLen - 4, bitLenLo, false);
+
+  const H = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
+  const w = new Uint32Array(64);
+  for (let block = 0; block < totalLen; block += 64) {
+    for (let t = 0; t < 16; t++) w[t] = dv.getUint32(block + t * 4, false);
+    for (let t = 16; t < 64; t++) {
+      const s0 = rotr(w[t - 15], 7) ^ rotr(w[t - 15], 18) ^ (w[t - 15] >>> 3);
+      const s1 = rotr(w[t - 2], 17) ^ rotr(w[t - 2], 19) ^ (w[t - 2] >>> 10);
+      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) >>> 0;
+    }
+    let a = H[0], b2 = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+    for (let t = 0; t < 64; t++) {
+      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+      const ch = (e & f) ^ (~e & g);
+      const t1 = (h + S1 + ch + K[t] + w[t]) >>> 0;
+      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+      const mj = (a & b2) ^ (a & c) ^ (b2 & c);
+      const t2 = (S0 + mj) >>> 0;
+      h = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b2; b2 = a; a = (t1 + t2) >>> 0;
+    }
+    H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + b2) >>> 0; H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0;
+    H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0; H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;
+  }
+  let hex = '';
+  for (let i = 0; i < 8; i++) hex += H[i].toString(16).padStart(8, '0');
+  return hex;
+}
+
+module.exports = { sha256Hex };
+
+};
 __modules["src/engine/typography/kp-linebreak.js"] = function (require, module, exports) {
 // src/engine/typography/kp-linebreak.js — Knuth-Plass optimal line breaking (REQ-LB-02/03/07)
 'use strict';
@@ -17336,6 +17555,8 @@ const fm = require('./font-metrics');
 /** רשומות ה-resolver: fontId → record; alias (שם משפחה) → fontId. */
 const _fonts = new Map();
 const _aliases = new Map();
+/** מנעול סנכרון ניקוי דו-כיווני font-resolver ↔ measure-api (מונע נצנוץ). */
+let _clearSync = false;
 
 /**
  * רישום גופן קנוני — בתים אמיתיים + כינוי.
@@ -17385,7 +17606,9 @@ function registerFont(alias, bytes, meta = {}) {
     // (ליתור forFamily/resolveMeasureImpl) — בלי פירוח חורג (מנוע מחזור טעינה: require עצם בזמן הקריאה).
     try {
       const ma = require('./measure-api');
-      ma.restoreFontRegistration(alias, parsed.font);
+      // **תיקון ביקורת PR #22:** מועברים גם הבתים — כדי שזהות התוכן של הרישום
+      // תישמר במדווק גם בצד measure-api (חית סביבה ומפתח מטמון).
+      ma.restoreFontRegistration(alias, parsed.font, bytes);
     } catch (_) { /* measure-api טעון לא נטען (מחזור) — הרישום יושלם בטעינתו */ }
   }
   return { ok: true, fontId, record, isNew };
@@ -17446,95 +17669,50 @@ function fontIdOfAlias(alias) {
   return _aliases.get(String(alias)) || null;
 }
 
-function clearFontResolver() { _fonts.clear(); _aliases.clear(); }
+/** **תיקון ביקורת PR #22 (סנכרון ניקוי):** ניקוי ה-resolver מסונכרן גם למרשמות
+ * measure-api — אין מצב שבו ה-resolver נקי אך המדידה עדיין מודדת דרך רישום ישן, ולהפך
+ * (clearRegisteredFonts מסונכרן בחזרה). המנעול מונע נצנוץ אינסופי. */
+function clearFontResolver() {
+  _fonts.clear();
+  _aliases.clear();
+  if (_clearSync) return;
+  _clearSync = true;
+  try {
+    const ma = require('./measure-api');
+    ma.clearRegisteredFonts();
+  } catch (_) { /* measure-api לא נטען — אין מה לסנכרן */ }
+  finally { _clearSync = false; }
+}
+
+/** **תיקון ביקורת PR #22:** הסרת כינוי בודד — מסונכרנת גם למרשמות measure-api
+ * (unregisterFont שם). רשומת הגופן נשארת כל עוד יש לה כינויים אחרים (אותה זהות
+ * תוכן תחת כמה כינויים היא מצב חוקי). */
+function unregisterAlias(alias) {
+  const a = String(alias);
+  const fontId = _aliases.get(a);
+  if (fontId == null) return { ok: false, code: 'unknown-alias', alias: a };
+  _aliases.delete(a);
+  const rec = _fonts.get(fontId);
+  if (rec) {
+    rec.aliases = rec.aliases.filter((x) => x !== a);
+    if (!rec.aliases.length) _fonts.delete(fontId); // אין עוד כינוי — הרשומה מתפנה
+  }
+  if (_clearSync) return { ok: true, removed: a, fontId };
+  _clearSync = true;
+  try {
+    const ma = require('./measure-api');
+    ma.unregisterFont(a);
+  } catch (_) { /* measure-api לא נטען */ }
+  finally { _clearSync = false; }
+  return { ok: true, removed: a, fontId };
+}
 function fontCount() { return _fonts.size; }
 function aliasCount() { return _aliases.size; }
 
 module.exports = {
   registerFont, resolveFont, resolveFontById, fontOf, fontIdOfAlias,
-  clearFontResolver, fontCount, aliasCount
+  clearFontResolver, unregisterAlias, fontCount, aliasCount
 };
-
-};
-__modules["src/engine/assets/hash256.js"] = function (require, module, exports) {
-// src/engine/assets/hash256.js — SHA-256 על בתים, סביבת-אגנוסטי (שלב 3)
-'use strict';
-
-/**
- * מטרה: זהות נכס/גופן יציבה ודטרמיניסטית מהתוכן (content-addressed) — **בלי
- * תלות ב-Node crypto** (ה-Worker בדפדפן) ובלי מודולים חיצוניים.
- * ב-Node, כש-crypto זמין, נעשה שימוש בו (מהיר יותר) — הפלט זהה ביט-לביט
- * למימוש הטהור (נעול בבדיקות שלב 3: hash256-vs-crypto).
- */
-
-const K = new Uint32Array([
-  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
-]);
-
-function rotr(x, n) { return ((x >>> n) | (x << (32 - n))) >>> 0; }
-
-/** sha256Hex(bytes) — הקס של 64 תווים. bytes: Uint8Array/Buffer/Array-like/string (UTF-8). */
-function sha256Hex(bytes) {
-  // קלט מחרוזת — קידוד UTF-8 מפורש (מונע המרה שקטה לאפסים)
-  if (typeof bytes === 'string') {
-    bytes = typeof TextEncoder !== 'undefined' ? new TextEncoder().encode(bytes) : Buffer.from(bytes, 'utf8');
-  }
-  // Node fast-path — פלט זהה ביט-לביט (נעול בבדיקה)
-  if (typeof require === 'function') {
-    try {
-      const crypto = require('crypto');
-      if (crypto && crypto.createHash) return crypto.createHash('sha256').update(bytes).digest('hex');
-    } catch (_) { /* דפדפן/bundle — המימוש הטהור להלן */ }
-  }
-
-  const b = bytes;
-  const len = b.length;
-  // פדינג: 0x80, אפסים, ואורך-ביטים בן 64 ביט בסוף. מספר הבלוקים = מספר שלם.
-  const bitLenHi = Math.floor(len / 0x20000000);
-  const bitLenLo = (len << 3) >>> 0;
-  const totalLen = (((len + 9) + 63) & ~63);
-  const padded = new Uint8Array(totalLen);
-  if (len) padded.set(b.subarray ? b.subarray(0, len) : Array.prototype.slice.call(b, 0, len), 0);
-  padded[len] = 0x80;
-  const dv = new DataView(padded.buffer);
-  dv.setUint32(totalLen - 8, bitLenHi, false);
-  dv.setUint32(totalLen - 4, bitLenLo, false);
-
-  const H = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
-  const w = new Uint32Array(64);
-  for (let block = 0; block < totalLen; block += 64) {
-    for (let t = 0; t < 16; t++) w[t] = dv.getUint32(block + t * 4, false);
-    for (let t = 16; t < 64; t++) {
-      const s0 = rotr(w[t - 15], 7) ^ rotr(w[t - 15], 18) ^ (w[t - 15] >>> 3);
-      const s1 = rotr(w[t - 2], 17) ^ rotr(w[t - 2], 19) ^ (w[t - 2] >>> 10);
-      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) >>> 0;
-    }
-    let a = H[0], b2 = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
-    for (let t = 0; t < 64; t++) {
-      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
-      const ch = (e & f) ^ (~e & g);
-      const t1 = (h + S1 + ch + K[t] + w[t]) >>> 0;
-      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
-      const mj = (a & b2) ^ (a & c) ^ (b2 & c);
-      const t2 = (S0 + mj) >>> 0;
-      h = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b2; b2 = a; a = (t1 + t2) >>> 0;
-    }
-    H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + b2) >>> 0; H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0;
-    H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0; H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;
-  }
-  let hex = '';
-  for (let i = 0; i < 8; i++) hex += H[i].toString(16).padStart(8, '0');
-  return hex;
-}
-
-module.exports = { sha256Hex };
 
 };
 __modules["src/engine/core/events.js"] = function (require, module, exports) {
@@ -20334,17 +20512,39 @@ class WorkerEngineClient {
 
   /**
    * בקשת עימוד. בקשה חדשה בזמן עבודה פעילה מבטלת את הקודמת (single-flight).
-   * @returns {{promise:Promise<object>, jobId:string, cancel:()=>void}}
+   * **שלב 3 (§3.1-2 — תיקון ביקורת PR #22, חיבור אמיתי לזרימה):** נכסי המסמך
+   * עוברים כאן ל-transport מוגדר (serializeForTransport — מזהים כתובות-תוכן
+   * + בתים בלבד, בלי נתיבים מקומיים). מקובל AssetResolver חי, או אובייקט
+   * transport מוכן ({schema:'asset-transport-v1', assets}). חריגת תקרת העברה
+   * (ברירת מחדל 64MB ב-resolver) או transport פגום — דחייה מפורשת לפני המשלוח.
+   * @param {{text:string, settings:object, onProgress?:Function, assets?:(object|AssetResolver|null)}} req
+   * @returns {{promise:Promise<object>, jobId:string|null, cancel:()=>void}}
    */
-  requestTypeset({ text, settings, onProgress }) {
+  requestTypeset({ text, settings, onProgress, assets }) {
     if (this.activeJob) this.cancel();
     this._maybeReplayRegistrations(); // **S70 (R8-M2):** רישום חוזר לפני העימוד אחרי respawn
+    let assetsTransport = null;
+    if (assets) {
+      if (typeof assets.serializeForTransport === 'function') {
+        const ser = assets.serializeForTransport();
+        if (!ser || ser.ok !== true) {
+          const err = new Error(`typeset: asset transport rejected: ${(ser && (ser.code || ser.message)) || 'serialization-failed'}`);
+          return { promise: Promise.reject(err), jobId: null, cancel: () => {} };
+        }
+        assetsTransport = ser;
+      } else if (assets.schema === 'asset-transport-v1' && Array.isArray(assets.assets)) {
+        assetsTransport = assets; // transport מוכן — ה-Worker יאמת אינטגרציה בקבלה
+      } else {
+        const err = new Error('typeset: assets must be an AssetResolver or an asset-transport-v1 object');
+        return { promise: Promise.reject(err), jobId: null, cancel: () => {} };
+      }
+    }
     const jobId = `job-${Date.now().toString(36)}-${++jobSeq}`;
     let resolve, reject;
     const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
     const job = { jobId, resolve, reject, onProgress: onProgress || null, cancelled: false };
     this.activeJob = job;
-    this.transport.post({ type: 'typeset-request', jobId, text, settings });
+    this.transport.post({ type: 'typeset-request', jobId, text, settings, assets: assetsTransport });
     return { promise, jobId, cancel: () => this.cancel() };
   }
 

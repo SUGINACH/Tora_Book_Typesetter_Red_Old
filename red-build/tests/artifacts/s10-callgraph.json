@@ -34,7 +34,7 @@
       "file": "engine-worker-main.js",
       "fn": "onMessage",
       "callee": "typeset",
-      "line": 68
+      "line": 89
     },
     {
       "file": "worker-client.js",
