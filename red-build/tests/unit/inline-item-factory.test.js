@@ -167,6 +167,43 @@ test('invalid custom payload is rejected before its measurement adapter runs', (
   }
 });
 
+test('measurement cannot rewrite custom item identity or its layout key', () => {
+  const unregister = registerInlineItemType('identity-locked-item', {
+    measure: () => ({
+      id:'forged-id',
+      layoutKey:'forged-layout-key',
+      sourceText:'forged-source',
+      sourceStart:90,
+      sourceEnd:99,
+      widthPx:31,
+      heightPx:19
+    }),
+    dom: () => null,
+    pdf: () => []
+  });
+  try {
+    const result = createMeasuredInlineItems([
+      {
+        kind:'identity-locked-item',
+        id:'item:chapter-4',
+        layoutKey:'chapter-4:badge-v1',
+        sourceText:'⟦badge:chapter-4⟧',
+        sourceStart:12,
+        sourceEnd:31,
+        payload:{chapter:4}
+      }
+    ], { measureText:measure });
+    const item = result.items[0];
+    assert.equal(item.id,'item:chapter-4');
+    assert.equal(item.layoutKey,'chapter-4:badge-v1');
+    assert.equal(item.sourceText,'⟦badge:chapter-4⟧');
+    assert.deepEqual([item.sourceStart,item.sourceEnd],[12,31]);
+    assert.deepEqual([item.widthPx,item.heightPx],[31,19]);
+  } finally {
+    unregister();
+  }
+});
+
 test('invalid measured widths and incomplete custom items are rejected explicitly', () => {
   assert.throws(()=>createMeasuredInlineItems([{kind:'text',text:'x'}],{
     measureText:()=>NaN
