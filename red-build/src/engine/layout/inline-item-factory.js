@@ -233,11 +233,15 @@ function createMeasuredInlineItems(runs, options = {}) {
     if (typeof run.kind !== 'string' || !run.kind.trim() || run.id == null) {
       throw new TypeError('inline-item-factory: custom item kinds require kind and stable id');
     }
+    // Invalid plugin payloads must never reach a measurement callback.
+    // Validate semantic input first, then validate the measured result again
+    // before admitting its dimensions to the shared line solver.
+    validateInlineItem(run, { stage: 'before-measure', options });
     const measured = measureInlineItem(run, {
       ...options,
       stage: 'measure'
     });
-    validateInlineItem(measured, { stage: 'measure', options });
+    validateInlineItem(measured, { stage: 'after-measure', options });
     items.push({
       ...measured,
       kind: run.kind,
