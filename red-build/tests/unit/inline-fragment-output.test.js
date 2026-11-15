@@ -133,8 +133,13 @@ test('one registration supplies both DOM and PDF adapters for a custom item type
     ]};
     const projected=projectLine(line,0,0,100,settings,new MeasureAPI(settings),'right');
     const element=renderLine(projected,doc,settings);
-    assert.equal(element.children[0].tagName,'canvas');
-    assert.equal(element.children[0].dataset.value,'book:1');
+    const wrapper=element.children[0];
+    assert.equal(wrapper.tagName,'span');
+    assert(wrapper.className.includes('inline-item--custom'));
+    assert.equal(wrapper.style.width,'24px');
+    assert.equal(wrapper.style.height,'24px');
+    assert.equal(wrapper.children[0].tagName,'canvas');
+    assert.equal(wrapper.children[0].dataset.value,'book:1');
   }finally{unregister();}
 });
 
