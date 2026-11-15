@@ -186,6 +186,7 @@ test('registered custom item syntax becomes one canonical run and is excluded fr
         consumed: match[0].length,
         item: {
           kind:'badge', id:'badge:' + label, layoutKey:label,
+          sourceText:'plugin-must-not-replace-source-identity',
           widthPx:36, heightPx:18, payload:{label}
         }
       };
@@ -213,6 +214,32 @@ test('registered custom item syntax becomes one canonical run and is excluded fr
     assert.equal(paragraph.notes[0].runs.some(run=>run.kind==='badge'),false);
   } finally {
     unregister();
+  }
+});
+
+test('overlapping custom parsers fail deterministically instead of depending on registration order', () => {
+  const make = kind => ({
+    parse(source, index) {
+      const match = source.slice(index).match(/^<<item:([^>]+)>>/u);
+      if (!match) return null;
+      return {
+        consumed:match[0].length,
+        item:{kind,id:kind + ':' + match[1],payload:{value:match[1]}}
+      };
+    },
+    dom:()=>null,
+    pdf:()=>[]
+  });
+  const unregisterZ = registerInlineItemType('ambiguous-zeta', make('ambiguous-zeta'));
+  const unregisterA = registerInlineItemType('ambiguous-alpha', make('ambiguous-alpha'));
+  try {
+    assert.throws(
+      () => parseInlineRuns('לפני <<item:value>> אחרי'),
+      /ambiguous parser match.*ambiguous-alpha, ambiguous-zeta/
+    );
+  } finally {
+    unregisterA();
+    unregisterZ();
   }
 });
 
