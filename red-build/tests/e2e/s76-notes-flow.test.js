@@ -203,15 +203,17 @@ describe('S76 — נייטרליות legacy מלאה (התיקונים ב-body-f
     const { generateTestDocument } = require('../../src/ui/test-doc-generator');
     const text = generateTestDocument({ mode: 'fixed' });
     const r = legacyTypeset(text, { ...imudSettings(), 'fn-placement-mode': 'legacy' }, {});
-    assert(r.layoutHash.startsWith('legacy-3ce387962aa20101'),
-      `legacy אינו נייטרלי — התקבל ${r.layoutHash.slice(0, 20)} (צפוי נעילת S74)`);
+    // **R-03 (יובא מ-Red PR #48):** נעילה מחודשת legacy-3ce38→legacy-1231b — התיקון של דגלי הסוגריים של מילות-סמן חל גם על מצב legacy (שינוי מדידה נכון, מתוצא ב-PR הנייחות). הקודם: legacy-3ce387962aa20101.
+    assert(r.layoutHash.startsWith('legacy-1231b1b7e15cb'),
+      `legacy אינו נייטרלי — התקבל ${r.layoutHash.slice(0, 20)} (צפוי נעילת S74+R-03)`);
   });
 
   it('body-first במסמך הבדיקה הקבוע: ההאש החדש של S76 (שינוי מכוון, מתועד ב-s72)', () => {
     const { generateTestDocument } = require('../../src/ui/test-doc-generator');
     const text = generateTestDocument({ mode: 'fixed' });
     const r = legacyTypeset(text, imudSettings(), {});
-    assert(r.layoutHash.startsWith('legacy-6a06e3108c8ec'),
+    // **R-03:** נעילה מחודשת legacy-6a06e→legacy-a0946 (תיקון שורש מתוצא ב-PR הנייחות). הקודם: legacy-6a06e3108c8eca9b.
+    assert(r.layoutHash.startsWith('legacy-a0946f99c7c19'),
       `body-first נעול על ההאש החדש — התקבל ${r.layoutHash.slice(0, 20)}`);
     assertEq(r.contentPreserved, true, 'שימור תוכן');
   });
