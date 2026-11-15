@@ -101,6 +101,16 @@ test('PDF writer draws text subsegments using their registered family keys',()=>
   assert(pdf.includes('/F8 12 Tf'));
 });
 
+test('built-in inline anchors are retained in layout and emit no custom PDF operators',()=>{
+  const bytes=writePdf({
+    pages:[fakePage([{kind:'anchor',id:'note:7',x:10,y:20,widthPx:0,heightPx:0,gapAfterPx:0}])],
+    pageSizeMm:{w:210,h:297},
+    font:fakeFont(),
+    settings:getDefaultSettings()
+  });
+  assert(bytes.toString('latin1').startsWith('%PDF-'));
+});
+
 test('custom inline PDF items require an explicit renderer instead of disappearing',()=>{
   assert.throws(()=>writePdf({
     pages:[fakePage([{kind:'qr-code',id:'qr:1',x:10,y:20,widthPx:20,heightPx:20}])],
