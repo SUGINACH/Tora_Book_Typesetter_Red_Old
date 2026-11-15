@@ -3513,6 +3513,7 @@ function measureInlineItem(item, context = {}) {
     ...measured,
     kind: item.kind,
     id: item.id,
+    layoutKey: item.layoutKey,
     sourceText: item.sourceText,
     sourceStart: item.sourceStart,
     sourceEnd: item.sourceEnd
@@ -16537,10 +16538,37 @@ function renderLine(ln, doc, settings = {}) {
     }
   }
   if (Array.isArray(ln.fragments)) {
-    for (const fragment of ln.fragments) {
+    // Fragments already contain measured inter-item glue. DOM must consume
+    // the exact same gaps as geometry-projector/PDF; relying on CSS whitespace
+    // here would introduce a second, font-dependent spacing calculation.
+    const fragments = ln.fragments;
+    const styleAlign = ln.customStyle && ln.customStyle.styleSpec
+      ? ln.customStyle.styleSpec.align
+      : null;
+    const lastMode = String(settings['body-last-line-align'] || 'center');
+    const inlineAlign = ln.kind === 'heading' ? 'center'
+      : styleAlign === 'stretch' || styleAlign === 'justify' ? 'justify'
+        : styleAlign === 'right' || styleAlign === 'left' || styleAlign === 'center' ? styleAlign
+          : ln.isLast ? (lastMode === 'stretch' ? 'justify' : lastMode) : 'justify';
+    const naturalWidth = fragments.reduce((sum, fragment) =>
+      sum + Number(fragment.widthPx || 0) + Number(fragment.gapAfterPx || 0), 0);
+    const gapCount = fragments.reduce((count, fragment) =>
+      count + (Number(fragment.gapAfterPx || 0) > 0 ? 1 : 0), 0);
+    const remainingWidth = Number.isFinite(ln.measureW)
+      ? Math.max(0, ln.measureW - naturalWidth)
+      : 0;
+    const justifyGap = inlineAlign === 'justify' && gapCount > 0
+      ? remainingWidth / gapCount
+      : 0;
+
+    for (const fragment of fragments) {
+      const naturalGap = Math.max(0, Number(fragment.gapAfterPx || 0));
+      const renderedGap = naturalGap + (naturalGap > 0 ? justifyGap : 0);
+      const gapStyle = renderedGap > 0 ? String(Math.round(renderedGap * 1000) / 1000) + 'px' : '';
       if (fragment.kind === 'text') {
         const word = doc.createElement('span');
         word.className = 'w';
+        if (gapStyle) word.style.marginLeft = gapStyle;
         if (fragment.id != null) word.dataset.inlineId = String(fragment.id);
         if (Array.isArray(fragment.segments) && fragment.segments.length) {
           for (const segment of fragment.segments) {
@@ -16558,9 +16586,24 @@ function renderLine(ln, doc, settings = {}) {
         continue;
       }
 
+      if (fragment.kind === 'anchor') {
+        const anchor = doc.createElement('span');
+        anchor.className = 'inline-anchor';
+        if (gapStyle) anchor.style.marginLeft = gapStyle;
+        anchor.setAttribute('aria-hidden', 'true');
+        if (fragment.id != null) anchor.dataset.inlineId = String(fragment.id);
+        anchor.style.display = 'inline-block';
+        anchor.style.width = String(fragment.widthPx) + 'px';
+        anchor.style.height = String(fragment.heightPx) + 'px';
+        anchor.style.verticalAlign = 'middle';
+        el.appendChild(anchor);
+        continue;
+      }
+
       if (fragment.kind === 'image') {
         const image = doc.createElement('img');
         image.className = 'inline-image';
+        if (gapStyle) image.style.marginLeft = gapStyle;
         image.alt = fragment.alt || fragment.resourcePath || '';
         image.draggable = false;
         image.style.display = 'inline-block';
@@ -16581,21 +16624,33 @@ function renderLine(ln, doc, settings = {}) {
       }
 
       const customRenderer = getInlineItemRenderer(fragment.kind, 'dom');
-      const customNode = customRenderer ? customRenderer(fragment, doc, settings) : null;
+      if (!customRenderer) {
+        throw new Error('dom-renderer: no DOM renderer registered for inline item kind ' + fragment.kind);
+      }
+      const customNode = customRenderer(fragment, doc, settings);
+      if (!customNode || typeof customNode !== 'object') {
+        throw new TypeError('dom-renderer: custom inline renderer must return a DOM node for ' + fragment.kind);
+      }
       // The measured rectangle is the layout contract. A renderer supplies
-      // content only; it cannot silently replace the dimensions reserved by
-      // Knuth–Plass or diverge from the PDF projector.
+      // content only; the wrapper clips overflow and fixes the reserved box.
       const wrapper = doc.createElement('span');
       wrapper.className = 'inline-item inline-item--custom';
       wrapper.dataset.inlineKind = fragment.kind;
       if (fragment.id != null) wrapper.dataset.inlineId = String(fragment.id);
       wrapper.style.display = 'inline-block';
+      if (gapStyle) wrapper.style.marginLeft = gapStyle;
       wrapper.style.boxSizing = 'border-box';
       wrapper.style.width = String(fragment.widthPx) + 'px';
       wrapper.style.height = String(fragment.heightPx) + 'px';
       wrapper.style.verticalAlign = 'middle';
       wrapper.style.position = 'relative';
-      if (customNode) wrapper.appendChild(customNode);
+      wrapper.style.overflow = 'hidden';
+      if (customNode.style) {
+        customNode.style.maxWidth = '100%';
+        customNode.style.maxHeight = '100%';
+        customNode.style.boxSizing = 'border-box';
+      }
+      wrapper.appendChild(customNode);
       el.appendChild(wrapper);
     }
   } else {
@@ -21203,6 +21258,9 @@ function writePdf(opts) {
               }
             } else if (fragment.kind === 'image') {
               emitImage(fragment);
+            } else if (fragment.kind === 'anchor') {
+              // Semantic placement metadata has no visible ink or PDF operator.
+              continue;
             } else {
               const renderer = getInlineItemRenderer(fragment.kind, 'pdf');
               if (!renderer) throw new Error('pdf-writer: no PDF renderer registered for inline item kind ' + fragment.kind);
