@@ -1,0 +1,5 @@
+
+> tora-book-typesetter-red@0.1.0 test:determinism
+> node -e "const{typeset}=require('./src/engine/core/pipeline');const{getDefaultSettings}=require('./src/engine/core/settings-registry');const fs=require('fs');const t=fs.readFileSync('tests/fixtures/canonical_corpus.txt','utf8');const a=typeset(t,getDefaultSettings());const b=typeset(t,getDefaultSettings());if(a.layoutHash!==b.layoutHash){console.error('NON-DETERMINISTIC');process.exit(1)}console.log('deterministic OK',a.layoutHash.slice(0,16),'pages:',a.pages.length)"
+
+deterministic OK 80f9ed6c82ea3855 pages: 36
