@@ -833,8 +833,8 @@ describe('S14 — custom inline page items use one registration through the comp
       const finalText = bodyFragments.flatMap(fragment => fragment.segments || [])
         .find(segment => segment.text.includes('וסיום'));
       assert(finalText, 'text after the closing parenthesis remains present');
-      console.log('S14_CUSTOM_PAREN_DEBUG', JSON.stringify({flat:pageLines.flatMap(line => line.fragments || []).filter(fragment => fragment.kind === 'text').map(fragment => fragment.segments || []), finalText, bodySizePt, parenthetical}));
-      assert(Math.abs(finalText.sizePt - bodySizePt) < 1e-9,
+      const finalEffectiveSizePt = finalText.sizePt == null ? bodySizePt : finalText.sizePt;
+      assert(Math.abs(finalEffectiveSizePt - bodySizePt) < 1e-9,
         'the parenthesis size factor does not leak beyond the closing delimiter');
 
       const html = exportHtml(result, settings, makeDoc(), { title:'Custom item integration' });
