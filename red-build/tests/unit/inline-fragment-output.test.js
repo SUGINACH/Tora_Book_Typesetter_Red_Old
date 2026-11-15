@@ -116,6 +116,28 @@ test('DOM renderer keeps inline font subsegments and renders an image from local
   assert.equal(image.style.height,'54px');
 });
 
+test('built-in inline anchors survive DOM projection without a custom renderer',()=>{
+  const settings=getDefaultSettings();
+  const line={kind:'paragraph',heightPx:18,isLast:true,fragments:[
+    {kind:'anchor',id:'footnote:7',widthPx:0,heightPx:0,gapAfterPx:0,sourceStart:4,sourceEnd:4}
+  ]};
+  const projected=projectLine(line,0,0,100,settings,new MeasureAPI(settings),'right');
+  const element=renderLine(projected,doc,settings);
+  assert.equal(element.children.length,1);
+  assert.equal(element.children[0].className,'inline-anchor');
+  assert.equal(element.children[0].dataset.inlineId,'footnote:7');
+  assert.equal(element.children[0].style.width,'0px');
+});
+
+test('unregistered custom fragments fail in DOM instead of producing empty measured boxes',()=>{
+  const settings=getDefaultSettings();
+  const line={kind:'paragraph',heightPx:18,isLast:true,fragments:[
+    {kind:'unregistered-widget',id:'widget:1',widthPx:20,heightPx:18,gapAfterPx:0}
+  ]};
+  const projected=projectLine(line,0,0,100,settings,new MeasureAPI(settings),'right');
+  assert.throws(()=>renderLine(projected,doc,settings),/no DOM renderer registered/);
+});
+
 test('one registration supplies both DOM and PDF adapters for a custom item type',()=>{
   const settings=getDefaultSettings();
   const unregister=registerInlineItemType('qr-code',{
@@ -138,6 +160,7 @@ test('one registration supplies both DOM and PDF adapters for a custom item type
     assert(wrapper.className.includes('inline-item--custom'));
     assert.equal(wrapper.style.width,'24px');
     assert.equal(wrapper.style.height,'24px');
+    assert.equal(wrapper.style.overflow,'hidden');
     assert.equal(wrapper.children[0].tagName,'canvas');
     assert.equal(wrapper.children[0].dataset.value,'book:1');
   }finally{unregister();}
