@@ -140,11 +140,12 @@ function createStyledInlineRuns(parts, options = {}) {
     for (const run of (part.runs || [])) {
       if (!run || typeof run !== 'object') continue;
       if (run.kind !== 'text') {
-        // Images and registered custom page items already carry their own
-        // identity/payload. Their source command contributes to source offsets
-        // but is not emitted as printable text.
+        // The flat text projection retains image markers until their asset is
+        // resolved, so images advance this offset by their source marker length.
+        // Registered custom items are zero-width in that projection: their
+        // source syntax is identity metadata, not printable text or span input.
         result.push(run);
-        flatOffset += String(run.sourceText || '').length;
+        if (run.kind === 'image') flatOffset += String(run.sourceText || '').length;
         continue;
       }
 
