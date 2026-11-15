@@ -89,10 +89,18 @@ function createEngineWorkerMain(post) {
     if (msg.type === 'export-request') { handleExportRequest(msg, post); return; }
     const jobId = msg.jobId;
     try {
+      // **שלב 3 (§3.1-2):** נכסי מסמך שהועברו בפרוטוקול — נבנים ל-AssetResolver בצד ה-Worker
+      // (זהות תוכן משוחזרת; אין גישש למערכת הקבצים ואין נתיבים מקומיים).
+      let docAssets = null;
+      if (msg.assets && msg.assets.schema === 'asset-transport-v1' && Array.isArray(msg.assets.assets) && msg.assets.assets.length) {
+        const { AssetResolver } = require('../engine/assets/asset-resolver');
+        docAssets = AssetResolver.fromTransport(msg.assets);
+      }
       const result = typeset(msg.text, msg.settings, {
         onProgress: (info) => {
           if (!cancelledJobs.has(jobId)) post(progressMessage(jobId, info));
-        }
+        },
+        assets: docAssets
       });
       if (cancelledJobs.has(jobId)) {
         cancelledJobs.delete(jobId); // העבודה בוטלה — התוצאה נזרקת בזמן שנותרה מסומנת

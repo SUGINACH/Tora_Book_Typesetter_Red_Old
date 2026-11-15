@@ -25,6 +25,15 @@ const ITEM_KINDS = Object.freeze({
   CUSTOM: 'custom'         // פריט מותאם — חייב רישום ב-registry בלבד
 });
 
+/** \u05de\u05d3\u05d9\u05e0\u05d9\u05d5\u05ea \u05d4\u05e6\u05d1\u05ea \u05ea\u05de\u05d5\u05e0\u05d4 (\u05e9\u05dc\u05d1 3, \u00a73.1-4 \u2014 \u05de\u05d3\u05d9\u05e0\u05d5\u05ea \u05d7\u05d3-\u05de\u05e9\u05de\u05e2\u05d9\u05ea \u05e2\u05dc \u05d0\u05d5\u05ea\u05d5 \u05de\u05e0\u05d5\u05e2 \u05d0\u05d9\u05dc\u05d5\u05e6\u05d9\u05dd; \u05dc\u05d0 \u05de\u05e1\u05dc\u05d5\u05dc\u05d9\u05dd \u05e0\u05e4\u05e8\u05d3\u05d9\u05dd). */
+const IMAGE_PLACEMENT = Object.freeze({
+  INLINE: 'inline',        // \u05d1\u05ea\u05d5\u05da \u05e9\u05d5\u05e8\u05d4 \u2014 \u05e4\u05e8\u05d9\u05d8 \u05d0\u05d8\u05d5\u05de\ \u05d1\u05d6\u05e8\u05d9\u05de\u05ea \u05d4\u05d8\u05e7\u05e1\u05d8
+  BLOCK: 'block',          // \u05d1\u05dc\u05d5\u05e7 \u05de\u05e9\u05d5\u05d8\u05e3 \u2014 \u05d8\u05d5\u05e8 \u05de\u05dc\u05d0, \u05e9\u05d5\u05e8\u05d5\u05ea \u05d2\u05d5\u05e3 \u05dc\u05d0\u05d7\u05e8\u05d9\u05d5
+  CENTERED: 'centered',    // \u05d1\u05dc\u05d5\u05e7 \u05de\u05de\u05d5\u05e8\u05db\u05d6 \u05d1\u05e8\u05d5\u05d7\u05d1 \u05d4\u05e4\u05e1/\u05d4\u05e2\u05de\u05d5\u05d3
+  FLOAT_START: 'float-start', // \u05d6\u05e8\u05d9\u05de\u05ea \u05d8\u05e7\u05e1\u05d8 \u05de\u05e1\u05d1\u05d9\u05d1 \u2014 \u05de\u05d5\u05e6\u05de\u05d3 \u05dc\u05e6\u05d3 \u05d4\u05d4\u05ea\u05d7\u05dc\u05d4 (\u05d1\u05de\u05e1\u05de\u05da RTL: \u05d9\u05de\u05d9\u05df)
+  FLOAT_END: 'float-end'      // \u05de\u05d5\u05e6\u05de\u05d3 \u05dc\u05e6\u05d3 \u05d4\u05e1\u05d9\u05d5\u05dd
+});
+
 /** סוגי נכסים (assetId namespace). */
 const ASSET_KINDS = Object.freeze({
   IMAGE: 'image',
@@ -65,5 +74,4 @@ function isItemKind(kind) {
 
 module.exports = {
   BLOCK_KINDS, ITEM_KINDS, ASSET_KINDS, PARTICIPATION, OVERFLOW_POLICIES, SPLIT_POLICIES,
-  ALL_BLOCK_KINDS, ALL_ITEM_KINDS, isBlockKind, isItemKind
-};
+  ALL_BLOCK_KINDS, ALL_ITEM_KINDS, isBlockKind, isItemKind, IMAGE_PLACEMENT };
