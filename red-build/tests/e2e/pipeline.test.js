@@ -13,6 +13,10 @@ const { getDefaultSettings } = require('../../src/engine/core/settings-registry'
 const { renderPage } = require('../../src/engine/output/dom-renderer');
 const { buildStandaloneHtml, assertOfflineSafe } = require('../../src/engine/output/html-export');
 const { buildReport } = require('../../src/audit/report-schema');
+const { tokenize, normalizeText } = require('../../src/engine/parser/block-tokenizer');
+const { inlineRunsSourceText } = require('../../src/engine/parser/inline-content');
+const { MeasureAPI } = require('../../src/engine/typography/measure-api');
+const { buildPageTemplate, PAGE_TYPES } = require('../../src/engine/layout/page-templates');
 
 // ---------- Minimal deterministic DOM shim (Node-side rendering oracle) ----------
 function makeDoc() {
@@ -113,6 +117,56 @@ describe('e2e-pipeline', () => {
     } finally {
       clearRegisteredFonts();
     }
+  });
+
+  it('S14 shadow audit: every eligible canonical paragraph has identical legacy and measured line breaks', () => {
+    const settings = getDefaultSettings();
+    const source = fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'canonical_corpus.txt'), 'utf8');
+    const tokens = tokenize(source);
+    const api = new MeasureAPI(settings);
+    const template = buildPageTemplate(PAGE_TYPES.REGULAR, settings, true);
+    const columnWidth = Math.max(...template.columns.map(column => column.w));
+    const sizePt = Number(settings['body-font-size-pt']);
+    const runts = settings['runt-min-width-pct'];
+    let compared = 0;
+    const mismatches = [];
+
+    for (const token of tokens) {
+      if (token.type !== 'paragraph' || !token.inlineContent
+        || token.inlineContent.parts.length !== 1
+        || token.inlineContent.parts[0].kind !== 'text'
+        || (token.inlineContent.parts[0].runs || []).some(run =>
+          run.kind !== 'text' || run.fontFamily
+        )) continue;
+
+      const text = inlineRunsSourceText(token.inlineContent.parts[0].runs);
+      if (!text.trim() || /[()]/.test(text)) continue;
+      const words = normalizeText(text).split(/\\s+/u).filter(Boolean);
+      if (!words.length) continue;
+
+      const legacy = api.layoutLines(words, columnWidth, null, { runts });
+      const measured = api.layoutInlineRuns(
+        [{ kind:'text', text }],
+        columnWidth,
+        { sizePt, lineHeightPx:api.lineHeightPx(sizePt), runts }
+      );
+      compared++;
+      const legacyLines = legacy.map(line => (line.words || []).join(' '));
+      const measuredLines = measured.ok ? measured.lines.map(line => (line.words || []).join(' ')) : null;
+      if (!measured.ok || JSON.stringify(legacyLines) !== JSON.stringify(measuredLines)) {
+        mismatches.push({
+          tokenId:token.id,
+          reason:measured.ok ? 'line-break-mismatch' : measured.reason,
+          legacy:legacyLines.slice(0,8),
+          measured:measuredLines && measuredLines.slice(0,8)
+        });
+      }
+    }
+
+    console.log('S14_INLINE_EQUIVALENCE', JSON.stringify({ compared, mismatchCount:mismatches.length, sample:mismatches.slice(0,5) }));
+    assert(compared >= 20, 'the canonical corpus must exercise at least 20 ordinary body paragraphs');
+    assertEq(mismatches.length, 0,
+      'the shared measured-item solver must preserve every eligible legacy paragraph break before runtime unification');
   });
 
   it('determinism: two runs yield identical layoutHash', () => {
