@@ -20174,28 +20174,41 @@ function projectMeasuredLine(ln, colX, y, colW, settings, align, sizePt) {
       const widthPx = Number(segment.widthPx);
       segmentRight -= widthPx;
       const fontKey = familyFontKeyOf(segment.fontFamily, settings);
+      const effectiveSizePt = segment.sizePt != null
+        ? segment.sizePt
+        : (fragment.sizePt != null ? fragment.sizePt : sizePt);
+      const hasSizeOverride = Number.isFinite(effectiveSizePt)
+        && (!Number.isFinite(sizePt) || Math.abs(effectiveSizePt - sizePt) > 1e-9);
       return {
         ...segment, x: segmentRight, y, widthPx,
-        sizePt: segment.sizePt || fragment.sizePt || sizePt,
+        ...(hasSizeOverride ? { sizePt: effectiveSizePt } : {}),
         ...(fontKey ? { fontKey } : {})
       };
     });
+    const fragmentSizePt = fragment.sizePt != null ? fragment.sizePt : sizePt;
+    const hasFragmentSizeOverride = Number.isFinite(fragmentSizePt)
+      && (!Number.isFinite(sizePt) || Math.abs(fragmentSizePt - sizePt) > 1e-9);
     return {
       ...fragment,
       segments,
-      sizePt: fragment.sizePt || sizePt,
+      ...(hasFragmentSizeOverride ? { sizePt: fragmentSizePt } : {}),
       ...(segments.length === 1 && segments[0].fontKey ? { fontKey: segments[0].fontKey } : {}),
       ...(fragment.color ? {} : (bodyColor ? { color: bodyColor } : {}))
     };
   });
 
-  const words = fragments.filter(fragment => fragment.kind === 'text').map(fragment => ({
-    text: fragment.text, x: fragment.x, w: fragment.widthPx,
-    sizePt: fragment.sizePt || sizePt,
-    ...(fragment.fontKey ? { fontKey: fragment.fontKey } : {}),
-    ...(fragment.color ? { color: fragment.color } : {}),
-    segments: fragment.segments
-  }));
+  const words = fragments.filter(fragment => fragment.kind === 'text').map(fragment => {
+    const wordSizePt = fragment.sizePt != null ? fragment.sizePt : sizePt;
+    const hasSizeOverride = Number.isFinite(wordSizePt)
+      && (!Number.isFinite(sizePt) || Math.abs(wordSizePt - sizePt) > 1e-9);
+    return {
+      text: fragment.text, x: fragment.x, w: fragment.widthPx,
+      ...(hasSizeOverride ? { sizePt: wordSizePt } : {}),
+      ...(fragment.fontKey ? { fontKey: fragment.fontKey } : {}),
+      ...(fragment.color ? { color: fragment.color } : {}),
+      segments: fragment.segments
+    };
+  });
   const heightPx = Math.max(ln.heightPx || 0, ...fragments.map(fragment => fragment.heightPx || 0));
   return {
     x: colX, y, w: colW, h: heightPx * (ln.aqStretch || 1),
