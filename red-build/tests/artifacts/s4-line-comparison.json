@@ -1,0 +1,152 @@
+{
+  "schema": "s4-line-comparison-v1",
+  "corpus": "canonical_corpus.txt",
+  "columnWidthPx": 248.06,
+  "measureImpl": "table (כמו הנתיב החי ללא גופנים רשומים)",
+  "paragraphs": 97,
+  "identicalLineDivision": 89,
+  "differingLineDivision": 8,
+  "paragraphsWithNotes": 8,
+  "summary": "פסקאות טהורות (ללא הערות): 89; פערים בלתי-מוסברים (ללא הערה): 0",
+  "classifications": {
+    "marker-handling": "הבדלי טיפול סמן: P-1 הידוע בנתיב החי (הצמדה מתפרקת) מול הצמדה מבנית במנוע המאוחד + מדידת סמן בגודל רישום לפי חוזה שלב 3 — שינוי מכוון ומתועד"
+  },
+  "diffs": [
+    {
+      "blockId": "blk-59de7cefd7b5a",
+      "hasNote": true,
+      "classification": "marker-handling",
+      "reason": "נתיב חי: הסמן מודבק ב-NBSP אך protectWords מפרק את ההצמדה (P-1 הידוע, תיקון שהוחזר) והסמן נמדד בגודל הגוף; מנוע מאוחד: הסמן פריט אטום מוצמד לעוגנו (BRZ-11) ונמדד בגודל רישום (חוזה שלב 3)",
+      "live": [
+        5,
+        5,
+        5
+      ],
+      "unified": [
+        1,
+        5,
+        6,
+        4
+      ]
+    },
+    {
+      "blockId": "blk-ad365d58289cb",
+      "hasNote": true,
+      "classification": "marker-handling",
+      "reason": "נתיב חי: הסמן מודבק ב-NBSP אך protectWords מפרק את ההצמדה (P-1 הידוע, תיקון שהוחזר) והסמן נמדד בגודל הגוף; מנוע מאוחד: הסמן פריט אטום מוצמד לעוגנו (BRZ-11) ונמדד בגודל רישום (חוזה שלב 3)",
+      "live": [
+        5,
+        5,
+        5
+      ],
+      "unified": [
+        1,
+        5,
+        6,
+        4
+      ]
+    },
+    {
+      "blockId": "blk-dea6ba81261fc",
+      "hasNote": true,
+      "classification": "marker-handling",
+      "reason": "נתיב חי: הסמן מודבק ב-NBSP אך protectWords מפרק את ההצמדה (P-1 הידוע, תיקון שהוחזר) והסמן נמדד בגודל הגוף; מנוע מאוחד: הסמן פריט אטום מוצמד לעוגנו (BRZ-11) ונמדד בגודל רישום (חוזה שלב 3)",
+      "live": [
+        5,
+        5,
+        5
+      ],
+      "unified": [
+        1,
+        5,
+        6,
+        4
+      ]
+    },
+    {
+      "blockId": "blk-a1e6188448c15",
+      "hasNote": true,
+      "classification": "marker-handling",
+      "reason": "נתיב חי: הסמן מודבק ב-NBSP אך protectWords מפרק את ההצמדה (P-1 הידוע, תיקון שהוחזר) והסמן נמדד בגודל הגוף; מנוע מאוחד: הסמן פריט אטום מוצמד לעוגנו (BRZ-11) ונמדד בגודל רישום (חוזה שלב 3)",
+      "live": [
+        5,
+        5,
+        5
+      ],
+      "unified": [
+        1,
+        5,
+        6,
+        4
+      ]
+    },
+    {
+      "blockId": "blk-22f32107bab4a",
+      "hasNote": true,
+      "classification": "marker-handling",
+      "reason": "נתיב חי: הסמן מודבק ב-NBSP אך protectWords מפרק את ההצמדה (P-1 הידוע, תיקון שהוחזר) והסמן נמדד בגודל הגוף; מנוע מאוחד: הסמן פריט אטום מוצמד לעוגנו (BRZ-11) ונמדד בגודל רישום (חוזה שלב 3)",
+      "live": [
+        5,
+        5,
+        5
+      ],
+      "unified": [
+        1,
+        5,
+        6,
+        4
+      ]
+    },
+    {
+      "blockId": "blk-90e244329924c",
+      "hasNote": true,
+      "classification": "marker-handling",
+      "reason": "נתיב חי: הסמן מודבק ב-NBSP אך protectWords מפרק את ההצמדה (P-1 הידוע, תיקון שהוחזר) והסמן נמדד בגודל הגוף; מנוע מאוחד: הסמן פריט אטום מוצמד לעוגנו (BRZ-11) ונמדד בגודל רישום (חוזה שלב 3)",
+      "live": [
+        5,
+        5,
+        5
+      ],
+      "unified": [
+        1,
+        5,
+        6,
+        4
+      ]
+    },
+    {
+      "blockId": "blk-c55573f494fbc",
+      "hasNote": true,
+      "classification": "marker-handling",
+      "reason": "נתיב חי: הסמן מודבק ב-NBSP אך protectWords מפרק את ההצמדה (P-1 הידוע, תיקון שהוחזר) והסמן נמדד בגודל הגוף; מנוע מאוחד: הסמן פריט אטום מוצמד לעוגנו (BRZ-11) ונמדד בגודל רישום (חוזה שלב 3)",
+      "live": [
+        5,
+        5,
+        5
+      ],
+      "unified": [
+        1,
+        5,
+        6,
+        4
+      ]
+    },
+    {
+      "blockId": "blk-c821171430616",
+      "hasNote": true,
+      "classification": "marker-handling",
+      "reason": "נתיב חי: הסמן מודבק ב-NBSP אך protectWords מפרק את ההצמדה (P-1 הידוע, תיקון שהוחזר) והסמן נמדד בגודל הגוף; מנוע מאוחד: הסמן פריט אטום מוצמד לעוגנו (BRZ-11) ונמדד בגודל רישום (חוזה שלב 3)",
+      "live": [
+        5,
+        5,
+        5
+      ],
+      "unified": [
+        1,
+        5,
+        6,
+        4
+      ]
+    }
+  ]
+}

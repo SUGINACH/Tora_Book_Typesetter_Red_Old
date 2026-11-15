@@ -239,4 +239,180 @@ function greedyFallback(items, maxWidthPx, measure, lineHeightPx) {
   return lines;
 }
 
-module.exports = { breakLines, badness, STRETCH_RATIO, SHRINK_RATIO };
+// ═══════════════════════════════════════════════════════════════════════════
+// שלב 4 (§4.1-2/6/9) — breakItemSequence: הזנת הרצף הקנוני ל-Knuth–Plass.
+// **הרחבת המנוע הקיים**, לא breaker חדש: אותם קבועים (STRETCH_RATIO/
+// SHRINK_RATIO/LINE_DEMERIT/RAGGED_END_STRETCH_FACTOR), אותה פונקציית badness,
+// אותו מבנה חיתוכים חוקיים סטטיים — על פריטי LineItem (מדודים מראש דרך
+// measureItem היחיד) במקום words[]. breakLines(words) נשאר לנתיב הקיים עד
+// להשלמת המעבר; שום סוג פריט (תמונה/סמן/פריט מותאם) אינו מקבל breaker משלו.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * breakItemSequence — שבירת רצף LineItem לשורות.
+ * @param {Array<object>} items — רצף מ-buildLineSequences (בלי ה-penalty הסופי; נוסף כאן)
+ * @param {number} maxWidthPx — רוחב הטור/האזור
+ * @param {{runts?:number, raggedEnd?:boolean, lineWidthAt?: (lineIndex:number)=>number}} opts
+ *   lineWidthAt: אילוצי אזור/שורה (§4.1-7 — wrap-around): רוחב אפקטיבי לפי מספר
+ *   השורה (תמונה צפה מקטינה רוחב לשורות שבגובהה). אין מנגנון שבירה שני לטקסט
+ *   שעוקף תמונה — אותו DP, אילוץ אחד.
+ * @returns {{lines:Array<{from:number,to:number,badness:number,reason:string}>, fallback:boolean, diagnostics:Array}}
+ */
+function breakItemSequence(items, maxWidthPx, opts = {}) {
+  const runts = opts.runts != null ? opts.runts : 50;
+  const raggedEnd = opts.raggedEnd !== false;
+  const lineWidthAt = typeof opts.lineWidthAt === 'function' ? opts.lineWidthAt : null;
+  if (!Array.isArray(items) || !items.length) {
+    return { lines: [], fallback: false, diagnostics: [{ code: 'empty-sequence', message: 'breakItemSequence: רצף ריק' }] };
+  }
+  const seq = items.concat([{ role: 'penalty', penaltyType: 'final', cost: 0, measuredAdvance: 0, internal: false, itemId: '#final' }]);
+  const n = seq.length;
+  const cost = new Array(n + 1).fill(INF);
+  const parent = new Array(n + 1).fill(-1);
+  const cutBad = new Array(n + 1).fill(0);
+  const cutReason = new Array(n + 1).fill('');
+  cost[0] = 0;
+  // מספר השורה המשוער לצומת i — לאילוץ רוחב לפי שורה (wrap-around): מספיק קירוב
+  // סדרתי (כל צומת שורה שווה קודם+1); קירוב זה נבדק בבדיקות wrap.
+  const lineOf = new Array(n + 1).fill(0);
+
+  for (let i = 0; i < n; i++) {
+    if (cost[i] === INF) continue;
+    const it = seq[i];
+    if (it.role === 'glue' && !it.internal) {
+      // דלג על glue רגיל בפתיחת שורה (כמו breakLines); glue פנימי של יחידה צמודה — אסור לדלג
+      if (cost[i + 1] > cost[i]) { cost[i + 1] = cost[i]; parent[i + 1] = i; lineOf[i + 1] = lineOf[i]; }
+      continue;
+    }
+    let w = 0, stretch = 0, shrink = 0;
+    for (let j = i; j < n; j++) {
+      const cur = seq[j];
+      if (cur.role === 'box') w += cur.measuredAdvance;
+      else if (cur.role === 'glue') {
+        const g = glueWidths(cur);
+        w += g.width; stretch += g.stretch; shrink += g.shrink;
+      } else if (cur.role === 'penalty') {
+        if (cur.penaltyType === 'forbidden') continue; // בתוך יחידה צמודה — אין חיתוך; ההצברה נמשכת
+        // final — סוף הרצף: צומת n (אותו תיקון שורש של breakLines — לא אינדקס הפריט)
+        const maxW = lineMax(lineWidthAt, lineOf[i], maxWidthPx);
+        const slack = maxW - w;
+        const effStretch = stretch + (raggedEnd ? maxW * RAGGED_END_STRETCH_FACTOR : 0);
+        const ratio = slack >= 0 ? (effStretch > 0 ? slack / effStretch : 0) : (shrink > 0 ? slack / shrink : -2);
+        let b = badness(ratio);
+        if (b < INF && w < maxW * (runts / 100)) b += 60; // עונש runt בשורת הסיום
+        if (b < INF) {
+          const cand = cost[i] + b + LINE_DEMERIT;
+          if (cand < cost[n]) { cost[n] = cand; parent[n] = i; cutBad[n] = b; cutReason[n] = 'final'; }
+        }
+        break;
+      }
+      // מבחן רוחב טבעי שמרני (S5.2 תיקון 3 — כמו breakLines; מילה רחבה מהטור תטופל
+      // בערוץ ה-overflow המפורש של ה-fallback הדטרמיניסטי, עם אבחון — לא בשקט)
+      const maxW = lineMax(lineWidthAt, lineOf[i], maxWidthPx);
+      if (w > maxW - 0.75) break;
+
+      if (cur.role === 'box') {
+        // חיתוך חוקי: אחרי תיבה, כשאחריה glue לא-פנימי ואחריו תיבה (אותו כלל
+        // סטטי של breakLines — מבטל נעילה תלוית-נקודת-התחלה)
+        const cut = j + 1;
+        if (!(seq[cut] && seq[cut].role === 'glue' && !seq[cut].internal && seq[cut + 1] && seq[cut + 1].role === 'box')) continue;
+        const slack2 = maxW - w;
+        if (slack2 < -0.75) continue; // כיווץ בלתי-אפשרי — INF מתועד
+        const effStretch2 = stretch + (raggedEnd ? maxW * RAGGED_END_STRETCH_FACTOR : 0);
+        const ratio2 = slack2 >= 0 ? (effStretch2 > 0 ? slack2 / effStretch2 : 0) : (shrink > 0 ? slack2 / shrink : -2);
+        const b2 = badness(ratio2);
+        if (b2 >= INF) continue;
+        const cand2 = cost[i] + b2 + LINE_DEMERIT;
+        if (cand2 < cost[cut]) { cost[cut] = cand2; parent[cut] = i; cutBad[cut] = b2; cutReason[cut] = 'legal-cut'; lineOf[cut] = lineOf[i] + 1; }
+      }
+    }
+  }
+
+  if (cost[n] === INF) {
+    const fb = itemGreedyFallback(seq, maxWidthPx, opts);
+    return { lines: fb.lines, fallback: true, diagnostics: fb.diagnostics };
+  }
+  const cuts = [];
+  let p = n;
+  while (p > 0 && parent[p] >= 0) { cuts.push({ from: parent[p], to: p, badness: cutBad[p], reason: cutReason[p] }); p = parent[p]; }
+  cuts.reverse();
+  // קציצות ריקות (glue בלבד — שלבי דילוג השרושים) אינן שורות; מסננים כמו ש-breakLines מסנן שורות ללא טוקנים.
+  const real = cuts.filter((c) => {
+    for (let k = c.from; k < c.to; k++) if (seq[k].role === 'box') return true;
+    return false;
+  });
+  return { lines: real, fallback: false, diagnostics: [] };
+}
+
+/** רוחב אפקטיבי לשורה: אילוץ אזור (wrap) אם הוגדר, אחרת רוחב הטור. */
+function lineMax(lineWidthAt, lineIdx, maxWidthPx) {
+  return lineWidthAt ? lineWidthAt(lineIdx) : maxWidthPx;
+}
+
+/** רוחבי glue של פריט — מהמדידה שלו (sep נמדד דרך measureItem; מתיחות לפי הקבועים המרוכזים). */
+function glueWidths(glueItem) {
+  // פלובק ל-measuredAdvance לקריאות גולמיות של המנוע; הבנאי הרצף הקנוני מספקיים את הקישור המלא.
+  const width = glueItem.measured && glueItem.measured.ok
+    ? glueItem.measured.advance
+    : (Number.isFinite(glueItem.measuredAdvance) ? glueItem.measuredAdvance : 0);
+  return { width, stretch: width * STRETCH_RATIO, shrink: width * SHRINK_RATIO };
+}
+
+/**
+ * ערוץ overflow דטרמיניסטי (§4.1-6 / §19 בהוראה): מעבר אחד, ללא לולאת fallback.
+ * אותם איסורי שבירה (יחידה צמודה אינה נקרעת); פריט רחב מהרוחב — שורה משלו
+ * + diagnostic מפורש. אין מחיקת פריט, אין המרה שקטה, אין שורה ריקה.
+ */
+function itemGreedyFallback(seq, maxWidthPx, opts = {}) {
+  const lineWidthAt = typeof opts.lineWidthAt === 'function' ? opts.lineWidthAt : null;
+  const lines = [];
+  const diagnostics = [];
+  let cur = [];             // אינדקסים של השורה הנוכחית
+  let w = 0;
+  let lineIdx = 0;
+  const flush = (reason) => {
+    if (!cur.length) return;
+    lines.push({ from: cur[0], to: cur[cur.length - 1] + 1, badness: 0, reason: reason || 'overflow-own-line' });
+    cur = []; w = 0; lineIdx++;
+  };
+  for (let i = 0; i < seq.length; i++) {
+    const it = seq[i];
+    if (it.role === 'penalty') {
+      if (it.penaltyType === 'final') continue;
+      if (it.penaltyType === 'forbidden') continue; // יחידה צמודה — לעולם אינה נקרעת
+      continue;
+    }
+    if (it.role === 'glue') {
+      if (it.internal && cur.length) { w += glueWidths(it).width; } // רווח פנימי בתוך היחידה
+      continue; // glue רגיל נכנס בעת פתיחת התיבה הבאה
+    }
+    // תיבה: רוחבה מהמדידה; תיבה רחבה מהרוחב — שורה משלה + אבחון מפורש
+    const maxW = lineWidthAt ? lineWidthAt(lineIdx) : maxWidthPx;
+    const bw = it.measuredAdvance;
+    if (bw > maxW - 0.75) {
+      diagnostics.push({ code: 'overflow-item-own-line', itemId: it.itemId, kind: it.kind, advancePx: +bw.toFixed(3), maxWidthPx: +maxW.toFixed(3), message: `פריט רחב מהרוחב — שורה בפני עצמו (${it.itemId})` });
+      flush('overflow-own-line');
+      cur = [i]; w = bw; flush('overflow-own-line');
+      continue;
+    }
+    const addW = (cur.length ? leadingGlueWidth(seq, i) + bw : bw);
+    if (cur.length && w + addW > maxW - 0.75) flush('overflow-wrap');
+    if (cur.length) w += leadingGlueWidth(seq, i);
+    cur.push(i); w += bw;
+  }
+  flush('overflow-final');
+  return { lines, diagnostics };
+}
+
+/** רוחב ה-glue הרגיל שלפני תיבה i (הראשון שאינו פנימי/penalty משמאל). */
+function leadingGlueWidth(seq, i) {
+  for (let k = i - 1; k >= 0; k--) {
+    const it = seq[k];
+    if (it.role === 'penalty') continue;
+    if (it.role === 'glue' && !it.internal) return glueWidths(it).width;
+    if (it.role === 'box') return 0; // אין glue מיד לפני — יחידה צמודה מטופלת ב-penalty
+  }
+  return 0;
+}
+
+module.exports = { breakLines, badness, breakItemSequence, STRETCH_RATIO, SHRINK_RATIO, LINE_DEMERIT, RAGGED_END_STRETCH_FACTOR };
