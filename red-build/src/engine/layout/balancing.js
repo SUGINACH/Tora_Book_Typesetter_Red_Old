@@ -9,6 +9,7 @@
 // (moveLineForward אינו נדרש עוד באיזון: optimalSplit מכסה את מרחב המצבים כולו — EXT-8)
 
 const { colCapacityOf } = require('./column-flow'); // **S5.2 (P-2):** קיבולת הטור — מקור יחיד
+const { escortCleanBoundary } = require('./constraint-matrix'); // **דוח 06:** גבול פיצול מודע-ליווי
 
 function usedHeight(col) {
   // **EXT-20:** גובה בפועל — כולל מקדם ה-AQ האנכי (לפני ה-AQ כל המקדמים 1).
@@ -73,7 +74,10 @@ function optimalSplit(cols, opts = {}) {
     const H1 = total - pre[k] + extraLast;
     if (H0 > cap + 0.5 || H1 > cap + 0.5) continue; // קיבולת קשה (REQ-BAL-09)
     const delta = Math.abs(H0 - H1);
-    const clean = cleanBoundary(k);
+    // **דוח 06 (פרק 4 — סתירת ליווי×איזון):** גבול "נקי" הוא גם נקי מווידוא/
+    // יתום (קיים) וגם מכותרת שנותרה עם <ESCORT_MIN_LINES שורות בטור המקור —
+    // אחרת האיזון עצמו יוצר הפרת heading-escort שאין לה תיקון.
+    const clean = cleanBoundary(k) && escortCleanBoundary(seq, k);
     const score = (clean ? 0 : 1) * 1e9 + delta;
     if (
       !best ||

@@ -3,6 +3,7 @@
 'use strict';
 
 const { blockGapPx } = require('./column-flow');
+const { orphanAtDestination } = require('./constraint-matrix'); // **FX-4 (דוח 06):** עונש strict ממקור אחיד
 
 /**
  * מחזיר מועמדי פיצול לבלוק בתוך טור:
@@ -30,8 +31,11 @@ function generateCandidates(blk, cur, colCapacityPx, settings, ledger) {
     }
     // justify capability: האם הטור שלפני יכול להצדיק (להגיע לקצה) — p376-class reasoning
     const capacityBefore = colCapacityPx - before;
+    // **FX-4 (דוח 06, פרק 4):** העונש ההיסטורי `cut < 2` היה בלתי-ספיק לעולם
+    // (הלולאה מתחילה ב-cut = 2) — widow-strictness=strict לא שינה דבר.
+    // התנאי הנכון: החלק השני קצר מהמינימום ⇒ יתום בראש היעד.
     const score = Math.abs(capacityBefore - (colCapacityPx - after))
-      + (settings['widow-strictness'] === 'strict' && cut < 2 ? 1e9 : 0);
+      + (settings['widow-strictness'] === 'strict' && orphanAtDestination(blk.lines.length, cut) ? 1e9 : 0);
     out.push({ cut, before, after, capacityBefore, capacityAfter: colCapacityPx - after, score });
   }
   out.sort((a, b) => a.score - b.score);

@@ -191,8 +191,12 @@ describe('S72.2 DP — יישור תחתיות ככלל עימוד (שיפורי
     assert(min >= 0.95 - 1e-9 && max <= 1.05 + 1e-9, `מקדם מחוץ לגבולות: [${min}, ${max}]`);
   });
 
-  it('נייטרליות: hash הקורפוס זהה לנעילה (010f9b35) — aqStretch אינו משנה תוכן', () => {
-    assert(result.layoutHash.startsWith('010f9b35'), `hash הקורפוס השתנה: ${result.layoutHash.slice(0, 16)}`);
+  it('נייטרליות: hash הקורפוס זהה לנעילה — aqStretch אינו משנה תוכן', () => {
+    // **דוח 06 (2026-11-15, FX-3):** הנעילה עודכנה מ-010f9b35 — התחייבות הערות
+    // בעמוד שורת הסמן (במקום עמוד פתיחת הפסקה) משנה את זרימת הפריסה:
+    // 1038→1041 עמודים, הפרדות סמן/הערה בכיוון הפסול 6→1, תוכן נשמר, אין
+    // דיווחי שווא חדשים (ראו גם נעילת very_long ב-s69).
+    assert(result.layoutHash.startsWith('c74b7f05'), `hash הקורפוס השתנה: ${result.layoutHash.slice(0, 16)}`);
     const r2 = typeset(corpus, getDefaultSettings(), {});
     assertEq(result.layoutHash, r2.layoutHash, 'דטרמיניזם');
     // הקנוני — נעילת 80f9ed6c מ-S6.0 (מאומת ב-s13-acceptance)

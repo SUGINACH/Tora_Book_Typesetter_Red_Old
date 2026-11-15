@@ -17,6 +17,7 @@
 
 const { usedHeight, pageImbalance } = require('./balancing');
 const { colCapacityOf } = require('./column-flow'); // **S5.2 (P-2):** קיבולת טור — מקור יחיד
+const { ESCORT_MIN_LINES, WIDOW_ORPHAN_MIN } = require('./constraint-matrix'); // **דוח 06:** מקור אמת מספרי אחיד
 const { MARK_TAG } = require('../notes/markers');
 
 /** עמודים מבניים שאינם זרימת-תוכן — כותרת בודדת בהם היא מכוונת-עיצוב,
@@ -65,7 +66,7 @@ const CHECKS = {
       if (first.meta && first.meta.part === 'rest') {
         let run = 0;
         for (const l of col) { if (l.meta && l.meta.tokenId === first.meta.tokenId) run++; else break; }
-        if (run < 2) {
+        if (run < WIDOW_ORPHAN_MIN) {
           if (settings['prevent-widows-top'] && first.isLast) {
             violations.push({ kind: 'widow-top', target: `page#${page.index}c${c}`, page: page.index, evidence: { run }, ledgerRef: ledger.create('widow-top', `p${page.index}c${c}`, page.index, { run }, 'protections').issue_id });
           } else if (settings['prevent-orphans-top'] && settings['widow-strictness'] !== 'relaxed') {
@@ -80,7 +81,7 @@ const CHECKS = {
       // (אותה גיאומטריה) בעדיפות כששני המתגים דלוקים — לא דיווח כפול.
       if (last.meta && last.meta.part === 'first') {
         const sameTokenInCol = col.filter(x => x.meta && x.meta.tokenId === last.meta.tokenId).length;
-        if (sameTokenInCol === 1) {
+        if (sameTokenInCol < WIDOW_ORPHAN_MIN) {
           if (settings['prevent-orphans-bottom']) {
             violations.push({ kind: 'orphan-bottom', target: `page#${page.index}c${c}`, page: page.index, evidence: { sameTokenInCol }, ledgerRef: ledger.create('orphan-bottom', `p${page.index}c${c}`, page.index, { sameTokenInCol }, 'protections').issue_id });
           } else if (settings['prevent-widows-bottom']) {
@@ -105,7 +106,7 @@ const CHECKS = {
         const ln = col[i];
         if (ln.kind === 'heading' && ln.level <= 6) {
           const after = col.slice(i + 1).filter(x => x.kind !== 'heading').length;
-          if (after < 2) {
+          if (after < ESCORT_MIN_LINES) {
             violations.push({ kind: 'heading-escort', target: `${ln.tokenId || lineToken(ln)}@p${page.index}c${c}`, page: page.index, evidence: { linesAfter: after }, ledgerRef: ledger.create('heading-escort', ln.tokenId || lineToken(ln), page.index, { linesAfter: after }, 'protections').issue_id });
           }
         }
