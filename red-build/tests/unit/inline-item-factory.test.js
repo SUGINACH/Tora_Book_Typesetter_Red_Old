@@ -146,6 +146,27 @@ test('a registered item type validates its payload in the shared measuring facto
   }
 });
 
+test('invalid custom payload is rejected before its measurement adapter runs', () => {
+  let measureCalls = 0;
+  const unregister = registerInlineItemType('guarded-measure-item', {
+    validate: item => item.payload && item.payload.accepted === true,
+    measure: () => {
+      measureCalls++;
+      return { widthPx:24, heightPx:18 };
+    },
+    dom: () => null,
+    pdf: () => []
+  });
+  try {
+    assert.throws(() => createMeasuredInlineItems([
+      { kind:'guarded-measure-item', id:'guarded:1', payload:{ accepted:false } }
+    ], { measureText:measure }), /rejected by validator/);
+    assert.equal(measureCalls, 0, 'invalid payload must not reach the measuring adapter');
+  } finally {
+    unregister();
+  }
+});
+
 test('invalid measured widths and incomplete custom items are rejected explicitly', () => {
   assert.throws(()=>createMeasuredInlineItems([{kind:'text',text:'x'}],{
     measureText:()=>NaN
