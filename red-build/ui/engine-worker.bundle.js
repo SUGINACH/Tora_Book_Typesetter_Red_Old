@@ -740,11 +740,12 @@ function createStyledInlineRuns(parts, options = {}) {
     for (const run of (part.runs || [])) {
       if (!run || typeof run !== 'object') continue;
       if (run.kind !== 'text') {
-        // Images and registered custom page items already carry their own
-        // identity/payload. Their source command contributes to source offsets
-        // but is not emitted as printable text.
+        // The flat text projection retains image markers until their asset is
+        // resolved, so images advance this offset by their source marker length.
+        // Registered custom items are zero-width in that projection: their
+        // source syntax is identity metadata, not printable text or span input.
         result.push(run);
-        flatOffset += String(run.sourceText || '').length;
+        if (run.kind === 'image') flatOffset += String(run.sourceText || '').length;
         continue;
       }
 
@@ -3453,6 +3454,8 @@ function getInlineItemRenderer(kind, target) {
 function parseInlineItemAt(source, index, context = {}) {
   const text = String(source == null ? '' : source);
   if (!Number.isInteger(index) || index < 0 || index >= text.length) return null;
+
+  const matches = [];
   for (const [kind, entry] of adapters) {
     if (!entry.parse) continue;
     const result = entry.parse(text, index, context);
@@ -3464,16 +3467,25 @@ function parseInlineItemAt(source, index, context = {}) {
       || result.item.kind !== kind) {
       throw new TypeError('inline-item-registry: parser for ' + kind + ' must return {consumed,item} with a matching kind');
     }
-    const sourceText = text.slice(index, index + result.consumed);
-    return {
+    matches.push({
+      kind,
       consumed: result.consumed,
       item: {
         ...result.item,
-        sourceText: result.item.sourceText == null ? sourceText : String(result.item.sourceText)
+        // Source identity belongs to the registry, not the plugin. A parser
+        // cannot forge or normalize away the exact command accepted here.
+        sourceText: text.slice(index, index + result.consumed)
       }
-    };
+    });
   }
-  return null;
+
+  if (matches.length > 1) {
+    const kinds = matches.map(match => match.kind).sort();
+    throw new Error(
+      'inline-item-registry: ambiguous parser match at index ' + index + ': ' + kinds.join(', ')
+    );
+  }
+  return matches[0] || null;
 }
 
 function measureInlineItem(item, context = {}) {
