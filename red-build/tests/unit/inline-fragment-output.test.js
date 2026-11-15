@@ -116,6 +116,26 @@ test('DOM renderer keeps inline font subsegments and renders an image from local
   assert.equal(image.style.height,'54px');
 });
 
+test('live DOM consumes the same measured glue and justify expansion as the PDF projector',()=>{
+  const settings=getDefaultSettings();
+  const api=new MeasureAPI(settings);
+  const line={
+    kind:'paragraph',
+    heightPx:18,
+    isLast:false,
+    measureW:100,
+    fragments:[
+      {kind:'text',text:'ראשונה',widthPx:20,heightPx:18,gapAfterPx:4,segments:[{text:'ראשונה',widthPx:20,sizePt:12}]},
+      {kind:'text',text:'שנייה',widthPx:30,heightPx:18,gapAfterPx:0,segments:[{text:'שנייה',widthPx:30,sizePt:12}]}
+    ]
+  };
+  const projected=projectLine(line,0,0,100,settings,api,'justify');
+  assert.equal(projected.fragments[0].gapAfterPx,50,'PDF projection adds the same 46px justification share to the measured 4px glue');
+  const element=renderLine(line,doc,settings);
+  assert.equal(element.children.length,2);
+  assert.equal(element.children[0].style.marginLeft,'50px','live DOM preserves the exact projected inter-word gap');
+});
+
 test('built-in inline anchors survive DOM projection without a custom renderer',()=>{
   const settings=getDefaultSettings();
   const line={kind:'paragraph',heightPx:18,isLast:true,fragments:[
