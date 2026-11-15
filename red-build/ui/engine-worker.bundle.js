@@ -1,6 +1,6 @@
 // ui/engine-worker.bundle.js — **נוצר אוטומטית** ע"י tools/build-worker-bundle.js (אין לערוך ידנית)
 // חבילת ה־Worker (המנוע המלא — אין לטעון בחוט ה־UI)
-// מודולים: 64 · בלי חותמות זמן (דטרמיניזם)
+// מודולים: 71 · בלי חותמות זמן (דטרמיניזם)
 'use strict';
 
 var __crypto = (function () {
@@ -300,6 +300,8 @@ var __paths = {
   "src/engine/core/pipeline.js|./settings-registry": "src/engine/core/settings-registry.js",
   "src/engine/core/pipeline.js|../parser/dfa-lexer": "src/engine/parser/dfa-lexer.js",
   "src/engine/core/pipeline.js|../parser/block-tokenizer": "src/engine/parser/block-tokenizer.js",
+  "src/engine/core/pipeline.js|../model/document-model": "src/engine/model/document-model.js",
+  "src/engine/core/pipeline.js|../model/adapter": "src/engine/model/adapter.js",
   "src/engine/core/pipeline.js|../parser/bracket-scanner": "src/engine/parser/bracket-scanner.js",
   "src/engine/core/pipeline.js|../typography/measure-api": "src/engine/typography/measure-api.js",
   "src/engine/core/pipeline.js|../typography/protectors": "src/engine/typography/protectors.js",
@@ -333,6 +335,16 @@ var __paths = {
   "src/engine/core/pipeline.js|../decoration/toc-builder": "src/engine/decoration/toc-builder.js",
   "src/engine/parser/block-tokenizer.js|./dfa-lexer": "src/engine/parser/dfa-lexer.js",
   "src/engine/parser/block-tokenizer.js|./bracket-scanner": "src/engine/parser/bracket-scanner.js",
+  "src/engine/model/document-model.js|../parser/dfa-lexer": "src/engine/parser/dfa-lexer.js",
+  "src/engine/model/document-model.js|../parser/block-tokenizer": "src/engine/parser/block-tokenizer.js",
+  "src/engine/model/document-model.js|../parser/inline-content": "src/engine/parser/inline-content.js",
+  "src/engine/model/document-model.js|./identity": "src/engine/model/identity.js",
+  "src/engine/model/document-model.js|./kinds": "src/engine/model/kinds.js",
+  "src/engine/parser/inline-content.js|../model/registry": "src/engine/model/registry.js",
+  "src/engine/model/registry.js|./kinds": "src/engine/model/kinds.js",
+  "src/engine/model/adapter.js|./kinds": "src/engine/model/kinds.js",
+  "src/engine/model/adapter.js|./roundtrip": "src/engine/model/roundtrip.js",
+  "src/engine/model/roundtrip.js|./kinds": "src/engine/model/kinds.js",
   "src/engine/typography/measure-api.js|./measure-table": "src/engine/typography/measure-table.js",
   "src/engine/typography/measure-api.js|./font-metrics": "src/engine/typography/font-metrics.js",
   "src/engine/typography/measure-api.js|./kp-linebreak": "src/engine/typography/kp-linebreak.js",
@@ -584,7 +596,12 @@ __modules["src/engine/core/pipeline.js"] = function (require, module, exports) {
 
 const { getDefaultSettings, derivePlacementFlags } = require('./settings-registry');
 const { lexDocument } = require('../parser/dfa-lexer');
-const { tokenize, contentHash, normalizeText } = require('../parser/block-tokenizer');
+const { tokenizeDetailed, contentHash, normalizeText } = require('../parser/block-tokenizer');
+// **שלב 2 (מודל תוכן אחיד):** המודל הקנוני הוא מקור הסמכות של שלב הפענוח;
+// זרם הטוקנים נגזר ממנו דרך adapter יציאה זמני (תנאי הסרה ב-model/adapter.js).
+// הוכחת שקילות מלאה לעומת הטוקניזר הישיר: בדיקות round-trip ב-suite של שלב 2.
+const { buildDocumentModel } = require('../model/document-model');
+const { modelToTokens } = require('../model/adapter');
 const { scanBrackets } = require('../parser/bracket-scanner');
 const { MeasureAPI, resolveMeasureImpl } = require('../typography/measure-api');
 const { protectWords } = require('../typography/protectors');
@@ -720,8 +737,19 @@ function typeset(rawText, settingsIn, env = {}) {
     fnOpen: settings['fn-delim-open'],
     fnClose: settings['fn-delim-close']
   };
-  const { metadata, bodyLines } = lexDocument(rawText, parseOpts);
-  const tokens = tokenize(bodyLines, parseOpts);
+  // **שלב 2 — פענוח דרך המודל הקנוני:** lexer+tokenizer (הפרסר הקיים, לא חדש)
+  // → buildDocumentModel (מבנה + זהות + מקור) → modelToTokens (תחזית נגזרת).
+  // הטוקנים זהים במלואם לישירים (בדיקות adapter-equality על הקורפוסים);
+  // המודל נבנה טרום-מדידה ואינו מכיל שום החלטה גאומטרית.
+  const lexResult = lexDocument(rawText, parseOpts);
+  const detail = tokenizeDetailed(lexResult.bodyLines, parseOpts);
+  const inlineOptions = {
+    fontMarkers: settings['_inline-font-markers'] || settings._inlineFontStyles || settings._inlineFontMarkers || [],
+    knownFamilies: settings['_inline-font-families'] || settings._inlineFontFamilies || []
+  };
+  const documentModel = buildDocumentModel(rawText, { lexResult, detail, parseOpts, inlineOptions });
+  const tokens = modelToTokens(documentModel);
+  const metadata = lexResult.metadata;
   for (const t of tokens) {
     const rawLine = String(t.raw != null ? t.raw : (t.text != null ? t.text : ''));
     settings._tokenTexts.set(t.id, {
@@ -2207,28 +2235,41 @@ function lexDocument(rawText, opts = {}) {
   const state = { phase: 'PREAMBLE' };
   const metadata = {};
   const body = [];
+  // **שלב 2 (חוזה פריט אחיד — עוגני מקור):** רישום אדיטיבי בלבד; התנהגות
+  // הפענוח זהה לחלוטין. bodyLineStart = אינדקס שורת הגוף הראשונה במערך
+  // השורות המאוחד (אחרי CRLF→LF); metadataLines = שורות הפתיח עם מיקומן
+  // והמפתח שזוהה — לשחזור מדויק של המקור ב-round-trip של המודל הקנוני.
+  let bodyLineStart = -1;
+  const metadataLines = [];
+  const preludeBlanks = []; // **שלב 2:** שורות ריקות שנבלעו במעבר PREAMBLE→BODY
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const trimmed = line.trim();
 
     if (state.phase === 'PREAMBLE') {
-      if (trimmed === '') { state.phase = 'BODY'; continue; }
+      if (trimmed === '') { state.phase = 'BODY'; preludeBlanks.push({ lineIndex: i, raw: line }); continue; }
       if (HEADING_RE.test(trimmed) || (endnoteRe && endnoteRe.test(trimmed)) || ENDNOTE_CLASS_RE.test(trimmed)) {
-        state.phase = 'BODY'; body.push(line); continue;
+        state.phase = 'BODY';
+        if (bodyLineStart < 0) bodyLineStart = i;
+        body.push(line); continue;
       }
       const m = trimmed.split(/\s+[-–—]\s+/);
       if (m.length >= 2 && METADATA_KEYS.includes(m[0].toLowerCase())) {
         metadata[m[0]] = m.slice(1).join(' - ');
+        metadataLines.push({ lineIndex: i, key: m[0], value: m.slice(1).join(' - '), raw: line });
         continue;
       }
       // שורה שאינה metadata → גם היא סוגרת את הפתיח
       state.phase = 'BODY';
+      if (bodyLineStart < 0) bodyLineStart = i;
       body.push(line);
       continue;
     }
+    if (bodyLineStart < 0) bodyLineStart = i;
     body.push(line);
   }
-  return { metadata, bodyLines: body };
+  return { metadata, bodyLines: body, bodyLineStart: bodyLineStart < 0 ? lines.length : bodyLineStart, metadataLines, preludeBlanks, totalLines: lines.length };
 }
 
 module.exports = {
@@ -2263,15 +2304,107 @@ function mkToken(type, payload) {
 }
 
 /**
+ * **שלב 2 (חוזה פריט אחיד §2.1-4 — שימור טקסט ומיפוי מקור):** שלב א׳ של תמורת
+ * השורה — trim + נרמול 1:1 (משמר אורך). רשומות הנרמול מאפשרות היפוך מדויק.
+ * זהה חישובית ל-normalizeText(raw.trim()) — ההתנהגות לא השתנתה; נוסף מיפוי.
+ */
+function normalizeStage(rawLine) {
+  const rawLead = rawLine.length - rawLine.trimStart().length;
+  const rawTrail = rawLine.length - rawLine.trimEnd().length;
+  const trimmed = rawLine.trim();
+  const normalizations = [];
+  let pre = '';
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (ch === '\u05F4') { pre += '\u05F3'; normalizations.push({ offset: i, original: ch, normalized: '\u05F3', code: 'gershayim-to-geresh' }); }
+    else if (ch === '\u2018' || ch === '\u2019') { pre += '"'; normalizations.push({ offset: i, original: ch, normalized: '"', code: 'quote-to-straight' }); }
+    else pre += ch;
+  }
+  // **שלב 2:** טקסט השוליים המדויק (לא רק אורך) — שורה ריקה של רווחים/טאבים
+  // נשחזרת תו-לתו ב-round-trip.
+  return { pre, normalizations, rawLead, rawTrail, rawLeadText: rawLine.slice(0, rawLead), rawTrailText: rawLine.slice(rawLine.length - rawTrail) };
+}
+
+/**
+ * **שלב 2:** שלב ב׳ של תמורת השורה — הסרת ##…## (החלפה ברווח), צמצום רווחים
+ * ו-trim, בדיוק כמו הצעד הידני בפלג הפסקה. כל תו שהוסר נרשם עם טקסט המקור
+ * (קטע editorial / ריצת רווחים / שוליים) וכל תו שנותר ממופה 1:1 (charMap) —
+ * ההיפוך מדויק ונבדק ב-round-trip.
+ */
+function editorialStage(pre) {
+  if (!/##.+?##/.test(pre)) {
+    // אין editorial — הטוקניזר אינו מצמצם רווחים ואינו חותך שוליים במסלול זה.
+    return { canonical: pre, charMap: pre.split('').map((_, i) => i), normalizations: [], removedSegments: [], droppedWs: [], edge: { lead: 0, trail: 0 } };
+  }
+  let mid = '';
+  let mi = 0;
+  const removedSegments = [];
+  const map1 = []; // mid index → pre index
+  const edRe = /##.+?##/g;
+  let m;
+  while ((m = edRe.exec(pre))) {
+    mid += pre.slice(mi, m.index);
+    for (let k = mi; k < m.index; k++) map1.push(k);
+    mid += ' ';
+    map1.push(m.index); // הרווח החלופי ממופה לתחילת הקטע שהוסר
+    removedSegments.push({ start: m.index, end: m.index + m[0].length, text: m[0] });
+    mi = m.index + m[0].length;
+  }
+  mid += pre.slice(mi);
+  for (let k = mi; k < pre.length; k++) map1.push(k);
+  // צמצום ריצות רווחים לרווח בודד (כולל רישום הריצות שהוצרו).
+  let mid2 = '';
+  let ci = 0;
+  const map2 = []; // mid2 index → mid index
+  const wsRe = /\s+/g;
+  let w;
+  while ((w = wsRe.exec(mid))) {
+    mid2 += mid.slice(ci, w.index);
+    for (let k = ci; k < w.index; k++) map2.push(k);
+    mid2 += ' ';
+    map2.push(w.index);
+    ci = w.index + w[0].length;
+  }
+  mid2 += mid.slice(ci);
+  for (let k = ci; k < mid.length; k++) map2.push(k);
+  const lead = mid2.length - mid2.trimStart().length;
+  const trail = mid2.length - mid2.trimEnd().length;
+  const canonical = mid2.trim();
+  // שרשור המיפויים: קנוני → mid2 → mid → pre (map2 אחרי map1).
+  const charMap = [];
+  for (let k = lead; k < mid2.length - trail; k++) charMap.push(map1[map2[k]]);
+  // **שלב 2 (שימור מלא):** ריצות הרווחים שהושמטו בצמצום/בשוליים — עם הטקסט
+  // המקורי המדויק, בקואורדינטות pre. כל תו של pre מכוסה: editorial / רווח
+  // שהושמט / תו ממופה 1:1 לקנוני (charMap).
+  const canonOfPre = new Array(pre.length).fill(null);
+  for (let cp = 0; cp < charMap.length; cp++) canonOfPre[charMap[cp]] = cp;
+  const inSegment = new Array(pre.length).fill(false);
+  for (const seg of removedSegments) for (let k = seg.start; k < seg.end; k++) inSegment[k] = true;
+  const droppedWs = [];
+  for (let p = 0; p < pre.length; p++) {
+    if (inSegment[p] || canonOfPre[p] !== null) continue;
+    let q = p;
+    while (q < pre.length && !inSegment[q] && canonOfPre[q] === null) q++;
+    const text = pre.slice(p, q);
+    if (text.trim().length !== 0) throw new Error('block-tokenizer: non-whitespace character dropped in editorial stage — coverage bug');
+    droppedWs.push({ start: p, end: q, text });
+    p = q - 1;
+  }
+  return { canonical, charMap, normalizations: [], removedSegments, droppedWs, edge: { lead, trail } };
+}
+
+/** בדיקת עזר: האם תו מנורמל (חשיפה לבדיקות הפיכות). */
+function isNormalizedChar(ch) {
+  return ch === '\u05F4' || ch === '\u2018' || ch === '\u2019';
+}
+
+/**
  * Tokenizer: שורות → טוקנים.
  * - כותרת N - … (N∈0..7) → heading (מקף חובה; בלי מקף = פסקה בשקט)
  * - `##…##` → editorial — מוסר לחלוטין מהפלט אך נרשם ל‑audit
- * - `הערת סיום - …` → **endnote (תוכן!)** — הסמנטיקה המקורית (S4.5, תיקון D-40):
- *   הקידומת מגדירה את הטקסט שאחריה כהערת סיום. במסמך המודפס הקידומת עצמה
- *   אינה מופיעה (כלל פענוח, לא עיטור — מסמך chat-v20.3 ההיסטורי).
- * - `הערת סיום-1 - טקסט` → endnote ממוספרת (D-40; עוגן סמן).
- * - `הערות סיום - כותרת` (רבים!) → הוראת כותרת עמודי ההערות — הצורה היחידה
- *   שאינה מתנגשת עם מזהה התוכן (ביקורת 03.11: הצורה הקודמת בלעה הערות אמיתיות).
+ * - `הערת סיון - …` → **endnote (תוכן!)** — הסמנטיקה המקורית (S4.5, תיקון D-40)
+ * - `הערת סיון-1 - טקסט` → endnote ממוספרת (D-40; עוגן סמן).
+ * - `הערות סיום - כותרת` (רבים!) → הוראת כותרת עמודי ההערות.
  * - תוחמי הערות השוליים מוגדרים: opts.fnOpen/fnClose (ברירת מחדל [ ]).
  * - `[a][b]` רצופים → הערות נפרדות (REQ-PAR-04)
  * - בתוך `[...]`: רווחים → \uE000 (אטומי, REQ-LB-04)
@@ -2279,13 +2412,24 @@ function mkToken(type, payload) {
  * @param {object} [opts] — { endnotePrefix, endnotePrefixRe, fnOpen, fnClose } (S4.5)
  */
 function tokenize(bodyLines, opts = {}) {
+  return tokenizeDetailed(bodyLines, opts).tokens;
+}
+
+/**
+ * **שלב 2:** טוקניזציה מפורטת — אותם טוקנים בדיוק (byte-identical; tokenize()
+ * מחזיר את זרם הטוקנים כמו שהיה), ובנוסף רשומות מקור לכל שורה: תמורת השורה
+ * (trim/נרמול/editorial — הפיכה כולה), טווחי החלקים, טווחי ההערות והתוחמים
+ * המדויקים. המודל הקנוני (engine/model/) נבנה מהתוצר הזה בלבד; זרם הטוקנים
+ * נגזר ממנו חזרה דרך adapter הכניסה — שקילות מוכחת בבדיקות round-trip.
+ */
+function tokenizeDetailed(bodyLines, opts = {}) {
   tokenSeq = 0;
   // מזהה הערת הסיום: ביטוי מוכן (מה-lexer) או בנוי מהקידומת; '' ⇒ מבוטל
   const endnoteRe = opts.endnotePrefixRe instanceof RegExp
     ? opts.endnotePrefixRe
     : compileEndnotePrefix(opts.endnotePrefix != null ? opts.endnotePrefix : DEFAULT_ENDNOTE_PREFIX);
   const endnoteNumRe = (() => {
-    // ממוספרת: `הערת סיום-1 - טקסט` — נבנית מאותה קידומת (ללא המקף האחרון) + מספר + מקף
+    // ממוספרת: `הערת סיון-1 - טקסט` — נבנית מאותה קידומת (ללא המקף האחרון) + מספר + מקף
     const p = String(opts.endnotePrefix != null ? opts.endnotePrefix : DEFAULT_ENDNOTE_PREFIX).trim() || DEFAULT_ENDNOTE_PREFIX;
     const base = p.replace(/[-–—]\s*$/, '').trim();
     if (!base) return null;
@@ -2298,14 +2442,27 @@ function tokenize(bodyLines, opts = {}) {
   // (לא fallback ל-[) כדי שביטול מפורש לא ייהפך בטעות לזיהוי ברירת מחדל.
   const fnEnabled = fnOpen.trim().length > 0 && fnClose.trim().length > 0;
   const tokens = [];
-  for (const raw of bodyLines) {
-    let line = normalizeText(raw.trim()); // editable: editorial ##…## מוסר מהשורה (Spec §7)
-    if (!line) continue;
+  const lines = [];
+  for (let li = 0; li < bodyLines.length; li++) {
+    const rawOfLine = bodyLines[li];
+    const s1 = normalizeStage(rawOfLine);
+    let line = s1.pre;
+    if (!line) {
+      lines.push({ bodyLineIndex: li, kind: 'blank', stage1: s1 });
+      continue;
+    }
 
     let m = line.match(HEADING_RE);
     if (m) {
       const level = m[2] !== undefined ? Number(m[2]) : (m[1] === 'הקדמה' ? 0 : 1);
-      tokens.push(mkToken('heading', { level, text: m[4] || m[0], raw: line }));
+      const text = m[4] || m[0];
+      const titleStart = Math.max(0, line.lastIndexOf(text));
+      tokens.push(mkToken('heading', { level, text, raw: line }));
+      lines.push({
+        bodyLineIndex: li, kind: 'heading', level, stage1: s1,
+        spans: { match: { start: 0, end: m[0].length }, title: { start: titleStart, end: line.length } },
+        tokenId: tokens[tokens.length - 1].id
+      });
       continue;
     }
     // **S4.5 (תיקון D-40 — ביקורת 03.11):** סדר הבדיקות שהוחזר לסמנטיקה המקורית:
@@ -2314,28 +2471,57 @@ function tokenize(bodyLines, opts = {}) {
     if (endnoteNumRe) {
       const mNum = line.match(endnoteNumRe);
       if (mNum) {
-        tokens.push(mkToken('endnote', { num: Number(mNum[1]), text: mNum[2].trim(), raw: line }));
+        const num = Number(mNum[1]);
+        const textVal = mNum[2].trim();
+        const textStart = mNum[0].length - mNum[2].length + (mNum[2].length - mNum[2].trimStart().length);
+        tokens.push(mkToken('endnote', { num, text: textVal, raw: line }));
+        lines.push({
+          bodyLineIndex: li, kind: 'endnote-numbered', num, stage1: s1,
+          spans: { match: { start: 0, end: mNum[0].length }, num: { start: 0, end: mNum[0].length - textVal.length }, text: { start: textStart, end: line.length } },
+          tokenId: tokens[tokens.length - 1].id
+        });
         continue;
       }
     }
     if (endnoteRe) {
       const mEnd = line.match(endnoteRe);
       if (mEnd && mEnd[1] && mEnd[1].trim()) {
-        tokens.push(mkToken('endnote', { text: mEnd[1].trim(), raw: line }));
+        const textVal = mEnd[1].trim();
+        const textStart = mEnd[0].length - mEnd[1].length + (mEnd[1].length - mEnd[1].trimStart().length);
+        tokens.push(mkToken('endnote', { text: textVal, raw: line }));
+        lines.push({
+          bodyLineIndex: li, kind: 'endnote', stage1: s1,
+          spans: { match: { start: 0, end: mEnd[0].length }, text: { start: textStart, end: line.length } },
+          tokenId: tokens[tokens.length - 1].id
+        });
         continue;
       }
     }
     const mCls = line.match(ENDNOTE_CLASS_RE);
     if (mCls) {
-      tokens.push(mkToken('endnote-class', { title: mCls[1].trim(), raw: line }));
+      const title = mCls[1].trim();
+      const titleStart = mCls[0].length - mCls[1].length + (mCls[1].length - mCls[1].trimStart().length);
+      tokens.push(mkToken('endnote-class', { title, raw: line }));
+      lines.push({
+        bodyLineIndex: li, kind: 'endnote-class', stage1: s1,
+        spans: { match: { start: 0, end: mCls[0].length }, title: { start: titleStart, end: line.length } },
+        tokenId: tokens[tokens.length - 1].id
+      });
       continue;
     }
     // editorial ##…## — הסרה מלאה (נרשם; לעולם לא נגלה בפלט — Spec §7)
     const editorial = line.match(/##(.+?)##/g);
+    const editorialTokenIds = [];
+    let stage2 = null;
     if (editorial) {
       for (const e of editorial) tokens.push(mkToken('editorial', { text: e.slice(2, -2), removed: true }));
-      line = line.replace(/##.+?##/g, ' ').replace(/\s+/g, ' ').trim();
-      if (!line) continue;
+      editorialTokenIds.push(...tokens.slice(tokens.length - editorial.length).map(t => t.id));
+      stage2 = editorialStage(line);
+      line = stage2.canonical;
+      if (!line) {
+        lines.push({ bodyLineIndex: li, kind: 'editorial', stage1: s1, stage2, editorialTokenIds });
+        continue;
+      }
     }
 
     // חילוץ הערות [..] עם מחסנית; זוגות רצופים → הערות נפרדות; תוחמים מוגדרים (S4.5)
@@ -2343,34 +2529,61 @@ function tokenize(bodyLines, opts = {}) {
     let cursor = 0;
     const parts = [];
     const notes = [];
+    const partRanges = []; // מקביל ל-parts: טווחים בשורה הקנונית (אחרי הסרת editorials)
     // בנייה לפי pairs משמאל לימין (outermost first)
     const outer = segs.pairs.filter(p => p.depth === 1).sort((a, b) => a.open - b.open); // חיצוניים בלבד (depth 1)
     const openCh = fnEnabled ? fnOpen : '[';
     const closeCh = fnEnabled ? fnClose : ']';
     for (const p of outer) {
-      const before = line.slice(cursor, p.open).trim();
-      if (before) parts.push({ kind: 'text', value: before });
+      const beforeRaw = line.slice(cursor, p.open);
+      const before = beforeRaw.trim();
+      if (before) {
+        const segStart = cursor + (beforeRaw.length - beforeRaw.trimStart().length);
+        parts.push({ kind: 'text', value: before });
+        partRanges.push({ kind: 'text', start: segStart, end: segStart + before.length });
+      }
       // **S4.6 (ביקורת 3):** חיתוך לפי תחילת הסוגר + אורכו בפועל (closeStart/closeLen
       // מהסורק) — נכון גם לתוחמים מרובי-תווים (']]'/END) ולצורה העברית ]ם. בעבר
       // נוסף אורך התוחם המוגדר למיקום התו האחרון — קיצוץ/דילוג תווים בתוחם ארוך.
       const cs = p.closeStart != null ? p.closeStart : p.close;
       const cl = p.closeLen != null ? p.closeLen : closeCh.length;
-      const noteText = line.slice(p.open + openCh.length, cs).trim().replace(/ +/g, ATOMIC_SPACE);
+      const innerStart = p.open + openCh.length;
+      const innerEnd = cs;
+      const noteText = line.slice(innerStart, cs).trim().replace(/ +/g, ATOMIC_SPACE);
       notes.push(noteText);
       parts.push({ kind: 'note-ref', noteIndex: notes.length - 1 });
+      partRanges.push({
+        kind: 'note-ref', noteIndex: notes.length - 1,
+        openStart: p.open, openEnd: p.open + openCh.length,
+        innerStart, innerEnd,
+        closeStart: cs, closeEnd: cs + cl,
+        start: p.open, end: cs + cl
+      });
       cursor = cs + cl;
     }
-    const tail = line.slice(cursor).trim();
-    if (tail) parts.push({ kind: 'text', value: tail });
+    const tailRaw = line.slice(cursor);
+    const tail = tailRaw.trim();
+    if (tail) {
+      const segStart = cursor + (tailRaw.length - tailRaw.trimStart().length);
+      parts.push({ kind: 'text', value: tail });
+      partRanges.push({ kind: 'text', start: segStart, end: segStart + tail.length });
+    }
 
     tokens.push(mkToken('paragraph', { parts, notes, unmatchedClosers: segs.unmatchedClosers, raw: line }));
+    lines.push({
+      bodyLineIndex: li, kind: 'paragraph', stage1: s1, stage2: stage2 || null,
+      canonicalAfterEditorial: line, partRanges,
+      editorialTokenIds, unmatchedClosers: segs.unmatchedClosers,
+      delimiters: { open: openCh, close: closeCh, enabled: fnEnabled },
+      tokenId: tokens[tokens.length - 1].id
+    });
   }
-  return tokens;
+  return { tokens, lines, delimiters: { fnOpen, fnClose, fnEnabled } };
 }
 
 /** CP1: hash של מולטיסט הטוקנים — עקרון שימור תוכן (BRZ-15).
- * **S4.5 (ביקורת 03.11):** כותרת הוראת ההערות (endnote-class) נכנסת לחשיבון —
- * היא טקסט שמופיע בפלט (כותרת עמודי ההערות); השמטתה איפשרה בעבר לתוכן
+ * **S4.5 (ביקורת 03.11):** כותרת הוראת ההערות (endnote-class) נכנסת לחשיבות —
+ * היא טקסט שמופיע בפלט (כותרת עמודי ההערות); השמטתה אפשרה בעבר לתוכן
  * שסווג בטעות כהוראה להיעלם בלי שה-hash יתריע. */
 function contentHash(tokens) {
   const stable = JSON.stringify(tokens.flatMap(t => {
@@ -2383,7 +2596,7 @@ function contentHash(tokens) {
   return crypto.createHash('sha256').update(stable, 'utf8').digest('hex');
 }
 
-module.exports = { tokenize, contentHash, normalizeText, ATOMIC_SPACE };
+module.exports = { tokenize, tokenizeDetailed, contentHash, normalizeText, normalizeStage, editorialStage, isNormalizedChar, ATOMIC_SPACE };
 
 };
 __modules["src/engine/parser/bracket-scanner.js"] = function (require, module, exports) {
@@ -2543,6 +2756,1488 @@ function scanBrackets(segments, opts = {}) {
 }
 
 module.exports = { scanBrackets, matchCloser, CLOSER_FORMS };
+
+};
+__modules["src/engine/model/document-model.js"] = function (require, module, exports) {
+// src/engine/model/document-model.js — בניית מודל מסמך קנוני (שלב 2)
+// **חוזה:** spec/03_UNIFIED_ITEM_CONTRACT.md §2-§5 · spec/00_CURRENT_ENGINE_COMPLETION_PLAN.md §2.1.
+//
+// מודל פריטים אחד → צינור עימוד אחד → מדידה ושבירה פעם אחת → Planner אחד → PageModel יחיד → מקרינים טהורים.
+//
+// עקרונות:
+// 1. אין כאן פרסר חדש — המודל נבנה מהפלט המפורט של הפרסר הקיים
+//    (dfa-lexer.lexDocument + block-tokenizer.tokenizeDetailed). הפרסר לא נכתב מחדש.
+// 2. אין החלטות מיקום/מדידה — המודל מבני בלבד; גאומטריה נקבעת בשלבים 3–7.
+// 3. זהות דטרמיניסטית מהמקור — אין מוני ריצה בזהות (המונה t# של זרם הטוקנים
+//    הוא נגזרת של adapter היציאה בלבד, לא זהות המודל).
+// 4. שימור מלא: לכל פריט sourceRange + sourceText; לכל שורה תמורה הפיכה;
+//    נרמול התווים נשמר כרשומות 1:1 (היפוך מדויק).
+// 5. קישור הערות מבני: noteMarker.noteRef ⇄ noteBody.markerRef — לא חיפוש טקסט.
+// 6. אין השמטה שקטה: כל חריגה (תוחם לא תואם, טווח גופן חוצה, תמונה בלתי
+//    נתמכת) מתועדת ב-diagnostics של הפריט/הבלוק/המסמך.
+'use strict';
+
+const { lexDocument } = require('../parser/dfa-lexer');
+const { tokenizeDetailed, contentHash, ATOMIC_SPACE } = require('../parser/block-tokenizer');
+const { parseInlineRuns } = require('../parser/inline-content');
+const { documentId, blockId, itemId, noteId, anchorId, assetId, stableHash } = require('./identity');
+const { BLOCK_KINDS, ITEM_KINDS, PARTICIPATION, SPLIT_POLICIES } = require('./kinds');
+
+/** מפת שורות המקור (אחרי איחוד CRLF→LF) — תשתית עוגני המקור. */
+function buildLineMap(rawText) {
+  const unified = String(rawText).replace(/\r\n?/g, '\n');
+  const lineMap = [];
+  let u = 0;       // מיקום בטקסט המאוחד
+  let o = 0;       // מיקום במקור הגולמי
+  const ulines = unified.split('\n');
+  for (let i = 0; i < ulines.length; i++) {
+    const ln = ulines[i];
+    const isLast = i === ulines.length - 1;
+    const originalEnd = o + ln.length;
+    const hadCr = !isLast && String(rawText).startsWith('\r\n', originalEnd);
+    lineMap.push({
+      index: i,
+      start: u, end: u + ln.length,
+      originalStart: o, originalEnd,
+      eol: isLast ? '' : (hadCr ? '\r\n' : '\n')
+    });
+    u += ln.length + 1;
+    o += ln.length + (hadCr ? 2 : 1);
+  }
+  return { unified, lineMap, unifiedLength: unified.length };
+}
+
+/** אינדקס תחילת השורה בקואורדינטות המאוחדות לפי אינדקס שורה. */
+function lineStartOf(lineMap, lineIndex) {
+  const rec = lineMap[lineIndex];
+  if (!rec) throw new RangeError(`document-model: line index out of range: ${lineIndex}`);
+  return rec.start;
+}
+
+/**
+ * ריצות inline של חלק טקסט → פריטים קנוניים.
+ * ריצות טקסט רצופות מתמזגות לפריט text אחד עם runs[] (חוזה §3); תמונות
+ * ופריטים מותאמים הופכים פריטים עצמאיים. טווחי הגופן נשמרים כמקטעים
+ * סמנטיים עם family identity ומיקום מקור מדויק — מילה אחת עם כמה גופנים
+ * אינה מצטמצמת למחרוזת שטוחה.
+ */
+/** האם פריט טקסט מרובה-מקטעים מכיל יותר ממשפחת גופן אחת. */
+function textRunsHasFamily(runs) {
+  return runs.some(r => r.fontFamily);
+}
+
+function runsToItems(parsed, parentId, baseOffset, ordinalBase, canonicalBase, diagnostics) {
+  const items = [];
+  let ordinal = ordinalBase;
+  let textRuns = null; // ריצות טקסט רצופות שממתינות לסגירה
+  const flushText = () => {
+    if (!textRuns) return;
+    const start = textRuns[0].sourceStart;
+    const end = textRuns[textRuns.length - 1].sourceEnd;
+    const first = textRuns[0];
+    items.push({
+      id: itemId(parentId, ITEM_KINDS.TEXT, ordinal++, start, end),
+      kind: ITEM_KINDS.TEXT,
+      parentId,
+      order: ordinal - 1,
+      sourceRange: { start: canonicalBase + start, end: canonicalBase + end },
+      sourceText: textRuns.map(r => r.text).join(''),
+      payload: {
+        text: textRuns.map(r => r.text).join(''),
+        runs: textRuns.map(r => ({
+          text: r.text,
+          fontFamily: r.fontFamily || null,
+          sourceStart: r.sourceStart,
+          sourceEnd: r.sourceEnd,
+          role: r.fontFamily ? 'fontRange' : null
+        }))
+      },
+      styleRef: textRunsHasFamily(textRuns)
+        ? { family: null, resolvedBy: 'per-run', inherits: false, multiFamily: true }
+        : { family: null, resolvedBy: 'body-default', inherits: true },
+      constraints: { atomic: false, participates: PARTICIPATION.INLINE, splittable: SPLIT_POLICIES.LINE },
+      diagnostics: []
+    });
+    textRuns = null;
+  };
+  for (const run of parsed.runs) {
+    if (run.kind === 'text') {
+      // רצף טקסט רצוף = פריט text אחד עם runs[] מרובים; כל מקטע שומר את
+      // family identity שלו (חוזה §3) — מילה עם כמה גופנים אינה מתמזגת למחרוזת שטוחה.
+      if (textRuns && textRuns[textRuns.length - 1].sourceEnd <= run.sourceStart) {
+        textRuns.push(run);
+      } else {
+        flushText();
+        textRuns = [run];
+      }
+      continue;
+    }
+    flushText();
+    if (run.kind === 'image') {
+      items.push({
+        id: itemId(parentId, ITEM_KINDS.IMAGE, ordinal++, run.sourceStart, run.sourceEnd),
+        kind: ITEM_KINDS.IMAGE,
+        parentId,
+        order: ordinal - 1,
+        sourceRange: { start: canonicalBase + run.sourceStart, end: canonicalBase + run.sourceEnd },
+        sourceText: run.sourceText,
+        payload: {
+          assetId: assetId(run.resourcePath),
+          resourcePath: run.resourcePath,
+          align: run.align || null,
+          widthPct: run.widthPct != null ? run.widthPct : null,
+          naturalWidth: null, naturalHeight: null, aspectRatio: null,
+          fit: null, altText: null,
+          // שלב 3 (AssetResolver) ימלא מידות טבעיות ומדיניות fit — החוזה כאן.
+          resolution: { stage: 3, pending: ['naturalWidth', 'naturalHeight', 'aspectRatio', 'fit'] }
+        },
+        styleRef: null,
+        constraints: { atomic: true, participates: PARTICIPATION.INLINE, splittable: SPLIT_POLICIES.NEVER, overflow: 'move' },
+        diagnostics: [{ code: 'asset-dimensions-pending-stage3', message: 'מידות הנכס ייפתרו בשלב 3 (AssetResolver); הזהות והמקור כבר קבועים.' }]
+      });
+      continue;
+    }
+    // פריט מותאם (מה-registry) — kind:custom:* כפי שנרשם.
+    items.push({
+      id: itemId(parentId, run.kind, ordinal++, run.sourceStart, run.sourceEnd),
+      kind: run.kind,
+      parentId,
+      order: ordinal - 1,
+      sourceRange: { start: canonicalBase + run.sourceStart, end: canonicalBase + run.sourceEnd },
+      sourceText: run.sourceText || null,
+      payload: run,
+      styleRef: null,
+      constraints: { atomic: true, participates: PARTICIPATION.INLINE, splittable: SPLIT_POLICIES.NEVER },
+      diagnostics: []
+    });
+  }
+  flushText();
+  for (const w of parsed.warnings || []) {
+    diagnostics.push({ code: w.code, start: w.start, end: w.end, message: w.message, severity: 'warning' });
+  }
+  return { items, nextOrdinal: ordinal };
+}
+
+/** טווחי תחביר הגופן שנשמרו בפרסר ה-inline (לשחזור מדויק). */
+function markerSyntaxSpans(parsed) {
+  // parseInlineRuns מחזיר markerSpans: המיקומים המדויקים שהוסרו (סמני גופן).
+  return (parsed.markerSpans || []).map(ms => ({ start: ms.start, end: ms.end, text: ms.text, purpose: 'font-range' }));
+}
+
+/**
+ * buildDocumentModel — הכניסה היחידה לבניית המודל הקנוני.
+ * @param {string} rawText — מקור המסמך הגולמי
+ * @param {object} [opts]
+ *   - parseOpts: { endnotePrefix, fnOpen, fnClose } (כמו הפייפליין)
+ *   - inlineOptions: אפשרויות פרסר ה-inline (fontMarkers/knownFamilies/availableFamilies)
+ *   - declarations: { customStyles?, customPages?, inlineFontStyles? } — הצהרות מסמך מההגדרות
+ */
+function buildDocumentModel(rawText, opts = {}) {
+  const parseOpts = opts.parseOpts || {};
+  const { unified, lineMap } = buildLineMap(rawText);
+  const docId = documentId(rawText);
+  const diagnostics = [];
+
+  const lexResult = opts.lexResult && opts.lexResult.bodyLines
+    ? opts.lexResult
+    : lexDocument(rawText, parseOpts);
+  const detail = opts.detail || tokenizeDetailed(lexResult.bodyLines, parseOpts);
+  const inlineOptions = opts.inlineOptions || {};
+  const bodyBase = lexResult.bodyLineStart != null ? lexResult.bodyLineStart : 0;
+
+  const blocks = [];
+  const notes = [];
+  const anchors = [];
+  const skeleton = []; // שורות המקור: סיווג + קישור לבלוק/מטא-דאטה
+  const blankLines = new Map(); // lineIndex → טקסט הרווחים המקורי המדויק של שורה ריקה
+  const blockOrdinalByToken = new Map();
+  let partParentId = null;
+  let blockOrdinal = 0;
+
+  // ── שורות פתיח (metadata) ──
+  const metadataEntries = [];
+  for (const ml of (lexResult.metadataLines || [])) {
+    const start = lineStartOf(lineMap, ml.lineIndex);
+    metadataEntries.push({
+      key: ml.key,
+      value: ml.value,
+      lineIndex: ml.lineIndex,
+      sourceRange: { start, end: start + ml.raw.length },
+      sourceText: ml.raw
+    });
+    skeleton.push({ lineIndex: ml.lineIndex, kind: 'metadata', key: ml.key });
+  }
+  // שורה ריקה שנבלעה במעבר הפתיח→גוף (יש לשמר את תוכנה המדויק — גם רווחים).
+  for (const pb of (lexResult.preludeBlanks || [])) {
+    skeleton.push({ lineIndex: pb.lineIndex, kind: 'blank' });
+    blankLines.set(pb.lineIndex, pb.raw);
+  }
+
+  const mkBlock = (lineRec, extra) => {
+    const lineIndex = bodyBase + lineRec.bodyLineIndex;
+    const lStart = lineStartOf(lineMap, lineIndex);
+    const s1 = lineRec.stage1;
+    // הטווח הקנוני של השורה (בקואורדינטות המקור המאוחד)
+    const canonicalStart = lStart + s1.rawLead + (lineRec.stage2 ? lineRec.stage2.charMap[0] || 0 : 0);
+    const canonicalLen = lineRec.kind === 'paragraph' && lineRec.stage2
+      ? lineRec.canonicalAfterEditorial.length
+      : s1.pre.length;
+    const id = blockId(docId, extra.kind, blockOrdinal, canonicalStart, canonicalStart + canonicalLen);
+    // בסיס הקואורדינטות: מיקום המסמך של canonical[0] — ההיסט המדויק של השורה
+    // (שוליים + תחילת המיפוי אחרי הסרת editorials). כל טווחי הפריטים נגזרים ממנו.
+    const canonicalBase = canonicalStart;
+    const blk = {
+      id, kind: extra.kind,
+      parentId: partParentId,
+      order: blockOrdinal++,
+      lineIndex,
+      sourceRange: { docId, start: canonicalStart, end: canonicalStart + canonicalLen },
+      source: {
+        lineStart: lStart,
+        canonicalBase,
+        canonicalLength: canonicalLen,
+        rawLead: s1.rawLead, rawTrail: s1.rawTrail,
+        rawLeadText: s1.rawLeadText, rawTrailText: s1.rawTrailText,
+        normalizations: s1.normalizations,
+        stage2: lineRec.stage2 || null,
+        preLength: s1.pre.length
+      },
+      items: [],
+      syntax: {},
+      constraints: {},
+      diagnostics: [],
+      ...extra
+    };
+    blocks.push(blk);
+    skeleton.push({ lineIndex, kind: 'body', blockId: id });
+    if (lineRec.tokenId) blockOrdinalByToken.set(lineRec.tokenId, blk);
+    return blk;
+  };
+
+  // ── מעבר על שורות הגוף לפי סדר המקור ──
+  for (const lineRec of detail.lines) {
+    if (lineRec.kind === 'blank') {
+      const li = bodyBase + lineRec.bodyLineIndex;
+      skeleton.push({ lineIndex: li, kind: 'blank' });
+      blankLines.set(li, (lineRec.stage1.rawLeadText || '') + (lineRec.stage1.rawTrailText || ''));
+      continue;
+    }
+    if (lineRec.kind === 'editorial') {
+      const blk = mkBlock(lineRec, { kind: BLOCK_KINDS.EDITORIAL, payload: { segments: lineRec.stage2.removedSegments }, removed: true });
+      blk.syntax.editorialSegments = lineRec.stage2.removedSegments;
+      blk.constraints = { participates: 'none', removed: true };
+      for (const seg of lineRec.stage2.removedSegments) {
+        blk.diagnostics.push({ code: 'editorial-removed', start: blk.source.start, end: blk.source.end, message: 'סימון ##…## הוסר מהפלט ונשמר לחשבונאות מקור.', severity: 'info' });
+      }
+      continue;
+    }
+    if (lineRec.kind === 'heading') {
+      const blk = mkBlock(lineRec, {
+        kind: BLOCK_KINDS.HEADING,
+        level: lineRec.level,
+        payload: { text: null, num: null }
+      });
+      blk.constraints = { keepWithNext: true, participates: PARTICIPATION.BLOCK, splittable: SPLIT_POLICIES.NEVER };
+      // תחביר הכותרת (הקידומת «כותרת N - ») נשמר במדויק — טקסט תחביר, לא תוכן.
+      blk.syntax.prefix = { start: 0, end: lineRec.spans.title.start, text: lineRec.stage1.pre.slice(0, lineRec.spans.title.start) };
+      blk.syntax.titleSpan = lineRec.spans.title;
+      // heading level<=1 פותח חלק — parentId של הבאים (כמו currentPart בפייפליין)
+      if (lineRec.level <= 1) partParentId = blk.id;
+      // פריט הטקסט של הכותרת — כולל טווחי גופן (חוזה: "לרבות... כותרות")
+      const t0 = lineRec.spans.title.start;
+      const t1 = lineRec.spans.title.end;
+      const headingText = lineRec.stage1.pre.slice(t0, t1);
+      const parsed = parseInlineRuns(headingText, { ...inlineOptions, sourceOffset: t0, allowImages: false, allowCustomItems: false });
+      const built = runsToItems(parsed, blk.id, t0, 0, blk.source.canonicalBase, blk.diagnostics);
+      blk.items = built.items;
+      blk.payload.text = headingText;
+      blk.syntax.markerSpans = markerSyntaxSpans(parsed);
+      blk.syntax.inlineParsed = true;
+      // עוגן יעד להצלבות (TOC) — זהות יציבה של הכותרת עצמה
+      anchors.push({ id: anchorId(docId, `heading:${blk.id}`), kind: 'anchor', targetBlockId: blk.id, note: 'יעד כותרת — עגינה לקישורים פנימיים/TOC (שלב 6+)' });
+      continue;
+    }
+    if (lineRec.kind === 'endnote' || lineRec.kind === 'endnote-numbered') {
+      const blk = mkBlock(lineRec, {
+        kind: BLOCK_KINDS.ENDNOTE,
+        num: lineRec.num != null ? lineRec.num : null,
+        payload: { text: null }
+      });
+      blk.constraints = { participates: PARTICIPATION.BLOCK, splittable: SPLIT_POLICIES.LINE };
+      const t0 = lineRec.spans.text.start;
+      const t1 = lineRec.spans.text.end;
+      const enText = lineRec.stage1.pre.slice(t0, t1);
+      const parsed = parseInlineRuns(enText, { ...inlineOptions, sourceOffset: t0, allowImages: false, allowCustomItems: false });
+      blk.items = runsToItems(parsed, blk.id, t0, 0, blk.source.canonicalBase, blk.diagnostics).items;
+      blk.payload.text = enText;
+      blk.syntax.textSpan = lineRec.spans.text;
+      blk.syntax.prefix = { start: 0, end: t0, text: lineRec.stage1.pre.slice(0, t0) };
+      blk.syntax.markerSpans = markerSyntaxSpans(parsed);
+      continue;
+    }
+    if (lineRec.kind === 'endnote-class') {
+      const blk = mkBlock(lineRec, {
+        kind: BLOCK_KINDS.ENDNOTE_CLASS,
+        payload: { title: null }
+      });
+      // הוראה — מגדירה כותרת לעמודי ההערות של החלק; אינה תוכן זורם.
+      blk.constraints = { participates: PARTICIPATION.PAGE_FURNITURE, directive: 'endnote-pages-title' };
+      const t0 = lineRec.spans.title.start;
+      const t1 = lineRec.spans.title.end;
+      blk.payload.title = lineRec.stage1.pre.slice(t0, t1);
+      blk.syntax.titleSpan = lineRec.spans.title;
+      blk.syntax.prefix = { start: 0, end: t0, text: lineRec.stage1.pre.slice(0, t0) };
+      continue;
+    }
+    // paragraph
+    const blk = mkBlock(lineRec, { kind: BLOCK_KINDS.PARAGRAPH, payload: {} });
+    blk.constraints = { participates: PARTICIPATION.BLOCK, splittable: SPLIT_POLICIES.LINE };
+    const canon = lineRec.canonicalAfterEditorial;
+    const cm = lineRec.stage2 ? lineRec.stage2.charMap : null; // canonical→pre
+    const toPre = (ci) => (cm ? cm[ci] : ci);
+    const blkDiag = blk.diagnostics;
+    const syntax = blk.syntax;
+    syntax.partRanges = [];
+    syntax.gaps = [];
+    syntax.noteDelims = [];
+    syntax.markerSpans = [];
+    syntax.editorialSegments = lineRec.stage2 ? lineRec.stage2.removedSegments : [];
+    syntax.unmatchedClosers = lineRec.unmatchedClosers || [];
+    syntax.delimiters = lineRec.delimiters;
+
+    let itemOrdinal = 0;
+    let noteOrdinalInBlock = 0;
+    let prevEnd = 0;
+    const partItems = [];
+    const partRecs = [];
+    // partRanges שמורים ב-syntax (מיקומים בלבד — הטקסט מגיע מהפריטים)
+    for (let pi = 0; pi < lineRec.partRanges.length; pi++) {
+      const pr = lineRec.partRanges[pi];
+      if (pr.start > prevEnd) syntax.gaps.push({ start: prevEnd, end: pr.start, text: canon.slice(prevEnd, pr.start) }); // רווח בין-חלקי (trim)
+      prevEnd = Math.max(prevEnd, pr.end);
+      if (pr.kind === 'text') {
+        const value = canon.slice(pr.start, pr.end);
+        const parsed = parseInlineRuns(value, { ...inlineOptions, sourceOffset: pr.start, allowImages: true });
+        const built = runsToItems(parsed, blk.id, pr.start, itemOrdinal, blk.source.canonicalBase, blkDiag);
+        for (const it of built.items) {
+          it.order = itemOrdinal++;
+          partItems.push(it);
+        }
+        partRecs.push({ kind: 'text', start: pr.start, end: pr.end, itemCount: built.items.length });
+        for (const ms of markerSyntaxSpans(parsed)) syntax.markerSpans.push(ms);
+      } else {
+        // note-ref → פריט סמן אטומי + גוף הערה עם קישור מבני
+        const markerIt = {
+          id: itemId(blk.id, ITEM_KINDS.NOTE_MARKER, itemOrdinal, pr.start, pr.end),
+          kind: ITEM_KINDS.NOTE_MARKER,
+          parentId: blk.id,
+          order: itemOrdinal++,
+          sourceRange: { start: blk.source.canonicalBase + pr.start, end: blk.source.canonicalBase + pr.end },
+          sourceText: canon.slice(pr.start, pr.end),
+          payload: { noteRef: null, delimiters: { open: canon.slice(pr.openStart, pr.openEnd), close: canon.slice(pr.closeStart, pr.closeEnd) } },
+          styleRef: { family: null, resolvedBy: 'note-marker-style', inherits: true },
+          constraints: { atomic: true, participates: PARTICIPATION.INLINE, splittable: SPLIT_POLICIES.NEVER, bindToNeighbor: true },
+          diagnostics: []
+        };
+        const innerRaw = canon.slice(pr.innerStart, pr.innerEnd);
+        const innerTrimmed = innerRaw.trim();
+        const innerLead = innerRaw.length - innerRaw.trimStart().length;
+        const innerParsed = parseInlineRuns(innerTrimmed, { ...inlineOptions, sourceOffset: pr.innerStart + innerLead, allowImages: true, allowCustomItems: false });
+        const noteIt = {
+          id: noteId(blk.id, noteOrdinalInBlock, blk.source.canonicalBase + pr.start, blk.source.canonicalBase + pr.end),
+          kind: 'noteBody',
+          parentId: blk.id,
+          order: noteOrdinalInBlock++,
+          sourceRange: { start: blk.source.canonicalBase + pr.innerStart, end: blk.source.canonicalBase + pr.innerEnd },
+          sourceText: innerRaw,
+          payload: {
+            markerRef: markerIt.id,
+            atomicText: innerTrimmed.replace(/ +/g, ATOMIC_SPACE),
+            body: innerTrimmed,
+            runs: innerParsed.runs.filter(r => r.kind === 'text').map(r => ({ text: r.text, fontFamily: r.fontFamily || null, sourceStart: r.sourceStart, sourceEnd: r.sourceEnd }))
+          },
+          styleRef: { family: null, resolvedBy: 'note-body-style', inherits: true },
+          constraints: { participates: PARTICIPATION.INLINE, splittable: SPLIT_POLICIES.LINE },
+          continuation: { sharedId: null, policy: 'preserve-identity-on-split' },
+          diagnostics: []
+        };
+        noteIt.continuation.sharedId = noteIt.id;
+        markerIt.payload.noteRef = noteIt.id;
+        for (const w of innerParsed.warnings || []) noteIt.diagnostics.push({ code: w.code, start: w.start, end: w.end, message: w.message, severity: 'warning' });
+        for (const ms of markerSyntaxSpans(innerParsed)) syntax.markerSpans.push({ ...ms, inNote: noteIt.id });
+        anchors.push({ id: anchorId(docId, `note:${noteIt.id}`), kind: 'anchor', targetItemId: markerIt.id, targetNoteId: noteIt.id });
+        partItems.push(markerIt);
+        notes.push(noteIt);
+        partRecs.push({ kind: 'note-ref', start: pr.start, end: pr.end, noteRef: noteIt.id });
+        syntax.noteDelims.push({
+          noteRef: noteIt.id, openStart: pr.openStart, openEnd: pr.openEnd,
+          closeStart: pr.closeStart, closeEnd: pr.closeEnd,
+          openText: canon.slice(pr.openStart, pr.openEnd), closeText: canon.slice(pr.closeStart, pr.closeEnd)
+        });
+      }
+    }
+    if (prevEnd < canon.length) syntax.gaps.push({ start: prevEnd, end: canon.length, text: canon.slice(prevEnd, canon.length) });
+    blk.items = partItems;
+    syntax.partRecords = partRecs;
+    // תוחמים לא תואמים — דיווח מפורש, לעולם לא תיקון שקט (דוקטרינת הסורק)
+    for (const uc of syntax.unmatchedClosers) {
+      blkDiag.push({ code: 'unmatched-note-closer', pos: uc.pos, form: uc.form, message: uc.note || 'סוגר הערה ללא פותח — דורש אימות מול מקור.', severity: 'warning' });
+    }
+    continue;
+  }
+
+  // ── הצהרות מסמך מההגדרות (זהות יציבה, לא העתקים אלמונים) ──
+  // סגנונות מותאמים, עמודים מותאמים וטווחי גופן inline הם חלק ממבנה המסמך
+  // (מגיעים דרך ההגדרות/הנכסים) — המודל מתעד אותם עם זהות; הגאומטריה שלהם
+  // נקבעת בשלבים 5–7. ריהוט עמוד מנועי (שערים/גיליון/TOC) — ראה coverage.
+  const declarations = {};
+  if (opts.declarations && Array.isArray(opts.declarations.customStyles)) {
+    declarations.customStyles = opts.declarations.customStyles.map(st => ({ styleRef: `custom-style:${st.id}`, styleId: st.id, name: st.name, layoutMode: st.layoutMode }));
+  }
+  if (opts.declarations && Array.isArray(opts.declarations.customPages)) {
+    declarations.customPages = opts.declarations.customPages.map((cp, i) => ({
+      id: `page-${stableHash('page', [docId, String(cp.id || `custom-${i + 1}`)])}`,
+      sourceId: String(cp.id || `custom-${i + 1}`),
+      position: cp.position || null,
+      counted: cp.counted !== false
+    }));
+  }
+  if (opts.declarations && Array.isArray(opts.declarations.inlineFontStyles)) {
+    declarations.inlineFontStyles = opts.declarations.inlineFontStyles.map(fs => ({
+      styleRef: `inline-font:${fs.id}`,
+      open: fs.open, close: fs.close, family: fs.family
+    }));
+  }
+
+  const model = {
+    version: 1,
+    docId,
+    createdAtStage: 2,
+    source: {
+      unifiedLength: unified.length,
+      lineMap: lineMap.map(l => ({ index: l.index, start: l.start, end: l.end, eol: l.eol, originalStart: l.originalStart, originalEnd: l.originalEnd })),
+      skeleton,
+      blankLines
+    },
+    metadata: { entries: metadataEntries },
+    blocks,
+    notes,
+    anchors,
+    declarations,
+    diagnostics,
+    parse: {
+      contentHash: contentHash(detail.tokens),
+      tokenCount: detail.tokens.length,
+      lineCount: detail.lines.length,
+      delimiters: detail.delimiters
+    },
+    _detail: detail, // פנימי: לשימוש adapter היציאה (אין לצרוך מבחוץ)
+    _lexResult: lexResult
+  };
+  return model;
+}
+
+module.exports = { buildDocumentModel, buildLineMap };
+
+};
+__modules["src/engine/parser/inline-content.js"] = function (require, module, exports) {
+// src/engine/parser/inline-content.js — פרסר ריצות inline קנוני (TextRun/ImageRun/פריטים מותאמים)
+// שלב 2: הובא מ-PR #15 (S14 P0) למיקום הקנוני; ה-registry הועבר ל-model/registry.js
+// (חריצי חוזה מלאים). ממשק הפלט זהה — runs עם sourceStart/sourceEnd ואזהרות מפורשות.
+'use strict';
+
+const { parseInlineItemAt } = require('../model/registry');
+
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg']);
+const IMAGE_LIKE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'tif', 'tiff']);
+
+function asSet(value) {
+  if (value instanceof Set) return new Set(Array.from(value, x => String(x)));
+  if (Array.isArray(value)) return new Set(value.map(x => String(x)));
+  return new Set();
+}
+
+function normalizeFontMarkers(input, warnings) {
+  let entries = [];
+  if (Array.isArray(input)) entries = input.map((value, index) => [String(value && (value.id || index)), value]);
+  else if (input && typeof input === 'object') entries = Object.entries(input);
+
+  const provisional = [];
+  for (const [id, value] of entries) {
+    if (!value || typeof value !== 'object') {
+      warnings.push({ code: 'invalid-font-marker-definition', markerId: id, message: 'הגדרת סגנון גופן inline אינה אובייקט תקין.' });
+      continue;
+    }
+    const open = String(value.open != null ? value.open : (value.openMarker != null ? value.openMarker : ''));
+    const close = String(value.close != null ? value.close : (value.closeMarker != null ? value.closeMarker : ''));
+    const family = String(value.family != null ? value.family : (value.fontFamily != null ? value.fontFamily : '')).trim();
+    if (!open || !close || !family || open === close && !open.trim()) {
+      warnings.push({ code: 'invalid-font-marker-definition', markerId: id, message: 'סמני הפתיחה/סגירה ומשפחת הגופן חייבים להיות מוגדרים.' });
+      continue;
+    }
+    provisional.push({ id: String(id), open, close, family });
+  }
+
+  // A marker token may belong to only one configured style. Ambiguous definitions
+  // are rejected as a unit; guessing would make the parser dependent on ordering.
+  const owners = new Map();
+  const conflicts = new Set();
+  for (const pair of provisional) {
+    for (const token of new Set([pair.open, pair.close])) {
+      const prior = owners.get(token);
+      if (prior && prior !== pair.id) {
+        conflicts.add(prior);
+        conflicts.add(pair.id);
+      } else owners.set(token, pair.id);
+    }
+  }
+  for (const id of conflicts) {
+    warnings.push({ code: 'ambiguous-font-marker-definition', markerId: id, message: 'הגדרת הסגנון נדחתה: אותו סמן משויך ליותר מסגנון אחד.' });
+  }
+  return provisional.filter(pair => !conflicts.has(pair.id));
+}
+
+function parseImagePayload(raw) {
+  const payload = String(raw || '').trim();
+  if (!payload) return null;
+
+  let resourcePath = payload;
+  let align = null;
+  let widthPct = null;
+  const suffix = resourcePath.match(/\.([lcr])(\d{1,3})$/i);
+  if (suffix) {
+    align = ({ l: 'left', c: 'center', r: 'right' })[suffix[1].toLowerCase()];
+    widthPct = Number(suffix[2]);
+    resourcePath = resourcePath.slice(0, suffix.index);
+  }
+
+  const extMatch = resourcePath.match(/\.([a-z0-9]+)$/i);
+  const ext = extMatch ? extMatch[1].toLowerCase() : '';
+  if (!IMAGE_LIKE_EXTENSIONS.has(ext)) return null;
+  if (!IMAGE_EXTENSIONS.has(ext)) {
+    return { ok: false, code: 'unsupported-image-format', message: 'פורמט תמונה לא נתמך; מותר PNG, JPG או JPEG בלבד.' };
+  }
+  const segments = resourcePath.split('/');
+  const invalidPath =
+    !resourcePath ||
+    resourcePath.startsWith('/') ||
+    resourcePath.startsWith('//') ||
+    /^[a-z][a-z0-9+.-]*:/i.test(resourcePath) ||
+    resourcePath.includes('\\') ||
+    resourcePath.includes('?') ||
+    resourcePath.includes('#') ||
+    segments.some(part => !part || part === '.' || part === '..') ||
+    (widthPct != null && (!Number.isInteger(widthPct) || widthPct < 1 || widthPct > 100));
+  if (invalidPath) {
+    return { ok: false, code: 'invalid-image-path-or-size', message: 'נתיב התמונה או אחוז הרוחב אינם תקינים; נדרש נתיב יחסי ורוחב 1–100%.' };
+  }
+  return { ok: true, resourcePath, align, widthPct };
+}
+
+function parseInlineRuns(value, options = {}) {
+  const source = String(value == null ? '' : value);
+  const warnings = [];
+  const availableFamilies = asSet(options.availableFamilies);
+  const knownFamilies = asSet(options.knownFamilies);
+  for (const family of availableFamilies) knownFamilies.add(family);
+  const fontMarkers = normalizeFontMarkers(options.fontMarkers, warnings);
+  const hasAvailabilityContract = options.availableFamilies != null;
+
+  const markerRemovals = [];
+  const spans = [];
+  const images = [];
+  const customItems = [];
+  const stack = [];
+  const invalidOpens = new Set();
+  const configuredTokens = [];
+  for (const pair of fontMarkers) {
+    configuredTokens.push({ token: pair.open, pair, type: 'open' });
+    if (pair.close !== pair.open) configuredTokens.push({ token: pair.close, pair, type: 'close' });
+  }
+  configuredTokens.sort((a, b) => b.token.length - a.token.length);
+
+  const sourceOffset = Number.isFinite(options.sourceOffset) ? options.sourceOffset : 0;
+  const addWarning = (code, start, end, message, extra = {}) => {
+    warnings.push({ code, start: start + sourceOffset, end: end + sourceOffset, message, ...extra });
+  };
+
+  const markerAt = (index) => {
+    const candidates = [];
+    for (const entry of configuredTokens) {
+      if (!source.startsWith(entry.token, index)) continue;
+      let type = entry.type;
+      if (entry.pair.open === entry.pair.close) {
+        type = stack.length && stack[stack.length - 1].id === entry.pair.id ? 'close' : 'open';
+      }
+      candidates.push({ ...entry, type });
+    }
+    if (source.startsWith('</>', index)) {
+      candidates.push({ token: '</>', type: 'generic-close', tokenLength: 3 });
+    }
+    if (source[index] === '<' && source[index + 1] !== '/') {
+      const match = source.slice(index).match(/^<([^<>]{1,96})>/);
+      if (match) {
+        const family = match[1].trim();
+        const validName = !!family && !/[{};]/.test(family);
+        const closesLater = source.indexOf('</>', index + match[0].length) >= 0;
+        if (validName && (knownFamilies.has(family) || closesLater)) {
+          candidates.push({ token: match[0], type: 'generic-open', family });
+        }
+      }
+    }
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => b.token.length - a.token.length);
+    return candidates[0];
+  };
+
+  let index = 0;
+  while (index < source.length) {
+    if (options.allowImages !== false && source[index] === '#') {
+      const close = source.indexOf('#', index + 1);
+      if (close > index + 1) {
+        const parsed = parseImagePayload(source.slice(index + 1, close));
+        if (parsed && parsed.ok) {
+          images.push({
+            kind: 'image',
+            resourcePath: parsed.resourcePath,
+            align: parsed.align,
+            widthPct: parsed.widthPct,
+            sourceText: source.slice(index, close + 1),
+            sourceStart: index + sourceOffset,
+            sourceEnd: close + 1 + sourceOffset
+          });
+          index = close + 1;
+          continue;
+        }
+        if (parsed && !parsed.ok) {
+          addWarning(parsed.code, index, close + 1, parsed.message, { source: source.slice(index, close + 1) });
+        }
+      }
+    }
+
+    const marker = markerAt(index);
+    if (!marker) {
+      const custom = options.allowCustomItems === false ? null : parseInlineItemAt(source, index, {
+        sourceOffset,
+        availableFamilies,
+        knownFamilies,
+        options
+      });
+      if (custom) {
+        customItems.push({
+          ...custom.item,
+          sourceStart: index + sourceOffset,
+          sourceEnd: index + custom.consumed + sourceOffset
+        });
+        index += custom.consumed;
+        continue;
+      }
+      index++;
+      continue;
+    }
+
+    const end = index + marker.token.length;
+    markerRemovals.push({ start: index, end });
+    if (marker.type === 'open' || marker.type === 'generic-open') {
+      stack.push({
+        id: marker.type === 'generic-open' ? 'generic' : marker.pair.id,
+        kind: marker.type === 'generic-open' ? 'generic' : 'configured',
+        family: marker.type === 'generic-open' ? marker.family : marker.pair.family,
+        start: end,
+        markerStart: index,
+        markerEnd: end,
+        depth: stack.length
+      });
+    } else {
+      const top = stack[stack.length - 1];
+      const matches = marker.type === 'generic-close'
+        ? !!top && top.kind === 'generic'
+        : !!top && top.kind === 'configured' && top.id === marker.pair.id;
+      if (matches) {
+        stack.pop();
+        if (!invalidOpens.has(top) && top.start < index) {
+          spans.push({
+            start: top.start,
+            end: index,
+            family: top.family,
+            depth: top.depth,
+            available: !hasAvailabilityContract || availableFamilies.has(top.family),
+            markerId: top.id
+          });
+        }
+        if (hasAvailabilityContract && !availableFamilies.has(top.family)) {
+          addWarning('font-family-unavailable', top.markerStart, end, 'משפחת הגופן של הטווח אינה טעונה; הטקסט נשמר בגופן הרגיל.', { family: top.family, markerId: top.id });
+        }
+      } else {
+        const matchesOpen = (item) => marker.type === 'generic-close'
+          ? item.kind === 'generic'
+          : item.kind === 'configured' && item.id === marker.pair.id;
+        let matchIndex = -1;
+        for (let si = stack.length - 1; si >= 0; si--) {
+          if (matchesOpen(stack[si])) { matchIndex = si; break; }
+        }
+        if (matchIndex >= 0) {
+          // A close marker that jumps over a nested open marker makes every
+          // intersecting range ambiguous. Invalidate the entire crossing group.
+          for (let si = matchIndex; si < stack.length; si++) invalidOpens.add(stack[si]);
+          stack.splice(matchIndex);
+          addWarning('crossing-font-range', index, end,
+            'טווחי גופן חוצים זה את זה; כל הטווחים המעורבים נשארים בטקסט רגיל.');
+        } else {
+          addWarning('unmatched-font-close', index, end,
+            'סמן סגירת גופן ללא פתיחה תואמת הוסר; הטקסט נשמר ללא שינוי.');
+        }
+      }
+    }
+    index = end;
+  }
+
+  for (const open of stack) {
+    addWarning('unclosed-font-range', open.markerStart, open.markerEnd, 'סמן פתיחת גופן ללא סגירה תואמת הוסר; הטקסט נשמר בגופן הרגיל.', { family: open.family, markerId: open.id });
+  }
+
+  // Build interval events so font lookup is linear in the number of runs, not
+  // quadratic in the number of characters × nested ranges.
+  const starts = new Map();
+  const ends = new Map();
+  const removals = new Map();
+  const imageAt = new Map();
+  const customAt = new Map();
+  const boundaries = new Set([0, source.length]);
+  const addTo = (map, at, item) => {
+    if (!map.has(at)) map.set(at, []);
+    map.get(at).push(item);
+  };
+  for (const span of spans) {
+    if (!span.available || span.end <= span.start) continue;
+    addTo(starts, span.start, span);
+    addTo(ends, span.end, span);
+    boundaries.add(span.start); boundaries.add(span.end);
+  }
+  for (const marker of markerRemovals) {
+    addTo(removals, marker.start, marker);
+    boundaries.add(marker.start); boundaries.add(marker.end);
+  }
+  for (const image of images) {
+    const localStart = image.sourceStart - sourceOffset;
+    const localEnd = image.sourceEnd - sourceOffset;
+    imageAt.set(localStart, image);
+    boundaries.add(localStart); boundaries.add(localEnd);
+  }
+  for (const item of customItems) {
+    const localStart = item.sourceStart - sourceOffset;
+    const localEnd = item.sourceEnd - sourceOffset;
+    customAt.set(localStart, item);
+    boundaries.add(localStart); boundaries.add(localEnd);
+  }
+
+  const points = Array.from(boundaries).sort((a, b) => a - b);
+  const active = [];
+  const runs = [];
+  const appendText = (text, family, start, end) => {
+    if (!text) return;
+    const prev = runs[runs.length - 1];
+    if (prev && prev.kind === 'text' && prev.fontFamily === (family || null) && prev.sourceEnd <= start) {
+      prev.text += text;
+      prev.sourceEnd = end;
+    } else {
+      runs.push({ kind: 'text', text, fontFamily: family || null, sourceStart: start + sourceOffset, sourceEnd: end + sourceOffset });
+    }
+  };
+
+  let p = 0;
+  while (p < points.length - 1) {
+    const at = points[p];
+    const ending = (ends.get(at) || []).slice().sort((a, b) => b.depth - a.depth);
+    for (const span of ending) {
+      const pos = active.lastIndexOf(span);
+      if (pos >= 0) active.splice(pos, 1);
+    }
+    const beginning = (starts.get(at) || []).slice().sort((a, b) => a.depth - b.depth);
+    for (const span of beginning) active.push(span);
+
+    const custom = customAt.get(at);
+    const image = imageAt.get(at);
+    if (custom) {
+      runs.push({ ...custom });
+    } else if (image) {
+      runs.push({ ...image });
+    } else {
+      const marker = removals.get(at);
+      if (!marker) {
+        let family = null;
+        for (let k = active.length - 1; k >= 0; k--) {
+          if (active[k].available) { family = active[k].family; break; }
+        }
+        const next = points[p + 1];
+        appendText(source.slice(at, next), family, at, next);
+      }
+    }
+    p++;
+  }
+
+  const text = runs.filter(run => run.kind === 'text').map(run => run.text).join('');
+  // **שלב 2 (חוזה פריט אחיד — שימור מקור):** טווחי סמני הגופן שהוסרו, עם
+  // הטקסט המדויק — לשחזור lossless של המקור ב-round-trip של המודל הקנוני.
+  const markerSpans = markerRemovals.map(mr => ({
+    start: mr.start + sourceOffset,
+    end: mr.end + sourceOffset,
+    text: source.slice(mr.start, mr.end)
+  }));
+  return {
+    version: 1,
+    runs,
+    text,
+    warnings,
+    markerSpans,
+    hasImages: images.length > 0,
+    hasCustomItems: customItems.length > 0,
+    hasFontRanges: spans.some(span => span.available)
+  };
+}
+
+
+/**
+ * Return the lossless source projection of canonical inline runs.
+ * Images are projected back to their original marker until a dimensioned
+ * resource resolver is supplied; this prevents silent content loss.
+ */
+function inlineRunsSourceText(runs = []) {
+  return (Array.isArray(runs) ? runs : []).map(run => {
+    if (!run) return '';
+    if (run.kind === 'text') return run.text || '';
+    if (run.kind === 'image') return run.sourceText || '';
+    return '';
+  }).join('');
+}
+
+/** Plain source text of a canonical paragraph, with note references omitted. */
+function inlineParagraphSourceText(inlineContent) {
+  if (!inlineContent || !Array.isArray(inlineContent.parts)) {
+    throw new TypeError('inline-content: canonical paragraph parts are required');
+  }
+  return inlineContent.parts
+    .filter(part => part && part.kind === 'text')
+    .map(part => inlineRunsSourceText(part.runs))
+    .join(' ');
+}
+
+/** Source text of a canonical note; optional atomic-space projection for layout. */
+function inlineNoteSourceText(inlineContent, noteIndex, atomicSpace = null) {
+  const note = inlineContent && Array.isArray(inlineContent.notes) ? inlineContent.notes[noteIndex] : null;
+  if (!note) throw new RangeError('inline-content: note index is out of range');
+  const source = inlineRunsSourceText(note.runs);
+  return atomicSpace == null ? source : source.replace(/ +/g, atomicSpace);
+}
+
+/** Parse paragraph text fragments and footnotes into one shared inline AST. */
+function parseInlineParagraph(parts = [], notes = [], options = {}) {
+  const parsedParts = [];
+  const parsedNotes = [];
+  const warnings = [];
+  let hasImages = false;
+  let hasFontRanges = false;
+
+  for (const part of parts) {
+    if (!part || part.kind !== 'text') {
+      if (part && part.kind === 'note-ref') parsedParts.push({ kind: 'note-ref', noteIndex: part.noteIndex });
+      continue;
+    }
+    const parsed = parseInlineRuns(part.value, {
+      ...options,
+      sourceOffset: Number.isFinite(part.sourceStart) ? part.sourceStart : 0,
+      allowImages: true
+    });
+    parsedParts.push({ kind: 'text', sourceStart: part.sourceStart, sourceEnd: part.sourceEnd, runs: parsed.runs });
+    warnings.push(...parsed.warnings);
+    hasImages = hasImages || parsed.hasImages;
+    hasFontRanges = hasFontRanges || parsed.hasFontRanges;
+  }
+
+  for (const note of notes) {
+    const payload = note && typeof note === 'object' ? note.text : note;
+    const sourceStart = note && typeof note === 'object' && Number.isFinite(note.sourceStart) ? note.sourceStart : 0;
+    const parsed = parseInlineRuns(payload, {
+      ...options, sourceOffset: sourceStart, allowImages: true, allowCustomItems: false
+    });
+    parsedNotes.push({ sourceStart, sourceEnd: note && typeof note === 'object' ? note.sourceEnd : undefined, runs: parsed.runs });
+    warnings.push(...parsed.warnings);
+    hasImages = hasImages || parsed.hasImages;
+    hasFontRanges = hasFontRanges || parsed.hasFontRanges;
+  }
+
+  return { version: 1, parts: parsedParts, notes: parsedNotes, warnings, hasImages, hasFontRanges };
+}
+module.exports = { parseInlineRuns, parseInlineParagraph, parseImagePayload, inlineRunsSourceText, inlineParagraphSourceText, inlineNoteSourceText };
+
+};
+__modules["src/engine/model/registry.js"] = function (require, module, exports) {
+// src/engine/model/registry.js — מרשם יחיד לסוגי פריטים (שלב 2)
+// **חוזה:** spec/03_UNIFIED_ITEM_CONTRACT.md §7 · תוכנית §2.1-8:
+// פריט מותאם חדש נרשן ב-registry אחד עם kind, schema, validation,
+// resource dependencies, style resolution, measurement contract,
+// layout constraints, diagnostics ו-projection contract — ואסור שהוספתו
+// תדרוש ענף pipeline/breaker/planner/מקרין נפרד או תנאים מפוזרים בקוד.
+//
+// שלב 2 מגדיר את החוזה והממשקים בלבד: החריצים של מדידה/שבירה/תכנון/הקרנה
+// הם הצהרות (מזהי חוזה) ששלבים 3–8 מחברים אליהן מימוש — לא מימוש כאן.
+//
+// מבוסס על דפוס inline-item-registry של PR #15 (S14) — מוכל כאן במיקום
+// הקנוני model/ עם חריצי החוזה המלאים. רישום הוא realm-local (המודול
+// נטען בנפרד ב-Node/Worker/UI); תיאורי פריטי הפרויקט שייכים ל-inline-item-types.
+'use strict';
+
+const { isItemKind, ITEM_KINDS } = require('./kinds');
+
+/** סוגים מובנים — אין להחליפם; הם מוגדרים בחוזה ובקוד המנוע. */
+const BUILT_IN_KINDS = new Set(Object.values(ITEM_KINDS));
+
+/** חריצי חוזה מותרים ברישום סוג. */
+const CONTRACT_SLOTS = Object.freeze([
+  'schema',            // סכמת payload (מבנה שדות + סוגים) — לאימות
+  'validate',          // ולידציה נוספת (פונקציה טהורה)
+  'parse',             // פרסר מקור → פריט (תובענות consumed>0) — לפריטים מותאמים
+  'resourceDeps',      // תלויות נכסים (['asset:image', …]) — ל-AssetResolver (שלב 3)
+  'styleResolution',   // חוזה פתרון סגנון (מזהה/כלל)
+  'measurementContract', // מזהה חוזה מדידה (שלב 3) — לעולם לא מימוש כאן
+  'layoutConstraints', // אילוצי פריסה הצהרתיים (atomic/keepWithNext/splittable/participates)
+  'diagnostics',       // קטלוג אבחון שהסוג יכול להפיק
+  'projectionContract' // חוזה הקרנה לכל יעד (DOM/PDF) — מזהים, לא מימושים
+]);
+
+const entries = new Map();
+
+function validateKindName(kind) {
+  if (typeof kind !== 'string' || !kind.trim()) {
+    throw new TypeError('model/registry: kind must be a non-empty string');
+  }
+  const normalized = kind.trim();
+  if (BUILT_IN_KINDS.has(normalized)) {
+    throw new TypeError('model/registry: built-in item kind cannot be replaced: ' + normalized);
+  }
+  if (!isItemKind(normalized)) {
+    throw new TypeError('model/registry: custom kind must be prefixed "custom:" — got: ' + normalized);
+  }
+  return normalized;
+}
+
+/**
+ * רישום סוג פריט מותאם. descriptor חייב schema + validate + projectionContract;
+ * parse הוא אופציונלי (פריטים שמקורם אינו טקסטואלי-inline). הרישום חד-פעמי
+ * ומחמיר: רישום כפול של אותו kind הוא שגיאה, לא דריסה שקטה.
+ */
+function registerItemType(kind, descriptor) {
+  const normalized = validateKindName(kind);
+  if (!descriptor || typeof descriptor !== 'object') {
+    throw new TypeError('model/registry: descriptor must be an object');
+  }
+  for (const slot of Object.keys(descriptor)) {
+    if (!CONTRACT_SLOTS.includes(slot)) {
+      throw new TypeError(`model/registry: unknown contract slot "${slot}" (allowed: ${CONTRACT_SLOTS.join(', ')})`);
+    }
+  }
+  if (typeof descriptor.schema !== 'object' || descriptor.schema === null) {
+    throw new TypeError('model/registry: descriptor.schema (object) is required');
+  }
+  if (typeof descriptor.validate !== 'function') {
+    throw new TypeError('model/registry: descriptor.validate (function) is required');
+  }
+  if (!descriptor.projectionContract || typeof descriptor.projectionContract !== 'object') {
+    throw new TypeError('model/registry: descriptor.projectionContract (object) is required');
+  }
+  if (entries.has(normalized)) {
+    throw new Error('model/registry: item type already registered: ' + normalized);
+  }
+  entries.set(normalized, Object.freeze({ ...descriptor }));
+  return () => entries.delete(normalized);
+}
+
+/** פריטי הרישום הרשומים (לבדיקות ולאודיט). */
+function registeredKinds() { return Array.from(entries.keys()); }
+
+function descriptorOf(kind) { return entries.get(String(kind)) || null; }
+
+/**
+ * parseInlineItemAt — נקודת הכניסה של הפרסר האינליין לפריטים מותאמים
+ * (ממשק תואם ל-inline-content.js: consumed>0 תובענות את המקור).
+ * @returns {null|{consumed:number, item:object}}
+ */
+function parseInlineItemAt(source, index, context) {
+  for (const [kind, descriptor] of entries) {
+    if (typeof descriptor.parse !== 'function') continue;
+    const hit = descriptor.parse(source, index, context || {});
+    if (hit && Number.isInteger(hit.consumed) && hit.consumed > 0 && hit.item && hit.item.kind === kind) {
+      return hit;
+    }
+    if (hit) throw new TypeError(`model/registry: parse adapter of "${kind}" must return {consumed>0, item} or null`);
+  }
+  return null;
+}
+
+module.exports = {
+  BUILT_IN_KINDS, CONTRACT_SLOTS,
+  registerItemType, registeredKinds, descriptorOf, parseInlineItemAt
+};
+
+};
+__modules["src/engine/model/kinds.js"] = function (require, module, exports) {
+// src/engine/model/kinds.js — קבועי סוגי פריטים קנוניים (שלב 2)
+// **חוזה:** spec/03_UNIFIED_ITEM_CONTRACT.md §2-§3 · spec/00_CURRENT_ENGINE_COMPLETION_PLAN.md §2.1.
+// מילון יחיד לסוגי בלוקים ופריטי inline. אין להשתמש בשמות אחרים לאותו סוג
+// (word/box/token של המורשת ממופים לכאן בלבד דרך adapter הכניסה).
+'use strict';
+
+/** סוגי בלוקים ברמת המסמך (DocumentModel.blocks[].kind). */
+const BLOCK_KINDS = Object.freeze({
+  HEADING: 'heading',            // כותרת רמות 0–7 (0=הקדמה/ספר, 1=חלק, 2=פרק …)
+  PARAGRAPH: 'paragraph',        // פסקה רגילה
+  ENDNOTE: 'endnote',            // גוף הערת-סיון (תוכן — D-40)
+  ENDNOTE_CLASS: 'endnoteClass', // הוראת כותרת עמודי ההערות (רבים בלבד)
+  EDITORIAL: 'editorial'         // ##…## — מוסר מהפלט, נשמר לחשבונאות
+});
+
+/** סוגי פריטי inline בתוך בלוק (Inline Item Model — חוזה §3). */
+const ITEM_KINDS = Object.freeze({
+  TEXT: 'text',            // ריצת טקסט (עם runs[] כשיש טווחי גופן/סגנון)
+  NOTE_MARKER: 'noteMarker', // סמן הערה אטומי — קישור מבני noteRef לגוף ההערה
+  IMAGE: 'image',          // תמונה inline — assetId + מידות טבעיות + fit
+  ANCHOR: 'anchor',        // עוגן יעד (זהות יציבה לקישור פנימי)
+  ATOMIC_TOKEN: 'atomicToken', // טוקן אטומי (מספר/תאריך/מקור ציטוט)
+  GLUE: 'glue',            // דבק מפורש (רווח בלתי-שביר וכדומה) — לפי הצורך
+  PENALTY: 'penalty',      // עונש שבירה מפורש — לפי הצורך
+  CUSTOM: 'custom'         // פריט מותאם — חייב רישום ב-registry בלבד
+});
+
+/** סוגי נכסים (assetId namespace). */
+const ASSET_KINDS = Object.freeze({
+  IMAGE: 'image',
+  FONT: 'font',
+  ORNAMENT: 'ornament'
+});
+
+/** אופני השתתפות בעימוד (constraints.participates — חוזה §2). */
+const PARTICIPATION = Object.freeze({
+  INLINE: 'inline',
+  BLOCK: 'block',
+  PAGE_FURNITURE: 'pageFurniture',
+  BACKGROUND: 'background'
+});
+
+/** מדיניות overflow (אף פעם לא מחיקה שקטה). */
+const OVERFLOW_POLICIES = Object.freeze({
+  SHRINK: 'shrink',
+  MOVE: 'move',
+  DIAGNOSE: 'diagnose'
+});
+
+/** מדיניות פיצול לאורך עמודים. */
+const SPLIT_POLICIES = Object.freeze({
+  NEVER: 'never',
+  LINE: 'line',       // פיצול בין שורות (פסקה/הערה ארוכה)
+  BLOCK: 'block'      // העברה כבלוק שלם
+});
+
+const ALL_BLOCK_KINDS = Object.values(BLOCK_KINDS);
+const ALL_ITEM_KINDS = Object.values(ITEM_KINDS);
+
+function isBlockKind(kind) { return ALL_BLOCK_KINDS.includes(kind); }
+function isItemKind(kind) {
+  if (ALL_ITEM_KINDS.includes(kind)) return true;
+  return typeof kind === 'string' && kind.startsWith('custom:');
+}
+
+module.exports = {
+  BLOCK_KINDS, ITEM_KINDS, ASSET_KINDS, PARTICIPATION, OVERFLOW_POLICIES, SPLIT_POLICIES,
+  ALL_BLOCK_KINDS, ALL_ITEM_KINDS, isBlockKind, isItemKind
+};
+
+};
+__modules["src/engine/model/identity.js"] = function (require, module, exports) {
+// src/engine/model/identity.js — זהות דטרמיניסטית לפריטים קנוניים (שלב 2)
+// **חוזה:** spec/03_UNIFIED_ITEM_CONTRACT.md §2-כללי-זהות · תוכנית §2.1-3.
+// כלל הברזל: מזהים נגזרים מהמקור (מיקום + תוכן) בלבד — אין מוני ריצה,
+// אין Date.now/Math.random, אין מופעי סדר תלויי-סביבה. אותו קלט ⇒ אותם מזהים,
+// בכל ריצה ובכל סביבה (Node/Worker/UI).
+'use strict';
+
+const crypto = require('crypto');
+
+/** תחילית מרחבי-שם לזהות — מונעת התנגשות בין סוגי ישויות. */
+const NS = Object.freeze({
+  DOC: 'doc',
+  BLOCK: 'blk',
+  ITEM: 'itm',
+  NOTE: 'note',
+  ANCHOR: 'anc',
+  ASSET: 'ast',
+  STYLE: 'sty'
+});
+
+/** hash קצר ודטרמיניסטי (hex, 52 סיביות) של שרשור שדות מנורמלים. */
+function stableHash(namespace, fields) {
+  const parts = [namespace];
+  for (const f of fields) {
+    if (f === null || f === undefined) parts.push('~');
+    else if (typeof f === 'number') parts.push(Number.isInteger(f) ? String(f) : String(Math.round(f * 1e6) / 1e6));
+    else parts.push(String(f));
+  }
+  return crypto.createHash('sha256').update(parts.join('\u0001'), 'utf8').digest('hex').slice(0, 13);
+}
+
+/**
+ * מזהה מסמך — נגזר מבייטי המקור בלבד.
+ * @param {string} rawText
+ */
+function documentId(rawText) {
+  return stableHash(NS.DOC, [crypto.createHash('sha256').update(String(rawText), 'utf8').digest('hex')]);
+}
+
+/**
+ * מזהה בלוק — נגזר מטווח המקור + kind + מיקום יחסי בתוך המסמך.
+ * סדר הבלוקים (blockOrdinal) הוא סדר המקור, לא מונה רץ: אותו מסמך
+ * מייצר תמיד אותו רצף סדור.
+ */
+function blockId(docId, kind, blockOrdinal, sourceStart, sourceEnd) {
+  return `${NS.BLOCK}-${stableHash(NS.BLOCK, [docId, kind, blockOrdinal, sourceStart, sourceEnd])}`;
+}
+
+/**
+ * מזהה פריט inline — נגזר מההורה + טווח המקור + סודר בתוך ההורה.
+ * ordinal בתוך ההורה נקבע מסדר המקור של הפריטים (דטרמיניסטי).
+ */
+function itemId(parentId, kind, ordinalInParent, sourceStart, sourceEnd) {
+  return `${NS.ITEM}-${stableHash(NS.ITEM, [parentId, kind, ordinalInParent, sourceStart, sourceEnd])}`;
+}
+
+/**
+ * מזהה גוף הערה — נגזר מהסמן שלו (טווח המקור בגוף) + ההורה של הסמן.
+ * הקישור marker↔body הוא מבני: שניהם נושאים את אותו noteRef.
+ */
+function noteId(parentBlockId, noteOrdinal, sourceStart, sourceEnd) {
+  return `${NS.NOTE}-${stableHash(NS.NOTE, [parentBlockId, noteOrdinal, sourceStart, sourceEnd])}`;
+}
+
+/** מזהה עוגן. */
+function anchorId(docId, anchorName) {
+  return `${NS.ANC}-${stableHash(NS.ANC, [docId, String(anchorName)])}`;
+}
+
+/** מזהה נכס — נגזר מזהות המקור של הנכס (נתיב/bytes-hash כשיש). */
+function assetId(sourceIdentity) {
+  return `${NS.ASSET}-${stableHash(NS.ASSET, [String(sourceIdentity)])}`;
+}
+
+/** מזהה הצהרת סגנון (styleRef target). */
+function styleId(rawStyleId) {
+  return `${NS.STY}-${stableHash(NS.STY, [String(rawStyleId)])}`;
+}
+
+/**
+ * מפתח occurrence למופע של פריט שהתפצל חזותית (המשך בעמוד הבא).
+ * כל המופעים מפנים לאותו id המקורי; ה-occurrence מבדיל אותם בפלט.
+ * אינדקס המופע נקבע על ידי שלב העימוד בלבד — כאן רק המבנה.
+ */
+function occurrenceKey(id, occurrenceIndex) {
+  return `${id}#${occurrenceIndex}`;
+}
+
+module.exports = {
+  NS, stableHash, documentId, blockId, itemId, noteId, anchorId, assetId, styleId, occurrenceKey
+};
+
+};
+__modules["src/engine/model/adapter.js"] = function (require, module, exports) {
+// src/engine/model/adapter.js — adapter יציאה זמני: מודל קנוני → זרם טוקנים (שלב 2)
+// **מעמד:** ADAPTER זמני בגבול היציאה (חוזה §4 · תוכנית §2.1-11).
+// **מסומן, מוגבל, בעל בדיקות round-trip ותנאי הסרה.**
+//
+// - מטרה: זרם הטוקנים של ה-DP pipeline (core/pipeline.js) נגזר כעת מהמודל
+//   הקנוני — המודל הוא מקור הסמכות בשלב הפענוח; הטוקנים הם תחזית נגזרת.
+// - הוכחה: modelToTokens(buildDocumentModel(x)) ≡ tokenize(x) — זהות מלאה
+//   (deep-equal) מוכחת בבדיקות על הקורפוסים, כולל סדר, תוכן ומזהי t#.
+// - תנאי הסרה: כשתחילת ה-pipeline תצרוך את המודל הקנוני ישירות (שלבים 3–4 —
+//   מדידה/שבירה מה-Inline Item Model), ה-adapter יימחק יחד עם מבנה הטוקנים.
+// - אין לו להפוך למסלול runtime שני: הוא פונקציה טהורה אחת בגבול, בלי החלטות.
+'use strict';
+
+const { BLOCK_KINDS } = require('./kinds');
+const { rebuildCanonicalLine } = require('./roundtrip');
+
+/**
+ * modelToTokens — בונה את זרם הטוקנים ההיסטורי מהמודל הקנוני.
+ * הפונקציה טהורה ודטרמיניסטית: אין מצב מודול-גלובלי (מונה הטוקנים מקומי לקריאה
+ * באמצעות closure), המודל המקורי אינו משתנה (ההערות מועברות ל-rebuildCanonicalLine
+ * כפרמטר model מפורש — ממשק קיים), וסדר הפליטה זהה לסדר הטוקניזר המקורי.
+ * @param {object} model — פלט buildDocumentModel
+ */
+function modelToTokens(model) {
+  // טוהר: מונה הזהויות מקומי לקריאה — קריאות מקבילות/חוזרות/משולבבות אינן
+  // משפיעות זו על זו, והזהויות זהות לטוקניזר הישיר (t1, t2, …).
+  let tokenSeq = 0;
+  const mkToken = (type, payload) => ({ id: `t${++tokenSeq}`, type, ...payload });
+  const notesByBlock = new Map();
+  for (const n of model.notes || []) {
+    if (!notesByBlock.has(n.parentId)) notesByBlock.set(n.parentId, []);
+    notesByBlock.get(n.parentId).push(n);
+  }
+  const tokens = [];
+  for (const blk of model.blocks) {
+    if (blk.kind === BLOCK_KINDS.EDITORIAL) {
+      for (const seg of blk.syntax.editorialSegments || []) {
+        tokens.push(mkToken('editorial', { text: seg.text.slice(2, -2), removed: true }));
+      }
+      continue;
+    }
+    if (blk.kind === BLOCK_KINDS.HEADING) {
+      const raw = rebuildCanonicalLine(blk);
+      const text = blk.items.length && blk.items[0].kind === 'text' ? blk.items[0].payload.text : blk.payload.text;
+      tokens.push(mkToken('heading', { level: blk.level, text, raw }));
+      continue;
+    }
+    if (blk.kind === BLOCK_KINDS.ENDNOTE) {
+      const raw = rebuildCanonicalLine(blk);
+      const text = blk.items.length && blk.items[0].kind === 'text' ? blk.items[0].payload.text : blk.payload.text;
+      // סדר השדות זהה לטוקניזר (num?, text, raw) — זהות מלאה כולל סדר מפתחות.
+      const payload = blk.num != null ? { num: blk.num, text, raw } : { text, raw };
+      tokens.push(mkToken('endnote', payload));
+      continue;
+    }
+    if (blk.kind === BLOCK_KINDS.ENDNOTE_CLASS) {
+      const raw = rebuildCanonicalLine(blk);
+      tokens.push(mkToken('endnote-class', { title: blk.payload.title, raw }));
+      continue;
+    }
+    if (blk.kind === BLOCK_KINDS.PARAGRAPH) {
+      // סדר הפליטה: תחילה טוקני editorial של השורה (כמו הטוקניזר), ואז הפסקה.
+      for (const seg of blk.syntax.editorialSegments || []) {
+        tokens.push(mkToken('editorial', { text: seg.text.slice(2, -2), removed: true }));
+      }
+      const parts = [];
+      const notes = [];
+      const noteIndexByRef = new Map();
+      const blkNotes = notesByBlock.get(blk.id) || []; // טוהר: חיפוש מקומי — בלי שינוי המודל
+      // השורה הקנונית המשוחזרת — ערכי החלקים נחתכים ממנה (כמו הטוקניזר:
+      // הטקסט כולל תחביר סמני הגופן/תמונות שטרם נצרך ישירות במסלול ה-DP).
+      const lineText = rebuildCanonicalLine(blk, model); // הערות כפרמטר מפורש
+      for (const rec of blk.syntax.partRecords || []) {
+        if (rec.kind === 'text') {
+          parts.push({ kind: 'text', value: lineText.slice(rec.start, rec.end) });
+        } else {
+          const note = blkNotes.find(n => n.id === rec.noteRef);
+          if (!note) throw new Error(`adapter: note body missing for ${rec.noteRef}`);
+          if (!noteIndexByRef.has(note.id)) {
+            noteIndexByRef.set(note.id, notes.length);
+            notes.push(note.payload.atomicText);
+          }
+          parts.push({ kind: 'note-ref', noteIndex: noteIndexByRef.get(note.id) });
+        }
+      }
+      const raw = rebuildCanonicalLine(blk, model);
+      tokens.push(mkToken('paragraph', { parts, notes, unmatchedClosers: blk.syntax.unmatchedClosers || [], raw }));
+      continue;
+    }
+    throw new Error(`adapter: unsupported block kind ${blk.kind}`);
+  }
+  return tokens;
+}
+
+/** השוואת שקילות מלאה של שני זרמי טוקנים (לבדיקות בלבד). */
+function tokensEqual(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+module.exports = { modelToTokens, tokensEqual, ADAPTER_REMOVAL_CONDITION: 'שלבים 3–4: כשה-pipeline יצרוך את המודל הקנוני ישירות (מדידה/שבירה מ-Inline Item Model), ה-adapter ומבנה הטוקנים יימחקו יחד.' };
+
+};
+__modules["src/engine/model/roundtrip.js"] = function (require, module, exports) {
+// src/engine/model/roundtrip.js — שחזור המקור מהמודל הקנוני (שלב 2)
+// **חוזה:** spec/00_CURRENT_ENGINE_COMPLETION_PLAN.md §2.3 — "round-trip אינו מאבד
+// תווים, סדר, עוגנים, גופנים או asset identity".
+//
+// ההוכחה כאן מבנית, לא ויזואלית: את המקור בונים מחדש מהפריטים, מהתחביר
+// ומרשומות התמורה בלבד — השוואה תו-מול-תו מוכיחה שלא אבד דבר.
+'use strict';
+
+const { BLOCK_KINDS } = require('./kinds');
+
+/**
+ * בניית השורה הקנונית של בלוק מתוך פריטיו ותחבירו בלבד.
+ * כל מיקום בשורה מכוסה בדיוק פעם אחת: טקסט פריט / תוחם הערה / סמן גופן /
+ * רווח בין-חלקי / קידומת כותרת. כיסוי חסר או כפול = שגיאת כיסוי (throw) —
+ * לעולם לא השלמה שקטה.
+ * @param {object} block
+ * @param {object} [model] — לחיפוש גופי ההערות של הבלוק (חיובי לפסקאות עם סמני הערה — ממשק מפורש, בלי הזרקה לתוך הבלוק)
+ * @returns {string} השורה הקנונית (אחרי הסרת editorials בפסקאות)
+ */
+function rebuildCanonicalLine(block, model) {
+  const pieces = []; // {start, text, what}
+  const add = (start, text, what) => {
+    if (typeof text !== 'string' || text.length === 0) return;
+    pieces.push({ start, text, what });
+  };
+  const syntax = block.syntax || {};
+
+  if (block.kind === BLOCK_KINDS.HEADING || block.kind === BLOCK_KINDS.ENDNOTE) {
+    add(syntax.prefix.start, syntax.prefix.text, 'prefix');
+    const t0 = block.kind === BLOCK_KINDS.HEADING ? syntax.titleSpan.start : syntax.textSpan.start;
+    const t1 = block.kind === BLOCK_KINDS.HEADING ? syntax.titleSpan.end : syntax.textSpan.end;
+    for (const ms of syntax.markerSpans || []) add(ms.start, ms.text, 'font-marker');
+    for (const it of block.items) {
+      if (it.kind === 'text') {
+        for (const run of it.payload.runs) add(run.sourceStart, run.text, 'run');
+      } else {
+        add(it.sourceRange.start - block.source.canonicalBase, it.sourceText, it.kind);
+      }
+    }
+    return splicePieces(pieces, t1, block);
+  }
+  if (block.kind === BLOCK_KINDS.ENDNOTE_CLASS) {
+    add(syntax.prefix.start, syntax.prefix.text, 'prefix');
+    add(syntax.titleSpan.start, block.payload.title, 'title');
+    return splicePieces(pieces, syntax.titleSpan.end, block);
+  }
+  if (block.kind === BLOCK_KINDS.EDITORIAL) {
+    return ''; // השורה הקנונית ריקה — הכל הוסר; ההיפוך משחזר את pre
+  }
+  if (block.kind === BLOCK_KINDS.PARAGRAPH) {
+    for (const g of syntax.gaps || []) add(g.start, g.text, 'gap');
+    for (const ms of syntax.markerSpans || []) if (!ms.inNote) add(ms.start, ms.text, 'font-marker');
+    for (const nd of syntax.noteDelims || []) { add(nd.openStart, nd.openText, 'note-open'); add(nd.closeStart, nd.closeText, 'note-close'); }
+    for (const rec of syntax.partRecords || []) {
+      if (rec.kind !== 'note-ref') continue;
+      const note = blockNotesOf(block, model).find(n => n.id === rec.noteRef);
+      if (!note) throw new Error(`roundtrip: note body missing for noteRef ${rec.noteRef}`);
+      add(note.sourceRange.start - block.source.canonicalBase, note.sourceText, 'note-inner');
+    }
+    for (const it of block.items) {
+      if (it.kind === 'text') {
+        for (const run of it.payload.runs) add(run.sourceStart, run.text, 'run');
+      } else if (it.kind !== 'noteMarker') {
+        add(it.sourceRange.start - block.source.canonicalBase, it.sourceText, it.kind);
+      }
+      // noteMarker עצמו מכוסה על ידי התוחמים + התוכן הפנימי — לא מוסיפים כאן.
+    }
+    return splicePieces(pieces, block.source.canonicalLength, block);
+  }
+  throw new Error(`roundtrip: unsupported block kind ${block.kind}`);
+}
+
+function blockNotesOf(block, model) {
+  // טוהר: אין עוד מסלול הזרקת שדות זמניים לבלוקים — model הוא הממשק המפורש היחיד לגופי הערות.
+  if (model && Array.isArray(model.notes)) return model.notes.filter(n => n.parentId === block.id);
+  return [];
+}
+
+/** מיון ושרשור חתיכות לפי מיקום — עם בדיקת כיסוי מלא וחד-חד-ערכי. */
+function splicePieces(pieces, expectedEnd, block) {
+  pieces.sort((a, b) => a.start - b.start);
+  let out = '';
+  let cursor = 0;
+  for (const p of pieces) {
+    if (p.start < cursor) throw new Error(`roundtrip: overlapping pieces at ${p.start} (${p.what}) in block ${block.id}`);
+    if (p.start > cursor) throw new Error(`roundtrip: uncovered gap ${cursor}..${p.start} in block ${block.id}`);
+    out += p.text;
+    cursor = p.start + p.text.length;
+  }
+  if (cursor !== expectedEnd) throw new Error(`roundtrip: coverage ends at ${cursor}, expected ${expectedEnd} in block ${block.id}`);
+  return out;
+}
+
+/** היפוך שלב ב׳ (הסרת editorials + צמצום רווחים + שוליים): canonical → pre. */
+function invertStage2(canonical, stage2, preLength) {
+  if (!stage2 || !stage2.removedSegments || stage2.removedSegments.length === 0) {
+    if (canonical.length !== preLength) throw new Error('roundtrip: no-editorial line length mismatch');
+    return canonical;
+  }
+  const canonOfPre = new Array(preLength).fill(null);
+  for (let cp = 0; cp < stage2.charMap.length; cp++) canonOfPre[stage2.charMap[cp]] = cp;
+  const inSeg = new Array(preLength).fill(false);
+  for (const seg of stage2.removedSegments) for (let k = seg.start; k < seg.end; k++) inSeg[k] = true;
+  const droppedAt = new Map();
+  for (const d of stage2.droppedWs || []) for (let k = d.start; k < d.end; k++) droppedAt.set(k, d);
+  let pre = '';
+  for (let p = 0; p < preLength; p++) {
+    if (inSeg[p]) {
+      const seg = stage2.removedSegments.find(s => s.start === p);
+      pre += seg.text;
+      p = seg.end - 1;
+      continue;
+    }
+    if (droppedAt.has(p)) {
+      const run = droppedAt.get(p);
+      pre += run.text;
+      p = run.end - 1;
+      continue;
+    }
+    const cp = canonOfPre[p];
+    if (cp === null) throw new Error(`roundtrip: pre position ${p} uncovered by any record`);
+    pre += canonical[cp];
+  }
+  return pre;
+}
+
+/** היפוך שלב א׳ (trim + נרמול 1:1): pre → שורת המקור הגולמית. */
+function invertStage1(pre, stage1) {
+  let out = pre;
+  // נרמול הפוך — רשומות מסודרות לפי offset עולה; מהסוף כדי שמיקומים לא יזוזו.
+  const edits = [...(stage1.normalizations || [])].sort((a, b) => a.offset - b.offset);
+  for (let i = edits.length - 1; i >= 0; i--) {
+    const e = edits[i];
+    if (out[e.offset] === e.normalized) out = out.slice(0, e.offset) + e.original + out.slice(e.offset + 1);
+    else throw new Error(`roundtrip: normalization inverse mismatch at ${e.offset}`);
+  }
+  return (stage1.rawLeadText || '') + out + (stage1.rawTrailText || '');
+}
+
+/**
+ * שחזור המסמך המלא מהמודל — תו-מול-תו.
+ * @param {object} model — פלט buildDocumentModel (גופי ההערות מאותרים מ-model.notes בלבד)
+ */
+function reconstructSource(model) {
+  const notesByBlock = new Map();
+  for (const n of model.notes || []) {
+    if (!notesByBlock.has(n.parentId)) notesByBlock.set(n.parentId, []);
+    notesByBlock.get(n.parentId).push(n);
+  }
+  const blockBySkeleton = new Map();
+  for (const b of model.blocks) blockBySkeleton.set(b.lineIndex, b);
+
+  const lineCount = model.source.lineMap.length;
+  const lines = new Array(lineCount).fill(null);
+  for (const sk of model.source.skeleton) {
+    if (sk.kind === 'metadata') {
+      const entry = model.metadata.entries.find(e => e.lineIndex === sk.lineIndex);
+      if (!entry) throw new Error(`roundtrip: metadata entry missing for line ${sk.lineIndex}`);
+      lines[sk.lineIndex] = { text: entry.sourceText, eol: eolOf(model, sk.lineIndex) };
+    } else if (sk.kind === 'blank') {
+      // שורה ריקה — השוליים המקוריים שמורים בתמורת שלב א׳ של הבלוק הבא? לא:
+      // שורות ריקות קיבלו stage1 משלהן ב-tokenizeDetailed; המודל שומר אותן
+      // ברשומות השלד עם הטקסט המדויק (השדה blankText נבנה ב-buildDocumentModel).
+      const rec = model.source.blankLines && model.source.blankLines.get(sk.lineIndex);
+      lines[sk.lineIndex] = { text: rec != null ? rec : '', eol: eolOf(model, sk.lineIndex) };
+    } else if (sk.kind === 'body') {
+      const blk = blockBySkeleton.get(sk.lineIndex);
+      if (!blk) throw new Error(`roundtrip: block missing for body line ${sk.lineIndex}`);
+      const canonical = rebuildCanonicalLine(blk, model); // טוהר: הערות בממשק הקיים, ללא שינוי המודל
+      const pre = invertStage2(canonical, blk.source.stage2, blk.source.preLength);
+      const rawLine = invertStage1(pre, blk.source);
+      lines[sk.lineIndex] = { text: rawLine, eol: eolOf(model, sk.lineIndex) };
+    }
+  }
+  let out = '';
+  for (let i = 0; i < lineCount; i++) {
+    if (!lines[i]) throw new Error(`roundtrip: line ${i} not covered by skeleton`);
+    out += lines[i].text + (i < lineCount - 1 ? (lines[i].eol || '\n') : '');
+  }
+  return out;
+}
+
+function eolOf(model, lineIndex) {
+  const rec = model.source.lineMap[lineIndex];
+  return rec ? (rec.eol || '\n') : '\n';
+}
+
+module.exports = { rebuildCanonicalLine, reconstructSource, invertStage1, invertStage2, splicePieces };
 
 };
 __modules["src/engine/typography/measure-api.js"] = function (require, module, exports) {
@@ -7022,6 +8717,14 @@ const H2_SPAN_EXEMPT = (
 // **S4.14:** span 34px + רווח 4px = 38 — נמדד בכל 13 מופעי block-h3-span
 // של הייחוס (מרחק תווית-span → תווית-block תמיד 38.0). היה 40 (+2px לכל span).
 const H3_SPAN_H = 38;
+// **D-S2H3 (ממצא משתמש מאומת):** גובה שורת ה-span לבדה (34) מופרד מהרווח התחתון (4).
+// עד לתיקון: כל שורת כותרת נדחפה פס 38 מלא — והרווח המבני פעל בין שורות הכותרת
+// ולא בינה לתוכן שאחריה. התיקון: pitch בין-שורות = 34 (גובה השורה); הרווח (4px) פעם
+// אחת בלבד, בתוך הפס האחרון (38=34+4). כותרת חד-שורתית נותרת זהה לחלוטין
+// ((n-1)*34+38 = 38 — פס יחיד ובלוק נפתח בסופו) — הכיוול S4.14 שמור.
+// חוזה סמנטי זה הוא גם החוזה של מנוע השורות המאוחד (שלב 4): הכותרת = פריט אחד
+// עם מקטעי שורה; הרווח התחתון שלה אחרי השורה האחרונה בלבד.
+const H3_SPAN_LINE_H = 34;
 const H0_AREA_H = 249.2;   // **S4.19:** זרימת ההקדמה מתחילה ב-356.4px — המדידה מהייחוס
 // (עמ' 10, שורות ההקדמה 2-3): הייחוס יושב 9.7-10.2px מתחת ל-348 הקודם; גם לדף
 // ה-h0 יש spacer (הכותרת ב-309 = 107.2+201.3+0.5) + כותרת (27.2) + שוליים (20)
@@ -8362,7 +10065,7 @@ function legacyTypeset(rawText, settings, env) {
           // ולכן מאוזן לפני השבירה (PT-06: "הטורים שלפניו מאוזנים" — גם כשה-H3
           // עצמו נופל לעמוד הבא). finalizeBlock עם nextTok=tok (h3=span)
           // מאזן דרך מסלול nextIsSpan.
-          if (colBottom() - curY < 60 + (spanLines.length - 1) * H3_SPAN_H) {
+          if (colBottom() - curY < 60 + (spanLines.length - 1) * H3_SPAN_LINE_H) {
             // **S74 (בעיה 6 — אלמנת כותרת בסוף טור):** כותרות inline שנצברו
             // בסוף הטור חוזרות עם ה-span לעמוד הבא — אחרת הן נותרות אלמנות
             // בתחתית הטור (המקור מגלגל כותרות-זנב בכל נקודת יציאה מהמילוי).
@@ -8370,10 +10073,14 @@ function legacyTypeset(rawText, settings, env) {
             finalizeBlock(block, tok, false);
             break fillPage;
           }
+          // **D-S2H3:** שורות ביניים בגובה השורה בלבד (34) — אין רווח מבני בין שורות הכותרת;
+          // הפס האחרון נושא 38 (34+4) — הרווח התחתון פעם אחת, אחרי השורה האחרונה, לפני התוכן שאחריו.
+          // כותרת חד-שורתית: (n-1)*34+38 = 38 — זהה לגיאומטריה הקודמת (נעילת הכיוול S4.14).
           for (let li = 0; li < spanLines.length; li++) {
-            stack.push({ type: 'span', text: spanLines[li], y: curY + li * H3_SPAN_H, h: H3_SPAN_H, tokenId: li === 0 ? tok.id : null });
+            const isLastLine = li === spanLines.length - 1;
+            stack.push({ type: 'span', text: spanLines[li], y: curY + li * H3_SPAN_LINE_H, h: isLastLine ? H3_SPAN_H : H3_SPAN_LINE_H, tokenId: li === 0 ? tok.id : null });
           }
-          openBlock(curY + spanLines.length * H3_SPAN_H);
+          openBlock(curY + (spanLines.length - 1) * H3_SPAN_LINE_H + H3_SPAN_H);
           ti++;
           continue;
         }
