@@ -1,0 +1,55 @@
+{
+  "authority": "font-metrics (טבלאות אמת מהגופן הרשום) כשהגופן רשום; table = קירוב מכויל בלבד",
+  "engine": "measure-v1(item+style+env;advance/ink-split)|units-v1(px=96d",
+  "words": [
+    {
+      "word": "שלום",
+      "tablePx": 37.12,
+      "realPx": 30.592,
+      "devPx": 6.528
+    },
+    {
+      "word": "עליכם",
+      "tablePx": 44.16,
+      "realPx": 35.968,
+      "devPx": 8.192
+    },
+    {
+      "word": "תורה",
+      "tablePx": 34.24,
+      "realPx": 29.568,
+      "devPx": 4.672
+    },
+    {
+      "word": "אמת",
+      "tablePx": 31.36,
+      "realPx": 26.128,
+      "devPx": 5.232
+    },
+    {
+      "word": "משפט",
+      "tablePx": 40.96,
+      "realPx": 34.992,
+      "devPx": 5.968
+    },
+    {
+      "word": "הלכה",
+      "tablePx": 36.8,
+      "realPx": 32.352,
+      "devPx": 4.448
+    },
+    {
+      "word": "ספר",
+      "tablePx": 27.84,
+      "realPx": 23.824,
+      "devPx": 4.016
+    },
+    {
+      "word": "לימוד",
+      "tablePx": 41.28,
+      "realPx": 32.352,
+      "devPx": 8.928
+    }
+  ],
+  "meanAbsDeviationPx": 5.998
+}

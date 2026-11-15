@@ -20,7 +20,7 @@ const { lexDocument } = require('../parser/dfa-lexer');
 const { tokenizeDetailed, contentHash, ATOMIC_SPACE } = require('../parser/block-tokenizer');
 const { parseInlineRuns } = require('../parser/inline-content');
 const { documentId, blockId, itemId, noteId, anchorId, assetId, stableHash } = require('./identity');
-const { BLOCK_KINDS, ITEM_KINDS, PARTICIPATION, SPLIT_POLICIES } = require('./kinds');
+const { BLOCK_KINDS, ITEM_KINDS, PARTICIPATION, SPLIT_POLICIES, IMAGE_PLACEMENT } = require('./kinds');
 
 /** מפת שורות המקור (אחרי איחוד CRLF→LF) — תשתית עוגני המקור. */
 function buildLineMap(rawText) {
@@ -65,7 +65,36 @@ function textRunsHasFamily(runs) {
   return runs.some(r => r.fontFamily);
 }
 
-function runsToItems(parsed, parentId, baseOffset, ordinalBase, canonicalBase, diagnostics) {
+/**
+ * **שלב 3 (AssetResolver):** payload של פרית תמונה כשיש resolver בניה.
+ * זהות המסמך מהמקור נשמרת (הזהות המודל); הזהות התוכן מהבתים מתועדת ב-contentAssetId;
+ * מידות טבעיות מתמלאות מהמדידה הקנונית מבתים אמתיים. כישלון — אבחנים מפורשים (לא שקט).
+ */
+function _imagePayloadWithAssets(run, assets) {
+  const base = {
+    assetId: assetId(run.resourcePath),
+    resourcePath: run.resourcePath,
+    align: run.align || null,
+    widthPct: run.widthPct != null ? run.widthPct : null,
+    naturalWidth: null, naturalHeight: null, aspectRatio: null,
+    fit: null, altText: null,
+    contentAssetId: null,
+    resolution: { stage: 3, pending: ['naturalWidth', 'naturalHeight', 'aspectRatio', 'fit'] }
+  };
+  const m = assets.measure(run.resourcePath);
+  if (m && m.ok) {
+    base.contentAssetId = m.assetId || null;
+    base.naturalWidth = m.width;
+    base.naturalHeight = m.height;
+    base.aspectRatio = m.aspectRatio;
+    base.fit = { policy: base.widthPct != null ? 'width-pct' : 'natural', orientation: m.orientation, format: m.format, displayWidth: m.displayWidth, displayHeight: m.displayHeight };
+    base.resolution = { stage: 3, resolved: true, measuredFrom: 'bytes' };
+  }
+  // כישלון המדידה נשאר ב-pending + האבחן יוקשר בשדה diagnostics של הפריט מחוץ לפונקציה זו (השורה בקיוץ הישן נשמרת בבניה ללא resolver)
+  return base;
+}
+
+function runsToItems(parsed, parentId, baseOffset, ordinalBase, canonicalBase, diagnostics, assets) {
   const items = [];
   let ordinal = ordinalBase;
   let textRuns = null; // ריצות טקסט רצופות שממתינות לסגירה
@@ -120,7 +149,7 @@ function runsToItems(parsed, parentId, baseOffset, ordinalBase, canonicalBase, d
         order: ordinal - 1,
         sourceRange: { start: canonicalBase + run.sourceStart, end: canonicalBase + run.sourceEnd },
         sourceText: run.sourceText,
-        payload: {
+        payload: (assets ? _imagePayloadWithAssets(run, assets) : {
           assetId: assetId(run.resourcePath),
           resourcePath: run.resourcePath,
           align: run.align || null,
@@ -129,10 +158,10 @@ function runsToItems(parsed, parentId, baseOffset, ordinalBase, canonicalBase, d
           fit: null, altText: null,
           // שלב 3 (AssetResolver) ימלא מידות טבעיות ומדיניות fit — החוזה כאן.
           resolution: { stage: 3, pending: ['naturalWidth', 'naturalHeight', 'aspectRatio', 'fit'] }
-        },
+        }),
         styleRef: null,
-        constraints: { atomic: true, participates: PARTICIPATION.INLINE, splittable: SPLIT_POLICIES.NEVER, overflow: 'move' },
-        diagnostics: [{ code: 'asset-dimensions-pending-stage3', message: 'מידות הנכס ייפתרו בשלב 3 (AssetResolver); הזהות והמקור כבר קבועים.' }]
+        constraints: { atomic: true, participates: PARTICIPATION.INLINE, splittable: SPLIT_POLICIES.NEVER, overflow: 'move', placement: IMAGE_PLACEMENT.INLINE },
+        diagnostics: (assets ? [] : [{ code: 'asset-dimensions-pending-stage3', message: 'מידות הנכס ייפתרו בשלב 3 (AssetResolver); הזהות והמקור כבר קבועים.' }])
       });
       continue;
     }
@@ -182,6 +211,8 @@ function buildDocumentModel(rawText, opts = {}) {
     : lexDocument(rawText, parseOpts);
   const detail = opts.detail || tokenizeDetailed(lexResult.bodyLines, parseOpts);
   const inlineOptions = opts.inlineOptions || {};
+  // **שלב 3:** AssetResolver הני (אופציהלי) — ממלא מידות תמונות מבתים אמתיים בזמן הבניה (טהור: המודל נבנה פעם אחת, אין שינוי לאחריו).
+  const assets = opts.assets || null;
   const bodyBase = lexResult.bodyLineStart != null ? lexResult.bodyLineStart : 0;
 
   const blocks = [];
@@ -287,7 +318,7 @@ function buildDocumentModel(rawText, opts = {}) {
       const t1 = lineRec.spans.title.end;
       const headingText = lineRec.stage1.pre.slice(t0, t1);
       const parsed = parseInlineRuns(headingText, { ...inlineOptions, sourceOffset: t0, allowImages: false, allowCustomItems: false });
-      const built = runsToItems(parsed, blk.id, t0, 0, blk.source.canonicalBase, blk.diagnostics);
+      const built = runsToItems(parsed, blk.id, t0, 0, blk.source.canonicalBase, blk.diagnostics, assets);
       blk.items = built.items;
       blk.payload.text = headingText;
       blk.syntax.markerSpans = markerSyntaxSpans(parsed);
@@ -307,7 +338,7 @@ function buildDocumentModel(rawText, opts = {}) {
       const t1 = lineRec.spans.text.end;
       const enText = lineRec.stage1.pre.slice(t0, t1);
       const parsed = parseInlineRuns(enText, { ...inlineOptions, sourceOffset: t0, allowImages: false, allowCustomItems: false });
-      blk.items = runsToItems(parsed, blk.id, t0, 0, blk.source.canonicalBase, blk.diagnostics).items;
+      blk.items = runsToItems(parsed, blk.id, t0, 0, blk.source.canonicalBase, blk.diagnostics, assets).items;
       blk.payload.text = enText;
       blk.syntax.textSpan = lineRec.spans.text;
       blk.syntax.prefix = { start: 0, end: t0, text: lineRec.stage1.pre.slice(0, t0) };
@@ -357,7 +388,7 @@ function buildDocumentModel(rawText, opts = {}) {
       if (pr.kind === 'text') {
         const value = canon.slice(pr.start, pr.end);
         const parsed = parseInlineRuns(value, { ...inlineOptions, sourceOffset: pr.start, allowImages: true });
-        const built = runsToItems(parsed, blk.id, pr.start, itemOrdinal, blk.source.canonicalBase, blkDiag);
+        const built = runsToItems(parsed, blk.id, pr.start, itemOrdinal, blk.source.canonicalBase, blkDiag, assets);
         for (const it of built.items) {
           it.order = itemOrdinal++;
           partItems.push(it);

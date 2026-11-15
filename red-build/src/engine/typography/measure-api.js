@@ -10,6 +10,7 @@
 
 const { charWidthEm, FONT_PROFILES } = require('./measure-table');
 const fm = require('./font-metrics');
+const { sha256Hex } = require('../assets/hash256');
 
 // **S5.2 (תיקון 5 — tracking שאין לאף מרנדר):** ברירת המחדל הייתה 0.02em —
 // המדידה "הרחיבה" כל שורה ב~2% יחסית לדיו: אף מרנדר (DOM/PDF) אינו מצייר
@@ -20,6 +21,22 @@ const DEFAULT_TRACKING = 0; // em
 
 /** גופנים רשומים (פרופיל → פרנסר). ההרשמה מפורשת — אין טעינת רשת (offline). */
 const registeredFonts = new Map();
+/** **תיקון ביקורת PR #22 (מפתח מטמון):** זהות תוכן לכל רישום — `fnt-<sha256[:14]>`
+ * (אותה נוסחה כמו font-resolver). השם הוא כינוי בלבד; החית של הסביבה ומפתח
+ * המטמון נגזרים מהזהות, לא מהשם — שני קבצים שונים תחת אותו שם לא יחלקו מדידות. */
+const _fontContentIds = new Map();
+/** מנעול סנכרון ניקוי דו-כיווני measure-api ↔ font-resolver (מונע נצנוץ). */
+let _fontClearSync = false;
+/** מזכר חית סביבה (מבוטל בכל שינוי רישום) — מדידות רבות לא ימיינו שמות שוב ושוב. */
+let _envFpMemo = null;
+
+/** טביעת מבנה לגופן שנרשם ללא בתים (שחזור) — חלשה מזהות-תוכן אך דטרמיניסטית. */
+function _structuralFontFp(font) {
+  if (!font) return 'none';
+  return `u${font.unitsPerEm || 0}g${font.numGlyphs || 0}a${font.ascender || 0}d${font.descender || 0}`;
+}
+
+function _invalidateEnvFp() { _envFpMemo = null; }
 
 /**
  * רישום גופן למדידת אמת (S12.1-5). קלט: בתים בלבד (Uint8Array/Buffer).
@@ -29,6 +46,8 @@ function registerFont(profileName, bytes) {
   const res = fm.parseFont(bytes);
   if (!res.ok) return { ok: false, error: res.error };
   registeredFonts.set(String(profileName), res.font);
+  _fontContentIds.set(String(profileName), `fnt-${sha256Hex(bytes).slice(0, 14)}`);
+  _invalidateEnvFp();
   // **S6.0 (R7-L2):** גם רישום מנקה את מטמון ה-API-פר-משפחה — בעבר רק
   // ההסרה ניקתה ⇒ רישום מחדש של אותה משפחה החזיר מופע ישן מהמטמון
   // (קשור לגופן הקודם) והמדידה המשיכה במטריקות הישנות.
@@ -45,20 +64,52 @@ function registerFont(profileName, bytes) {
 /** **S6.0 (R2-C1):** שחזור רישום קודם אחרי שימוש זמני (exportPdf) —
  * font=null ⇒ הסרה רגילה. מונע מצב שבו ייצוא מוחק ל-worker את רישום
  * הגופן של התצוגה החיה (המדידה היתה נופלת בשקט ל'table'). */
-function restoreFontRegistration(profileName, font) {
+function restoreFontRegistration(profileName, font, bytes) {
   if (!font) { unregisterFont(profileName); return; }
-  registeredFonts.set(String(profileName), font);
+  const name = String(profileName);
+  registeredFonts.set(name, font);
+  if (bytes && bytes.length) {
+    _fontContentIds.set(name, `fnt-${sha256Hex(bytes).slice(0, 14)}`);
+  } else {
+    // בלי בתים: זהות מדויקת אם ה-resolver מחזיק את אותו פרנסר תחת הכינוי; אחרת — מבנית
+    let cid = null;
+    const fid = fontResolver.fontIdOfAlias(name);
+    if (fid && fontResolver.fontOf(fid) === font) cid = fid;
+    _fontContentIds.set(name, cid || `struct-${_structuralFontFp(font)}`);
+  }
   if (String(profileName) === 'Frank Ruhl Libre') fm.setMissingGlyphFallbackFont(font);
   _familyApiCache.clear();
+  _invalidateEnvFp();
 }
 
-/** הסרת גופן רשום (בדיקות). */
+/** הסרת גופן רשום. **תיקון ביקורת PR #22 (סנכרון ניקוי):** מסונכרן גם ל-font-resolver
+ * (הסרת הכינוי) — אין מצב שבו ה-resolver אומר "לא רשום" אך המדידה עדיין מודדת
+ * דרך רישום ישן, ולהפך. */
 function unregisterFont(profileName) {
-  registeredFonts.delete(String(profileName));
-  if (String(profileName) === 'Frank Ruhl Libre') fm.setMissingGlyphFallbackFont(null);
+  const name = String(profileName);
+  registeredFonts.delete(name);
+  _fontContentIds.delete(name);
+  if (name === 'Frank Ruhl Libre') fm.setMissingGlyphFallbackFont(null);
   _familyApiCache.clear(); // **S5.2:** מטמון ה-API-פר-משפחה נגרר אחרי ההרשמה
+  _invalidateEnvFp();
+  if (!_fontClearSync) {
+    _fontClearSync = true;
+    try { fontResolver.unregisterAlias(name); } catch (_) { /* מחזור טעינה — יסונכרן בטעינתו */ }
+    finally { _fontClearSync = false; }
+  }
 }
-function clearRegisteredFonts() { registeredFonts.clear(); fm.setMissingGlyphFallbackFont(null); _familyApiCache.clear(); }
+function clearRegisteredFonts() {
+  registeredFonts.clear();
+  _fontContentIds.clear();
+  fm.setMissingGlyphFallbackFont(null);
+  _familyApiCache.clear();
+  _invalidateEnvFp();
+  if (!_fontClearSync) {
+    _fontClearSync = true;
+    try { fontResolver.clearFontResolver(); } catch (_) { /* מחזור טעינה */ }
+    finally { _fontClearSync = false; }
+  }
+}
 
 class MeasureAPI {
   constructor(settings, impl = 'table') {
@@ -241,7 +292,346 @@ function resolveMeasureImpl(settings) {
   return 'table';
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// שלב 3 (§3.1-7/8/10/11) — מדידה קנונית של פריטי המודל: MeasuredItem.
+// **הרחבה בלבד** — המדידות הקיימות (measureTextWidth וכו') לא נגעו; לא נוצר
+// API שני: measureItem הוא שכבת הפריט-והסגנון מעל אותן פונקציות בסיס.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const { ptToPx, UNITS_VERSION } = require('./units');
+const fontResolver = require('./font-resolver');
+
+/** גרסת מנוע המדידה — חלק ממפתח המטמון ומחית הסביבה (§3.1-10). */
+const MEASURE_ENGINE_VERSION = 'measure-v1(item+style+env;advance/ink-split)';
+
+/** חית סביבת מדידה: יחידות + גרסת מנוע + מימוש + זהויות-תוכן של הגופנים הרשומים.
+ * **תיקון ביקורת PR #22:** הזהות היא content-addressed (`fnt-<sha256[:14]>`) — לא
+ * שם+מספר-גליפים בלבד. סט גופנים שונה (או אותו שם עם בתים שונים) ⇒ חית שונה
+ * ⇒ אין שיתוף מטמון שגוי בין סביבות הגדרה. */
+function environmentFingerprint(extra = '') {
+  if (!extra && _envFpMemo) return _envFpMemo;
+  const fams = Array.from(registeredFonts.keys()).sort();
+  const fontsFp = fams.length
+    ? fams.map((f) => `${f}=${_fontContentIds.get(f) || 'struct-' + _structuralFontFp(registeredFonts.get(f))}`).join('|')
+    : 'none';
+  const fp = `${MEASURE_ENGINE_VERSION}|${UNITS_VERSION}|fonts=${fontsFp}${extra ? '|' + extra : ''}`;
+  if (!extra) _envFpMemo = fp;
+  return fp;
+}
+
+/** **תיקון ביקורת PR #22 (סריאליזציה קנונית):** מחרוזת דטרמיניסטית ויציבה-בין-
+ * סביבות: מפתחות אובייקט ממוינים רקורסיבית (סדר הכנסה אינו חלק מהתוכן); סדר
+ * מערכים נשמר (הסדר חלק מהתוכן — ריצות טקסט); בתים (TypedArray/Buffer) נטחנים
+ * לזהות תוכן (אורך+SHA-256) — לא מחרוזת תלוית-סביבה; פונקציות/סמלים — שם טיפוס.
+ * מחליף את JSON.stringify הלא-יציב שעמד קודם במפתח המטמון. */
+function _canonicalStringify(value, depth = 0) {
+  if (value === null) return 'null';
+  const t = typeof value;
+  if (t === 'string') return JSON.stringify(value);
+  if (t === 'number' || t === 'boolean' || t === 'undefined') return String(value);
+  if (t === 'bigint') return `${value}n`;
+  if (t === 'function' || t === 'symbol') return `<${t}>`;
+  if (depth > 32) return '<deep>';
+  if (Array.isArray(value)) return '[' + value.map((v) => _canonicalStringify(v, depth + 1)).join(',') + ']';
+  if (value instanceof ArrayBuffer) return `ab(${value.byteLength})`;
+  if (ArrayBuffer.isView(value)) {
+    const u8 = value instanceof Uint8Array ? value : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    return `bytes(${u8.length}):${sha256Hex(u8)}`;
+  }
+  if (t === 'object') {
+    const keys = Object.keys(value).sort();
+    return '{' + keys.map((k) => JSON.stringify(k) + ':' + _canonicalStringify(value[k], depth + 1)).join(',') + '}';
+  }
+  return String(value);
+}
+
+/** זהות נכס content-addressed לפי שרשרת המועמדים של הפריט — מה-resolver בלבד
+ * (הזהות מחושבת מהבתים, לא מההצהרה). אותה הפניה (resourcePath) עם תוכן נכס
+ * אחר ⇒ מזהה אחר ⇒ מפתח מטמון אחר. פותר את הפגם שבו item.id לבדו קבע את המפתח. */
+function _assetIdentityFp(item, ctx) {
+  const ar = ctx && ctx.assetResolver;
+  if (!ar || !item || item.kind !== 'image') return '';
+  const p = item.payload || {};
+  const cands = [];
+  if (p.contentAssetId != null) cands.push(String(p.contentAssetId));
+  if (p.assetId != null) cands.push(String(p.assetId));
+  if (p.resourcePath != null) cands.push(String(p.resourcePath));
+  if (!cands.length) return 'no-candidates';
+  for (const c of cands) {
+    let r = null;
+    try { r = c.startsWith('ast-') ? ar.resolveById(c) : ar.resolve(c); } catch (_) { r = null; }
+    if (r && r.ok) return `id:${r.assetId}`;
+  }
+  return 'unresolved(' + cands.join('|') + ')';
+}
+
+/** מפתח מטמון מדידת פריט (§3.1-10) — **קנוני ודטרמיניסטי**.
+ * **תיקון שורש (ביקורת PR #22):** הקוד הקודם השתמש ב-item.id לבדו כשקיים מזהה —
+ * שני פריטים בעלי אותו מזהה ו-payload שונה (טקסט/תמונה/widthPct/ריצות גופן/
+ * אילוצי רוחב) קיבלו את אותה מדידה. כעת המזהה הוא רכיב אחד מיני רבים:
+ * (1) item.id אם קיים; (2) טביעת payload מלאה (טקסט, ריצות, widthPct, מזהי נכסים);
+ * (3) סוג הפריט; (4) טביעת סגנון מלאה (גודל, גובה-שורה, משקל, family);
+ * (5) זהויות גופן קנוניות — fontIds כתובות-תוכן + חית סביבה מזהויות-תוכן;
+ * (6) זהות נכס content-addressed מה-resolver (שרשרת המועמדים);
+ * (7) שפה וכיוון; (8) אילוצי מדידה מלאים (availableWidth/fit/align/widthPct)
+ * + מפתח הקשר; (9) גרסת מנוע המדידה; (10) חית סביבה **חיה** (מחושבת כעת
+ * מהרישומים בפועל — לא הצהרת caller) + חית ההקשר שהועברה. */
+function _itemCacheKey(item, style, ctx) {
+  const it = item || {};
+  return [
+    'item-key-v2',
+    MEASURE_ENGINE_VERSION,
+    environmentFingerprint(),
+    (ctx && ctx.environmentFingerprint) || '',
+    it.kind || '',
+    it.id != null ? String(it.id) : '',
+    sha256Hex(_canonicalStringify(it.payload !== undefined ? it.payload : it)),
+    sha256Hex(_canonicalStringify(it.constraints || null)),
+    sha256Hex(_canonicalStringify(style || null)),
+    (ctx && ctx.direction) || '',
+    (ctx && ctx.language) || '',
+    sha256Hex(_canonicalStringify((ctx && ctx.constraints) || null)),
+    (ctx && ctx.constraintsKey) || '',
+    (ctx && ctx.assetId) != null ? String(ctx.assetId) : '',
+    _assetIdentityFp(item, ctx)
+  ].join('~');
+}
+
+/** **תיקון ביקורת PR #22 (immutability אמיתי):** הקפאה עמוקה — כל המבנים
+ * הפנימיים: inkBounds, segments וכל אובייקט segment, breakOpportunities וכל
+ * הזדמנות, diagnostics, natural, fit, placement. ידידותי למחזורים (seen)
+ * ודלג מוקדם על אובייקטים שכבר הוקפאו. */
+function _deepFreeze(value, seen) {
+  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
+  if (seen === undefined) seen = new Set();
+  else if (seen.has(value)) return value;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) _deepFreeze(value[i], seen);
+  } else {
+    for (const k of Object.keys(value)) _deepFreeze(value[k], seen);
+  }
+  Object.freeze(value);
+  return value;
+}
+
+/**
+ * measureItem — המדידה הקנונית של פריט מודל אחד.
+ * @param {object} item — פריט Inline Item Model (text/noteMarker/image/atomicToken/anchor/glue/penalty)
+ * @param {object} style — סגנון פתור: { sizePt, lineHeight, weight, fontIds: [fontId לפי ריצה או יחיד] }
+ * @param {object} ctx — הקשר: { direction, language, assetResolver, environmentFingerprint,
+ *                               constraints: { availableWidthPx, imageFit, imageAlign, imageWidthPct } , constraintsKey }
+ * @returns {object} MeasuredItem בלתי-ניתן לשינוי (Object.freeze) — או {ok:false, code, message}
+ *           כאשר הפריט אינו ניתן למדידה (לא נעלם — §3.1-11).
+ *
+ * **הפרדת advance/ink (§3.1-8):** advance = רוחב הקידום לשבירת שורות; inkBounds
+ * = תיבת הדיו המשוערת מהתווים (מקור: advance-approximation — מתועד; עיגול
+ * גליפים אמיתי יתווסף כשמנוע המדידה יחשוף glyf — בלי שינוי החוזה).
+ */
+function measureItem(item, style, ctx) {
+  if (!item || typeof item !== 'object') return { ok: false, code: 'no-item', message: 'measureItem: פריט חסר' };
+  const sizePt = (style && Number.isFinite(style.sizePt)) ? style.sizePt : 12;
+  const lineHeight = (style && Number.isFinite(style.lineHeight)) ? style.lineHeight : 1.34;
+  const dir = (ctx && ctx.direction) || 'rtl';
+  const lang = (ctx && ctx.language) || 'he';
+  const key = _itemCacheKey(item, style, ctx);
+  if (_itemMeasureCache.has(key)) return _itemMeasureCache.get(key);
+
+  let out;
+  const kind = item.kind;
+
+  if (kind === 'text') {
+    const runs = (item.payload && item.payload.runs) || [];
+    if (!runs.length) {
+      out = { ok: false, code: 'text-no-runs', message: `פריט טקסט ללא ריצות: ${item.id}` };
+    } else {
+      // מדידה פר-ריצה בגופן שלה — כמה משפחות באותה מילה (§3.1-6)
+      const segments = [];
+      let advance = 0;
+      let ascentEmMax = 0, descentEmMax = 0;
+      const diagnostics = [];
+      for (let ri = 0; ri < runs.length; ri++) {
+        const run = runs[ri];
+        const fontId = (style && style.fontIds && style.fontIds[ri]) || (style && style.fontIds && style.fontIds[0]) || null;
+        const api = fontId ? MeasureAPI.forFontId(fontId, { 'body-font-size-pt': sizePt }) : null;
+        if (api) {
+          const w = api.measureTextWidth(run.text, sizePt, 0);
+          segments.push({ fontId, text: run.text, advancePx: w, family: api.fontProfileName });
+          ascentEmMax = Math.max(ascentEmMax, api.ascentEm());
+          descentEmMax = Math.max(descentEmMax, api.descentEm());
+          advance += w;
+        } else {
+          // אין זהות גופן — דרך המשפחה המבוקשת ב-resolver (fallback מאובחן)
+          const res = fontResolver.resolveFont(run.fontFamily || (style && style.family), {
+            defaultFamily: style && style.defaultFamily
+          });
+          if (res.ok) {
+            const api2 = MeasureAPI.forFontId(res.fontId, { 'body-font-size-pt': sizePt });
+            const w = api2.measureTextWidth(run.text, sizePt, 0);
+            segments.push({ fontId: res.fontId, text: run.text, advancePx: w, family: res.record.face, fallbackUsed: res.fallbackUsed });
+            ascentEmMax = Math.max(ascentEmMax, api2.ascentEm());
+            descentEmMax = Math.max(descentEmMax, api2.descentEm());
+            advance += w;
+            if (res.fallbackUsed) diagnostics.push({ code: 'font-fallback', from: run.fontFamily, to: res.record.face, reason: 'not-registered' });
+          } else {
+            // מימוש הטבלה — הקירוב המכויל; מתועד במפורש ולא שקט
+            const fallbackApi = new MeasureAPI({ 'body-font-size-pt': sizePt, 'body-font': (style && style.defaultFamily) || '' }, 'table');
+            const w = fallbackApi.measureTextWidth(run.text, sizePt, 0);
+            segments.push({ fontId: null, text: run.text, advancePx: w, family: null, tableApproximation: true });
+            ascentEmMax = Math.max(ascentEmMax, fallbackApi.ascentEm());
+            descentEmMax = Math.max(descentEmMax, fallbackApi.descentEm());
+            advance += w;
+            diagnostics.push({ code: 'font-unavailable-table-approximation', requested: run.fontFamily || (style && style.family), message: res.message });
+          }
+        }
+      }
+      const sizePx = ptToPx(sizePt);
+      out = {
+        ok: true, kind: 'text', itemId: item.id,
+        unit: 'px', direction: dir, language: lang,
+        advance, width: advance, // advance = רוחב לשבירה
+        inkBounds: { left: 0, right: advance, top: -ascentEmMax * sizePx, bottom: descentEmMax * sizePx, source: 'advance-approximation' },
+        ascent: ascentEmMax * sizePx, descent: descentEmMax * sizePx,
+        baseline: ascentEmMax * sizePx,
+        height: sizePx * lineHeight,
+        segments,
+        breakOpportunities: _textBreaks(runs),
+        diagnostics
+      };
+    }
+  } else if (kind === 'image') {
+    const ar = ctx && ctx.assetResolver;
+    if (!ar) {
+      out = { ok: false, code: 'no-asset-resolver', message: `תמונה ללא resolver בהקשר: ${item.id}` };
+    } else {
+      // שרשרת זהות מפורשת: זהות-תוכן (מה-resolver, אם נבנתה עם assets) → זהות המסמך
+      // (מהמקור) → הפניית המקור (resourcePath). כל דילוג — ניסיון הבא; כולם נכשלו — אבחון.
+      const candidates = [];
+      if (item.payload && item.payload.contentAssetId) candidates.push(item.payload.contentAssetId);
+      if (item.payload && item.payload.assetId) candidates.push(item.payload.assetId);
+      if (item.payload && item.payload.resourcePath) candidates.push(item.payload.resourcePath);
+      let m = null, lastFail = null;
+      for (const c of candidates) {
+        const r = ar.measure(c);
+        if (r.ok) { m = r; break; }
+        lastFail = r;
+      }
+      if (!m) {
+        out = { ok: false, code: (lastFail && lastFail.code) || 'asset-measure-failed', message: (lastFail && lastFail.message) || 'מדידת הנכס נכשלה', assetId: item.payload && item.payload.assetId };
+      } else {
+        // fit/scale מהאילוצים (§3.1-4): widthPct מרוחב זמין; יחס-גובה נשמר תמיד
+        const cons = (ctx && ctx.constraints) || {};
+        const available = Number.isFinite(cons.availableWidthPx) ? cons.availableWidthPx : null;
+        const widthPct = item.payload && Number.isFinite(item.payload.widthPct) ? item.payload.widthPct : 100;
+        let displayW;
+        if (available != null) displayW = available * (widthPct / 100);
+        else displayW = m.displayWidth;
+        const displayH = displayW / m.aspectRatio;
+        out = {
+          ok: true, kind: 'image', itemId: item.id,
+          unit: 'px', direction: dir, language: lang,
+          advance: displayW, width: displayW, height: displayH,
+          inkBounds: { left: 0, right: displayW, top: 0, bottom: displayH, source: 'asset-bounds' },
+          ascent: 0, descent: 0, baseline: displayH,
+          natural: { width: m.width, height: m.height, aspectRatio: m.aspectRatio, orientation: m.orientation, format: m.format },
+          fit: { policy: widthPct !== 100 ? 'width-pct' : 'natural', widthPct, availableWidthPx: available, scaled: displayW !== m.displayWidth },
+          breakOpportunities: [], // אטום — אין שבירה בתוך תמונה
+          placement: { participates: (item.constraints && item.constraints.participates) || 'inline', align: (item.payload && item.payload.align) || 'center', wrap: (item.constraints && item.constraints.wrap) || 'none' },
+          diagnostics: []
+        };
+      }
+    }
+  } else if (kind === 'noteMarker') {
+    // סמן הערה אטומי — רוחב הסמן בגודל הרישום (גימטריה); נמדד כפריט יחיד
+    const markerText = (item.payload && item.payload.markerText) || 'א.';
+    const fnSizePt = (style && Number.isFinite(style.sizePt)) ? style.sizePt : 8;
+    const api = new MeasureAPI({ 'body-font-size-pt': fnSizePt }, 'table');
+    const w = api.measureTextWidth(markerText, fnSizePt, 0);
+    const sizePx = ptToPx(fnSizePt);
+    out = {
+      ok: true, kind: 'noteMarker', itemId: item.id,
+      unit: 'px', direction: dir, language: lang,
+      advance: w, width: w, height: sizePx * 1.2,
+      inkBounds: { left: 0, right: w, top: -0.8 * sizePx, bottom: 0.2 * sizePx, source: 'advance-approximation' },
+      ascent: 0.8 * sizePx, descent: 0.2 * sizePx, baseline: 0.8 * sizePx,
+      segments: [{ fontId: null, text: markerText, advancePx: w, noteSize: true }],
+      breakOpportunities: [], // אטום
+      diagnostics: []
+    };
+  } else if (kind === 'atomicToken' || kind === 'anchor' || kind === 'glue' || kind === 'penalty' || kind === 'custom' || (kind && kind.startsWith('custom:'))) {
+    const text = (item.payload && (item.payload.text != null ? item.payload.text : item.payload.atomicText)) || '';
+    const api = new MeasureAPI({ 'body-font-size-pt': sizePt, 'body-font': (style && style.defaultFamily) || '' },
+      (style && style.fontIds && style.fontIds[0]) ? 'font-metrics' : 'table');
+    const w = text ? api.measureTextWidth(text, sizePt, 0) : 0;
+    const sizePx = ptToPx(sizePt);
+    out = {
+      ok: true, kind, itemId: item.id,
+      unit: 'px', direction: dir, language: lang,
+      advance: w, width: w, height: sizePx * lineHeight,
+      inkBounds: { left: 0, right: w, top: -0.8 * sizePx, bottom: 0.2 * sizePx, source: 'advance-approximation' },
+      ascent: 0.8 * sizePx, descent: 0.2 * sizePx, baseline: 0.8 * sizePx,
+      segments: text ? [{ fontId: (style && style.fontIds && style.fontIds[0]) || null, text, advancePx: w }] : [],
+      breakOpportunities: kind === 'atomicToken' ? [] : (text ? _textBreaks([{ text }]) : []),
+      atomic: true,
+      diagnostics: []
+    };
+  } else {
+    out = { ok: false, code: 'unsupported-item-kind', message: `measureItem: סוג פריט לא נתמך: ${kind} (${item.id})` };
+  }
+
+  if (out && out.ok) {
+    // החית המתועדת בתוצאה = הסביבה החיה שבה נמדד בפועל (לא הצהרת ה-caller)
+    out.environmentFingerprint = environmentFingerprint();
+    out.measureEngineVersion = MEASURE_ENGINE_VERSION;
+    _deepFreeze(out);
+    _itemMeasureCache.set(key, out);
+  } else if (out) {
+    _deepFreeze(out); // דחייה — גם היא בלתי-ניתנת לשינוי (אותו חוזה)
+  }
+  return out;
+}
+
+/** הזדמנויות שבירה של רצף ריצות טקסט — מיקומי רווחים (מפתחות לשלב 4). */
+function _textBreaks(runs) {
+  const breaks = [];
+  let pos = 0;
+  for (const run of runs) {
+    const text = String(run.text);
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === ' ') breaks.push({ offset: pos + i, after: true });
+    }
+    pos += text.length;
+  }
+  return breaks;
+}
+
+/** מטמון מדידות פריט — מפתח מלא בלבד (§3.1-10). */
+const _itemMeasureCache = new Map();
+function itemCacheStats() { return { entries: _itemMeasureCache.size }; }
+function clearItemMeasureCache() { _itemMeasureCache.clear(); }
+
+/** API כבול לזהות גופן קנונית (fontId מה-resolver) — לא לשם בלבד. */
+MeasureAPI.forFontId = function forFontId(fontId, settings) {
+  const font = fontResolver.fontOf(fontId);
+  if (!font) return null;
+  const key = String(fontId);
+  if (!_familyApiCache.has(key)) {
+    const api = new MeasureAPI({ ...(settings || {}), 'body-font': fontResolverAliasOf(fontId) || key }, 'font-metrics');
+    // קשירה ישירה לפרנסר של הזהות — לא דרך רישום שם (הזהות היא המקור)
+    api.fontProfileName = fontResolverAliasOf(fontId) || key;
+    api.fontProfile = font;
+    _familyApiCache.set(key, api);
+  }
+  return _familyApiCache.get(key);
+};
+function fontResolverAliasOf(fontId) {
+  const rec = fontResolver.resolveFontById(fontId);
+  return rec.ok ? rec.record.aliases[0] : null;
+}
+
 module.exports = {
   MeasureAPI, registerFont, unregisterFont, clearRegisteredFonts, restoreFontRegistration,
-  charWidthEm, registeredFonts, resolveMeasureImpl
+  charWidthEm, registeredFonts, resolveMeasureImpl,
+  measureItem, environmentFingerprint, MEASURE_ENGINE_VERSION, itemCacheStats, clearItemMeasureCache,
+  deepFreeze: _deepFreeze, canonicalStringify: _canonicalStringify
 };

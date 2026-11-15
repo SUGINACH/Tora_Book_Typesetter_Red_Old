@@ -75,3 +75,11 @@ core/          : pipeline ← כל השכבות (כולל shaar-pages/ornament-p
 - DOM ו-PDF צרכנים טהורים של y/h — אותן עובדות בתצוגה ובייצוא.
 - בדיקת נעילה: `red-build/tests/e2e/s2-heading3-spacing.test.js` (מפרט רצוי מוכח).
 - **שלב 4:** מנוע השורות המאוחד מיישם את אותו חוזה (מסלול DP עדיין נושא את מחלקת הפגם — `dp-planner.js` spanning). **שלב 5:** אימות גאומטריה ב-Planner. **שלב 9:** שעת הקבלה של המעבר כוללת הוכחת חוזה זה במסלול המאוחד לפני הסרת המורשת.
+
+## שכבת המדידה הקנונית (שלב 3 — 16.11)
+
+`measureItem`/`measureDocumentModel` (measure-api + measure-model) הם מקור הסמכות למדידה מרגע זה:
+- **שלב 4** (מנוע שורות מאוחד): צורך MeasuredItem — advance לשבירה, inkBounds להקרנה, breakOpportunities כמפתחות, segments פר-ריצה לתמונת-גופן מדויקת. **אין למדוד מחדש** בשורות (§3.1-8).
+- **שלב 5** (Planner): אילוצי תמונה (IMAGE_PLACEMENT) ומידות טבעיות מה-resolver; חית סביבה בכל MeasuredItem לניטרליות בין סביבות.
+- **זהויות:** נכסים `ast-<kind>-<sha256[:14]>` (תוכן) וגופנים `fnt-<sha256[:14]>` (תוכן) — זהות המסמך מהמקור נשמרת במודל ונקשרת בזמן בנייה עם resolver.
+- **Worker:** העברת נכסים בסכמה `asset-transport-v1` בלבד.

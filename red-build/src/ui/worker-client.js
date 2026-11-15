@@ -173,17 +173,39 @@ class WorkerEngineClient {
 
   /**
    * בקשת עימוד. בקשה חדשה בזמן עבודה פעילה מבטלת את הקודמת (single-flight).
-   * @returns {{promise:Promise<object>, jobId:string, cancel:()=>void}}
+   * **שלב 3 (§3.1-2 — תיקון ביקורת PR #22, חיבור אמיתי לזרימה):** נכסי המסמך
+   * עוברים כאן ל-transport מוגדר (serializeForTransport — מזהים כתובות-תוכן
+   * + בתים בלבד, בלי נתיבים מקומיים). מקובל AssetResolver חי, או אובייקט
+   * transport מוכן ({schema:'asset-transport-v1', assets}). חריגת תקרת העברה
+   * (ברירת מחדל 64MB ב-resolver) או transport פגום — דחייה מפורשת לפני המשלוח.
+   * @param {{text:string, settings:object, onProgress?:Function, assets?:(object|AssetResolver|null)}} req
+   * @returns {{promise:Promise<object>, jobId:string|null, cancel:()=>void}}
    */
-  requestTypeset({ text, settings, onProgress }) {
+  requestTypeset({ text, settings, onProgress, assets }) {
     if (this.activeJob) this.cancel();
     this._maybeReplayRegistrations(); // **S70 (R8-M2):** רישום חוזר לפני העימוד אחרי respawn
+    let assetsTransport = null;
+    if (assets) {
+      if (typeof assets.serializeForTransport === 'function') {
+        const ser = assets.serializeForTransport();
+        if (!ser || ser.ok !== true) {
+          const err = new Error(`typeset: asset transport rejected: ${(ser && (ser.code || ser.message)) || 'serialization-failed'}`);
+          return { promise: Promise.reject(err), jobId: null, cancel: () => {} };
+        }
+        assetsTransport = ser;
+      } else if (assets.schema === 'asset-transport-v1' && Array.isArray(assets.assets)) {
+        assetsTransport = assets; // transport מוכן — ה-Worker יאמת אינטגרציה בקבלה
+      } else {
+        const err = new Error('typeset: assets must be an AssetResolver or an asset-transport-v1 object');
+        return { promise: Promise.reject(err), jobId: null, cancel: () => {} };
+      }
+    }
     const jobId = `job-${Date.now().toString(36)}-${++jobSeq}`;
     let resolve, reject;
     const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
     const job = { jobId, resolve, reject, onProgress: onProgress || null, cancelled: false };
     this.activeJob = job;
-    this.transport.post({ type: 'typeset-request', jobId, text, settings });
+    this.transport.post({ type: 'typeset-request', jobId, text, settings, assets: assetsTransport });
     return { promise, jobId, cancel: () => this.cancel() };
   }
 

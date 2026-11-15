@@ -269,6 +269,12 @@ Item {
 
 `פריט (Item)` · `מקטע (Run)` · `בלוק (Block)` · `מסמך (DocumentModel)` · `שורה (LineModel — שלב 4)` · `תוכנית עמוד (PagePlan — שלב 5)` · `מודל עמוד (PageModel — שלב 7)` · `מקרין (Projector)` · `עוגן (sourceRange/anchor)` · `נכס (assetId)` · `סמן הערה (noteMarker)` · `גוף הערה (noteBody)` · `ריהוט עמוד (pageFurniture)`. ייצוגי ביניים היסטוריים (word/token/box) ממופים למילון זה דרך adapter היציאה בלבד.
 
+## 9. שכבת המדידה הקנונית (שלב 3 — נוסף 16.11)
+
+- **זהויות נכסים:** המודל שומר זהות מסמך מהמקור (`ast-…` מ-resourcePath); פתרון התוכן נקשר בזמן הבנייה עם AssetResolver (`buildDocumentModel(raw, {assets})`) — `payload.contentAssetId` = `ast-<kind>-<sha256[:14]>`, ומידות טבעיות מבתים אמיתיים (`resolution.resolved`). בלי resolver — ה-pending המתועד של שלב 2 נשאר (אבחון, לא השמטה).
+- **מדיניות הצבת תמונה:** `IMAGE_PLACEMENT` (inline/block/centered/float-start/float-end) ב-`constraints.placement` — אילוצי אותו מנוע (§3.1-4), לא מסלולים.
+- **מדידה:** `measureItem`/`measureDocumentModel` (הרחבת MeasureAPI) — MeasuredItem בלתי-ניתן לשינוי: advance (לשבירה) נפרד מ-inkBounds (להקרנה), segments פר-ריצה, breakOpportunities, מטמון מפתח מלא כולל חית סביבה. פירוט מלא: `audits/STAGE3_MEASUREMENT.md`.
+
 ## 10. נקודות הכרעה הממתינות לאישור המשתמש (לא הוכרעו בשלב זה)
 
 1. **שאלה 14 — אישור החוזה:** `spec/03_UNIFIED_ITEM_CONTRACT.md` נותר טיוטה מאושרת-טכנית; המימוש עוקב אחריו אך לא מקבע אותו כמחייב. **הצעה מנומקת לאישור המשתמש** (נוצרה סתירה בין החוזה למימוש ויש להכריע אותה במפורש):

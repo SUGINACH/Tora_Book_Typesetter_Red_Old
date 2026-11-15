@@ -207,7 +207,15 @@ function typeset(rawText, settingsIn, env = {}) {
   // בודקים את measure.impl ומדלגים על הפקטור ב-impl B.
   const measureWithImpl = (t, s) => api.measureTextWidth(t, s);
   measureWithImpl.impl = api.impl;
-  void env;
+  // **שלב 3 (§3.1-2, שער צריכה — שלב 4, תיקון ביקורת PR #22):** נכסי
+  // המסמך שהגיו מה-Worker (או מקריאה ישירה) נקלטים כאן ונרשמים בעקבות — הם אינם נבלעים בשקט כמו שהיה `void env`.
+  // עדיין אינם נצרכים בנתיב הפעיל: הצריכה תבוא עם מנוע השורות המאוחד (§4) שיקבל את
+  // ה-MeasuredItemים מתוך measureDocumentModel עם ה-resolver הזה — לא מוקדם כעט מנגנון מדידה כפול לנתיב.
+  const docAssets = (env && env.assets) || null;
+  if (docAssets) {
+    const st = typeof docAssets.stats === 'function' ? docAssets.stats() : null;
+    eventLog.emit('measure', 'doc-assets-received', { assets: st ? st.assets : null, consumptionGate: 'stage4-line-engine' });
+  }
 
   const FONT_WIDTH_PROFILES = {
     'Frank Ruhl Libre': null,

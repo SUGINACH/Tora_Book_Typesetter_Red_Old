@@ -63,6 +63,17 @@ function validateRequest(msg) {
     if (typeof msg.jobId !== 'string' || !msg.jobId) throw new Error('protocol: jobId required');
     if (typeof msg.text !== 'string') throw new Error('protocol: text must be string');
     if (!msg.settings || typeof msg.settings !== 'object') throw new Error('protocol: settings required');
+    // **שלב 3 (§3.1-2 — Worker transport):** נכסי מסמך עוברים בפרוטוקול מוגדר — מזהים + בתים בלבד; אין נתיבים מקומיים.
+    if (msg.assets != null) {
+      if (msg.assets.schema !== 'asset-transport-v1') throw new Error('protocol: assets must be asset-transport-v1');
+      if (!Array.isArray(msg.assets.assets)) throw new Error('protocol: assets.assets must be array');
+      for (const a of msg.assets.assets) {
+        if (typeof a.assetId !== 'string' || !a.assetId.startsWith('ast-')) throw new Error('protocol: asset id must be ast-*');
+        if (!(a.bytes instanceof ArrayBuffer) && !(a.bytes && a.bytes.byteLength != null)) {
+          throw new Error('protocol: asset bytes must be ArrayBuffer/TypedArray');
+        }
+      }
+    }
     return true;
   }
   if (msg.type === 'cancel') {
