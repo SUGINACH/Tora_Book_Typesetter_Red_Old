@@ -210,6 +210,19 @@ function renderLine(ln, doc, settings = {}) {
         continue;
       }
 
+      if (fragment.kind === 'anchor') {
+        const anchor = doc.createElement('span');
+        anchor.className = 'inline-anchor';
+        anchor.setAttribute('aria-hidden', 'true');
+        if (fragment.id != null) anchor.dataset.inlineId = String(fragment.id);
+        anchor.style.display = 'inline-block';
+        anchor.style.width = String(fragment.widthPx) + 'px';
+        anchor.style.height = String(fragment.heightPx) + 'px';
+        anchor.style.verticalAlign = 'middle';
+        el.appendChild(anchor);
+        continue;
+      }
+
       if (fragment.kind === 'image') {
         const image = doc.createElement('img');
         image.className = 'inline-image';
@@ -233,10 +246,15 @@ function renderLine(ln, doc, settings = {}) {
       }
 
       const customRenderer = getInlineItemRenderer(fragment.kind, 'dom');
-      const customNode = customRenderer ? customRenderer(fragment, doc, settings) : null;
+      if (!customRenderer) {
+        throw new Error('dom-renderer: no DOM renderer registered for inline item kind ' + fragment.kind);
+      }
+      const customNode = customRenderer(fragment, doc, settings);
+      if (!customNode || typeof customNode !== 'object') {
+        throw new TypeError('dom-renderer: custom inline renderer must return a DOM node for ' + fragment.kind);
+      }
       // The measured rectangle is the layout contract. A renderer supplies
-      // content only; it cannot silently replace the dimensions reserved by
-      // Knuth–Plass or diverge from the PDF projector.
+      // content only; the wrapper clips overflow and fixes the reserved box.
       const wrapper = doc.createElement('span');
       wrapper.className = 'inline-item inline-item--custom';
       wrapper.dataset.inlineKind = fragment.kind;
@@ -247,7 +265,13 @@ function renderLine(ln, doc, settings = {}) {
       wrapper.style.height = String(fragment.heightPx) + 'px';
       wrapper.style.verticalAlign = 'middle';
       wrapper.style.position = 'relative';
-      if (customNode) wrapper.appendChild(customNode);
+      wrapper.style.overflow = 'hidden';
+      if (customNode.style) {
+        customNode.style.maxWidth = '100%';
+        customNode.style.maxHeight = '100%';
+        customNode.style.boxSizing = 'border-box';
+      }
+      wrapper.appendChild(customNode);
       el.appendChild(wrapper);
     }
   } else {
