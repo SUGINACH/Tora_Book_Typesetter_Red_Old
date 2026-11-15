@@ -710,6 +710,9 @@ function writePdf(opts) {
               }
             } else if (fragment.kind === 'image') {
               emitImage(fragment);
+            } else if (fragment.kind === 'anchor') {
+              // Semantic placement metadata has no visible ink or PDF operator.
+              continue;
             } else {
               const renderer = getInlineItemRenderer(fragment.kind, 'pdf');
               if (!renderer) throw new Error('pdf-writer: no PDF renderer registered for inline item kind ' + fragment.kind);
