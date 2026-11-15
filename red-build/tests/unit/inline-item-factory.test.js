@@ -69,6 +69,25 @@ test('NBSP and the private atomic separator stay inside one unbreakable text ato
   assert.equal(result.items[1].widthPx, 1);
 });
 
+test('baseline font size is used for measurement but is not emitted as an explicit override', () => {
+  const result = createMeasuredInlineItems([
+    { kind:'text', text:'גוף', sourceStart:0, sourceEnd:3 },
+    { kind:'text', text:' רגיל', sourceStart:3, sourceEnd:8 }
+  ], {
+    sizePt:14,
+    lineHeightPx:22,
+    measureText:(text,family,size)=>[...String(text)].length*size
+  });
+  assert.equal(result.items.length,3);
+  assert.equal(result.items[0].kind,'text');
+  assert.equal(result.items[0].segments[0].widthPx,42);
+  assert.equal(result.items[0].segments[0].sizePt,undefined);
+  assert.equal(result.items[0].sizePt,undefined);
+  assert.equal(result.items[1].kind,'glue');
+  assert.equal(result.items[1].sizePt,undefined);
+  assert.equal(result.items[2].segments[0].sizePt,undefined);
+});
+
 test('run-specific sizes are measured and retained on every segment', () => {
   const result = createMeasuredInlineItems([
     { kind:'text', text:'א', sizePt:8, sourceStart:0, sourceEnd:1 },
