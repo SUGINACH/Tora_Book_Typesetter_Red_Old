@@ -1,7 +1,7 @@
 {
   "tool": "cross-check",
   "schema": 1,
-  "started": "2026-11-15T21:06:37.621Z",
+  "started": "2026-11-15T20:26:58.842Z",
   "commit": "db3ff53",
   "node": "v24.22.2",
   "corpora": [
@@ -25,7 +25,7 @@
       "lockHash": "77d5d5d3",
       "contentPreserved": true,
       "hashOk": true,
-      "ms": 2908
+      "ms": 2872
     },
     {
       "name": "very_long (legacy, run-ours = corpus-invariants CI)",
@@ -33,23 +33,23 @@
       "legacy": true,
       "profile": "imud-legacy",
       "pages": 695,
-      "layoutHash": "legacy-7dd45",
-      "lockHash": "legacy-7dd45",
+      "layoutHash": "legacy-a8bdd",
+      "lockHash": "legacy-a8bdd",
       "contentPreserved": true,
       "hashOk": true,
-      "ms": 5120
+      "ms": 5403
     }
   ],
   "bundles": [
     {
       "file": "red-build/ui/app.bundle.js",
-      "sha256": "6f3ae3a75ecea4c6",
-      "bytes": 1258817
+      "sha256": "ed9a9738267f4cca",
+      "bytes": 1231002
     },
     {
       "file": "red-build/ui/engine-worker.bundle.js",
-      "sha256": "a4f5731c99acafa3",
-      "bytes": 1324139
+      "sha256": "6d3b0dc5dc453986",
+      "bytes": 1269114
     }
   ],
   "live": null,
