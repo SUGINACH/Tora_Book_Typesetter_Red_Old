@@ -1232,7 +1232,22 @@ function typeset(rawText, settingsIn, env = {}) {
       )
     );
     const hasMeasuredInlineFeature = hasInlineImages || hasInlineStyledRuns || hasCustomInlineRuns;
-    const richRunEligible = hasMeasuredInlineFeature
+    // The canonical shadow audit proves exact break equivalence for ordinary
+    // plain-text paragraphs (12,095 paragraphs, zero mismatches). Route that
+    // proven subset through the same measured-item solver as mixed content.
+    // Parentheses, note anchors, custom spans, drop caps and block styles stay
+    // on their semantic path until their own equivalence gates are complete.
+    const ordinaryTextEligible = !hasInlineNotes
+      && inlineContent.parts.length === 1
+      && inlineContent.parts[0].kind === 'text'
+      && (inlineContent.parts[0].runs || []).length > 0
+      && inlineContent.parts[0].runs.every(run => run && run.kind === 'text' && !run.fontFamily)
+      && !/[()]/u.test(inlineRunsSourceText(inlineContent.parts[0].runs))
+      && parenSpans.length === 0
+      && csInlineSpans.length === 0
+      && !dh
+      && !csBlock;
+    const richRunEligible = (hasMeasuredInlineFeature || ordinaryTextEligible)
       && inlineContent.parts.length > 0
       && inlineContent.parts.every(part => part && (part.kind === 'text' || part.kind === 'note-ref'))
       && richNotesEligible
