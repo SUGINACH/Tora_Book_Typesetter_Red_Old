@@ -53,3 +53,16 @@
 - אודיט ה־live (מול האתר הפרוס ב־gh-pages) לא הורץ במדידה זו — ה־workflow שלו מופעל לילית/יזום; מצב הפריסה החיה מתועד ב־CI האחרון של gh-pages-audit.
 - בדיקות matrix של Node 18/20 רצו ב־CI בלבד (הסביבה המקומית: Node 24).
 - גרסת agent-browser מקומית 0.42.0 מול 0.41.2 ב־CI — הממצאים זהים בין שתי הסביבות (משוחזר), לכן אין השפעה על מסקנות.
+
+## מעקב CI של PR #19 (ענף audit/stage1-engine-state-20261115, head `5b56e836`)
+
+ה־workflows הופעלו אוטומטית על ה־PR (event=pull_request, 16:42):
+
+| Workflow | מס' ריצה | תוצאה | הערה |
+|---|---|---|---|
+| corpus-invariants | 43736947069 | **success** | very-long-corpus ✅ |
+| CI — test (18/20/22) | 43736947063 | **success** ×3 | כל מטריצת Node ✅ |
+| CI — layout-audit | 43736947063 | **failure** | **זהה לבסיס** — השלב "the very large corpus" (SIDE_NOTE_OVERLAP עמ' 107 — F-BL2, קיים ב-main לפני ה־PR) |
+| full-math-audit — local | 43736947036 | **failure** | **זהה לבסיס** — "the very large corpus" (רצפת נפח 353,687<355,967 — F-BL1, קיים ב-main לפני ה־PR); live=skipped |
+
+**מסקנה:** ה־PR (אודיט בלבד, אפס שינויי קוד) אינו מכניס אף רגרסיה — שני הכשלים הם בדיוק שני ממצאי הבסיס הפתוחים המתועדים לעיל (F-BL1, F-BL2), שנורשו ב־main `95e829d` לפני השינוי.
