@@ -838,6 +838,8 @@ describe('S14 — custom inline page items use one registration through the comp
 
       const html = exportHtml(result, settings, makeDoc(), { title:'Custom item integration' });
       assert(calls.dom > 0 && html.includes('QR:book-17'), 'the registered DOM renderer is used by standalone HTML');
+      assert(html.includes('inline-item--custom') && html.includes('width:32px') && html.includes('height:22px'),
+        'custom DOM content is wrapped by the exact measured box reserved by the shared solver');
       assert(!html.includes('⟦qr:book-17⟧'), 'the source command itself is not printed');
 
       const pdf = exportPdf(source, settings, fs.readFileSync(DEJAVU), 'DejaVu Sans');
