@@ -62,28 +62,41 @@ function lexDocument(rawText, opts = {}) {
   const state = { phase: 'PREAMBLE' };
   const metadata = {};
   const body = [];
+  // **שלב 2 (חוזה פריט אחיד — עוגני מקור):** רישום אדיטיבי בלבד; התנהגות
+  // הפענוח זהה לחלוטין. bodyLineStart = אינדקס שורת הגוף הראשונה במערך
+  // השורות המאוחד (אחרי CRLF→LF); metadataLines = שורות הפתיח עם מיקומן
+  // והמפתח שזוהה — לשחזור מדויק של המקור ב-round-trip של המודל הקנוני.
+  let bodyLineStart = -1;
+  const metadataLines = [];
+  const preludeBlanks = []; // **שלב 2:** שורות ריקות שנבלעו במעבר PREAMBLE→BODY
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const trimmed = line.trim();
 
     if (state.phase === 'PREAMBLE') {
-      if (trimmed === '') { state.phase = 'BODY'; continue; }
+      if (trimmed === '') { state.phase = 'BODY'; preludeBlanks.push({ lineIndex: i, raw: line }); continue; }
       if (HEADING_RE.test(trimmed) || (endnoteRe && endnoteRe.test(trimmed)) || ENDNOTE_CLASS_RE.test(trimmed)) {
-        state.phase = 'BODY'; body.push(line); continue;
+        state.phase = 'BODY';
+        if (bodyLineStart < 0) bodyLineStart = i;
+        body.push(line); continue;
       }
       const m = trimmed.split(/\s+[-–—]\s+/);
       if (m.length >= 2 && METADATA_KEYS.includes(m[0].toLowerCase())) {
         metadata[m[0]] = m.slice(1).join(' - ');
+        metadataLines.push({ lineIndex: i, key: m[0], value: m.slice(1).join(' - '), raw: line });
         continue;
       }
       // שורה שאינה metadata → גם היא סוגרת את הפתיח
       state.phase = 'BODY';
+      if (bodyLineStart < 0) bodyLineStart = i;
       body.push(line);
       continue;
     }
+    if (bodyLineStart < 0) bodyLineStart = i;
     body.push(line);
   }
-  return { metadata, bodyLines: body };
+  return { metadata, bodyLines: body, bodyLineStart: bodyLineStart < 0 ? lines.length : bodyLineStart, metadataLines, preludeBlanks, totalLines: lines.length };
 }
 
 module.exports = {

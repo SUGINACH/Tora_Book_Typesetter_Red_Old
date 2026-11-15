@@ -23,15 +23,107 @@ function mkToken(type, payload) {
 }
 
 /**
+ * **שלב 2 (חוזה פריט אחיד §2.1-4 — שימור טקסט ומיפוי מקור):** שלב א׳ של תמורת
+ * השורה — trim + נרמול 1:1 (משמר אורך). רשומות הנרמול מאפשרות היפוך מדויק.
+ * זהה חישובית ל-normalizeText(raw.trim()) — ההתנהגות לא השתנתה; נוסף מיפוי.
+ */
+function normalizeStage(rawLine) {
+  const rawLead = rawLine.length - rawLine.trimStart().length;
+  const rawTrail = rawLine.length - rawLine.trimEnd().length;
+  const trimmed = rawLine.trim();
+  const normalizations = [];
+  let pre = '';
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (ch === '\u05F4') { pre += '\u05F3'; normalizations.push({ offset: i, original: ch, normalized: '\u05F3', code: 'gershayim-to-geresh' }); }
+    else if (ch === '\u2018' || ch === '\u2019') { pre += '"'; normalizations.push({ offset: i, original: ch, normalized: '"', code: 'quote-to-straight' }); }
+    else pre += ch;
+  }
+  // **שלב 2:** טקסט השוליים המדויק (לא רק אורך) — שורה ריקה של רווחים/טאבים
+  // נשחזרת תו-לתו ב-round-trip.
+  return { pre, normalizations, rawLead, rawTrail, rawLeadText: rawLine.slice(0, rawLead), rawTrailText: rawLine.slice(rawLine.length - rawTrail) };
+}
+
+/**
+ * **שלב 2:** שלב ב׳ של תמורת השורה — הסרת ##…## (החלפה ברווח), צמצום רווחים
+ * ו-trim, בדיוק כמו הצעד הידני בפלג הפסקה. כל תו שהוסר נרשם עם טקסט המקור
+ * (קטע editorial / ריצת רווחים / שוליים) וכל תו שנותר ממופה 1:1 (charMap) —
+ * ההיפוך מדויק ונבדק ב-round-trip.
+ */
+function editorialStage(pre) {
+  if (!/##.+?##/.test(pre)) {
+    // אין editorial — הטוקניזר אינו מצמצם רווחים ואינו חותך שוליים במסלול זה.
+    return { canonical: pre, charMap: pre.split('').map((_, i) => i), normalizations: [], removedSegments: [], droppedWs: [], edge: { lead: 0, trail: 0 } };
+  }
+  let mid = '';
+  let mi = 0;
+  const removedSegments = [];
+  const map1 = []; // mid index → pre index
+  const edRe = /##.+?##/g;
+  let m;
+  while ((m = edRe.exec(pre))) {
+    mid += pre.slice(mi, m.index);
+    for (let k = mi; k < m.index; k++) map1.push(k);
+    mid += ' ';
+    map1.push(m.index); // הרווח החלופי ממופה לתחילת הקטע שהוסר
+    removedSegments.push({ start: m.index, end: m.index + m[0].length, text: m[0] });
+    mi = m.index + m[0].length;
+  }
+  mid += pre.slice(mi);
+  for (let k = mi; k < pre.length; k++) map1.push(k);
+  // צמצום ריצות רווחים לרווח בודד (כולל רישום הריצות שהוצרו).
+  let mid2 = '';
+  let ci = 0;
+  const map2 = []; // mid2 index → mid index
+  const wsRe = /\s+/g;
+  let w;
+  while ((w = wsRe.exec(mid))) {
+    mid2 += mid.slice(ci, w.index);
+    for (let k = ci; k < w.index; k++) map2.push(k);
+    mid2 += ' ';
+    map2.push(w.index);
+    ci = w.index + w[0].length;
+  }
+  mid2 += mid.slice(ci);
+  for (let k = ci; k < mid.length; k++) map2.push(k);
+  const lead = mid2.length - mid2.trimStart().length;
+  const trail = mid2.length - mid2.trimEnd().length;
+  const canonical = mid2.trim();
+  // שרשור המיפויים: קנוני → mid2 → mid → pre (map2 אחרי map1).
+  const charMap = [];
+  for (let k = lead; k < mid2.length - trail; k++) charMap.push(map1[map2[k]]);
+  // **שלב 2 (שימור מלא):** ריצות הרווחים שהושמטו בצמצום/בשוליים — עם הטקסט
+  // המקורי המדויק, בקואורדינטות pre. כל תו של pre מכוסה: editorial / רווח
+  // שהושמט / תו ממופה 1:1 לקנוני (charMap).
+  const canonOfPre = new Array(pre.length).fill(null);
+  for (let cp = 0; cp < charMap.length; cp++) canonOfPre[charMap[cp]] = cp;
+  const inSegment = new Array(pre.length).fill(false);
+  for (const seg of removedSegments) for (let k = seg.start; k < seg.end; k++) inSegment[k] = true;
+  const droppedWs = [];
+  for (let p = 0; p < pre.length; p++) {
+    if (inSegment[p] || canonOfPre[p] !== null) continue;
+    let q = p;
+    while (q < pre.length && !inSegment[q] && canonOfPre[q] === null) q++;
+    const text = pre.slice(p, q);
+    if (text.trim().length !== 0) throw new Error('block-tokenizer: non-whitespace character dropped in editorial stage — coverage bug');
+    droppedWs.push({ start: p, end: q, text });
+    p = q - 1;
+  }
+  return { canonical, charMap, normalizations: [], removedSegments, droppedWs, edge: { lead, trail } };
+}
+
+/** בדיקת עזר: האם תו מנורמל (חשיפה לבדיקות הפיכות). */
+function isNormalizedChar(ch) {
+  return ch === '\u05F4' || ch === '\u2018' || ch === '\u2019';
+}
+
+/**
  * Tokenizer: שורות → טוקנים.
  * - כותרת N - … (N∈0..7) → heading (מקף חובה; בלי מקף = פסקה בשקט)
  * - `##…##` → editorial — מוסר לחלוטין מהפלט אך נרשם ל‑audit
- * - `הערת סיום - …` → **endnote (תוכן!)** — הסמנטיקה המקורית (S4.5, תיקון D-40):
- *   הקידומת מגדירה את הטקסט שאחריה כהערת סיום. במסמך המודפס הקידומת עצמה
- *   אינה מופיעה (כלל פענוח, לא עיטור — מסמך chat-v20.3 ההיסטורי).
- * - `הערת סיום-1 - טקסט` → endnote ממוספרת (D-40; עוגן סמן).
- * - `הערות סיום - כותרת` (רבים!) → הוראת כותרת עמודי ההערות — הצורה היחידה
- *   שאינה מתנגשת עם מזהה התוכן (ביקורת 03.11: הצורה הקודמת בלעה הערות אמיתיות).
+ * - `הערת סיון - …` → **endnote (תוכן!)** — הסמנטיקה המקורית (S4.5, תיקון D-40)
+ * - `הערת סיון-1 - טקסט` → endnote ממוספרת (D-40; עוגן סמן).
+ * - `הערות סיום - כותרת` (רבים!) → הוראת כותרת עמודי ההערות.
  * - תוחמי הערות השוליים מוגדרים: opts.fnOpen/fnClose (ברירת מחדל [ ]).
  * - `[a][b]` רצופים → הערות נפרדות (REQ-PAR-04)
  * - בתוך `[...]`: רווחים → \uE000 (אטומי, REQ-LB-04)
@@ -39,13 +131,24 @@ function mkToken(type, payload) {
  * @param {object} [opts] — { endnotePrefix, endnotePrefixRe, fnOpen, fnClose } (S4.5)
  */
 function tokenize(bodyLines, opts = {}) {
+  return tokenizeDetailed(bodyLines, opts).tokens;
+}
+
+/**
+ * **שלב 2:** טוקניזציה מפורטת — אותם טוקנים בדיוק (byte-identical; tokenize()
+ * מחזיר את זרם הטוקנים כמו שהיה), ובנוסף רשומות מקור לכל שורה: תמורת השורה
+ * (trim/נרמול/editorial — הפיכה כולה), טווחי החלקים, טווחי ההערות והתוחמים
+ * המדויקים. המודל הקנוני (engine/model/) נבנה מהתוצר הזה בלבד; זרם הטוקנים
+ * נגזר ממנו חזרה דרך adapter הכניסה — שקילות מוכחת בבדיקות round-trip.
+ */
+function tokenizeDetailed(bodyLines, opts = {}) {
   tokenSeq = 0;
   // מזהה הערת הסיום: ביטוי מוכן (מה-lexer) או בנוי מהקידומת; '' ⇒ מבוטל
   const endnoteRe = opts.endnotePrefixRe instanceof RegExp
     ? opts.endnotePrefixRe
     : compileEndnotePrefix(opts.endnotePrefix != null ? opts.endnotePrefix : DEFAULT_ENDNOTE_PREFIX);
   const endnoteNumRe = (() => {
-    // ממוספרת: `הערת סיום-1 - טקסט` — נבנית מאותה קידומת (ללא המקף האחרון) + מספר + מקף
+    // ממוספרת: `הערת סיון-1 - טקסט` — נבנית מאותה קידומת (ללא המקף האחרון) + מספר + מקף
     const p = String(opts.endnotePrefix != null ? opts.endnotePrefix : DEFAULT_ENDNOTE_PREFIX).trim() || DEFAULT_ENDNOTE_PREFIX;
     const base = p.replace(/[-–—]\s*$/, '').trim();
     if (!base) return null;
@@ -58,14 +161,27 @@ function tokenize(bodyLines, opts = {}) {
   // (לא fallback ל-[) כדי שביטול מפורש לא ייהפך בטעות לזיהוי ברירת מחדל.
   const fnEnabled = fnOpen.trim().length > 0 && fnClose.trim().length > 0;
   const tokens = [];
-  for (const raw of bodyLines) {
-    let line = normalizeText(raw.trim()); // editable: editorial ##…## מוסר מהשורה (Spec §7)
-    if (!line) continue;
+  const lines = [];
+  for (let li = 0; li < bodyLines.length; li++) {
+    const rawOfLine = bodyLines[li];
+    const s1 = normalizeStage(rawOfLine);
+    let line = s1.pre;
+    if (!line) {
+      lines.push({ bodyLineIndex: li, kind: 'blank', stage1: s1 });
+      continue;
+    }
 
     let m = line.match(HEADING_RE);
     if (m) {
       const level = m[2] !== undefined ? Number(m[2]) : (m[1] === 'הקדמה' ? 0 : 1);
-      tokens.push(mkToken('heading', { level, text: m[4] || m[0], raw: line }));
+      const text = m[4] || m[0];
+      const titleStart = Math.max(0, line.lastIndexOf(text));
+      tokens.push(mkToken('heading', { level, text, raw: line }));
+      lines.push({
+        bodyLineIndex: li, kind: 'heading', level, stage1: s1,
+        spans: { match: { start: 0, end: m[0].length }, title: { start: titleStart, end: line.length } },
+        tokenId: tokens[tokens.length - 1].id
+      });
       continue;
     }
     // **S4.5 (תיקון D-40 — ביקורת 03.11):** סדר הבדיקות שהוחזר לסמנטיקה המקורית:
@@ -74,28 +190,57 @@ function tokenize(bodyLines, opts = {}) {
     if (endnoteNumRe) {
       const mNum = line.match(endnoteNumRe);
       if (mNum) {
-        tokens.push(mkToken('endnote', { num: Number(mNum[1]), text: mNum[2].trim(), raw: line }));
+        const num = Number(mNum[1]);
+        const textVal = mNum[2].trim();
+        const textStart = mNum[0].length - mNum[2].length + (mNum[2].length - mNum[2].trimStart().length);
+        tokens.push(mkToken('endnote', { num, text: textVal, raw: line }));
+        lines.push({
+          bodyLineIndex: li, kind: 'endnote-numbered', num, stage1: s1,
+          spans: { match: { start: 0, end: mNum[0].length }, num: { start: 0, end: mNum[0].length - textVal.length }, text: { start: textStart, end: line.length } },
+          tokenId: tokens[tokens.length - 1].id
+        });
         continue;
       }
     }
     if (endnoteRe) {
       const mEnd = line.match(endnoteRe);
       if (mEnd && mEnd[1] && mEnd[1].trim()) {
-        tokens.push(mkToken('endnote', { text: mEnd[1].trim(), raw: line }));
+        const textVal = mEnd[1].trim();
+        const textStart = mEnd[0].length - mEnd[1].length + (mEnd[1].length - mEnd[1].trimStart().length);
+        tokens.push(mkToken('endnote', { text: textVal, raw: line }));
+        lines.push({
+          bodyLineIndex: li, kind: 'endnote', stage1: s1,
+          spans: { match: { start: 0, end: mEnd[0].length }, text: { start: textStart, end: line.length } },
+          tokenId: tokens[tokens.length - 1].id
+        });
         continue;
       }
     }
     const mCls = line.match(ENDNOTE_CLASS_RE);
     if (mCls) {
-      tokens.push(mkToken('endnote-class', { title: mCls[1].trim(), raw: line }));
+      const title = mCls[1].trim();
+      const titleStart = mCls[0].length - mCls[1].length + (mCls[1].length - mCls[1].trimStart().length);
+      tokens.push(mkToken('endnote-class', { title, raw: line }));
+      lines.push({
+        bodyLineIndex: li, kind: 'endnote-class', stage1: s1,
+        spans: { match: { start: 0, end: mCls[0].length }, title: { start: titleStart, end: line.length } },
+        tokenId: tokens[tokens.length - 1].id
+      });
       continue;
     }
     // editorial ##…## — הסרה מלאה (נרשם; לעולם לא נגלה בפלט — Spec §7)
     const editorial = line.match(/##(.+?)##/g);
+    const editorialTokenIds = [];
+    let stage2 = null;
     if (editorial) {
       for (const e of editorial) tokens.push(mkToken('editorial', { text: e.slice(2, -2), removed: true }));
-      line = line.replace(/##.+?##/g, ' ').replace(/\s+/g, ' ').trim();
-      if (!line) continue;
+      editorialTokenIds.push(...tokens.slice(tokens.length - editorial.length).map(t => t.id));
+      stage2 = editorialStage(line);
+      line = stage2.canonical;
+      if (!line) {
+        lines.push({ bodyLineIndex: li, kind: 'editorial', stage1: s1, stage2, editorialTokenIds });
+        continue;
+      }
     }
 
     // חילוץ הערות [..] עם מחסנית; זוגות רצופים → הערות נפרדות; תוחמים מוגדרים (S4.5)
@@ -103,34 +248,61 @@ function tokenize(bodyLines, opts = {}) {
     let cursor = 0;
     const parts = [];
     const notes = [];
+    const partRanges = []; // מקביל ל-parts: טווחים בשורה הקנונית (אחרי הסרת editorials)
     // בנייה לפי pairs משמאל לימין (outermost first)
     const outer = segs.pairs.filter(p => p.depth === 1).sort((a, b) => a.open - b.open); // חיצוניים בלבד (depth 1)
     const openCh = fnEnabled ? fnOpen : '[';
     const closeCh = fnEnabled ? fnClose : ']';
     for (const p of outer) {
-      const before = line.slice(cursor, p.open).trim();
-      if (before) parts.push({ kind: 'text', value: before });
+      const beforeRaw = line.slice(cursor, p.open);
+      const before = beforeRaw.trim();
+      if (before) {
+        const segStart = cursor + (beforeRaw.length - beforeRaw.trimStart().length);
+        parts.push({ kind: 'text', value: before });
+        partRanges.push({ kind: 'text', start: segStart, end: segStart + before.length });
+      }
       // **S4.6 (ביקורת 3):** חיתוך לפי תחילת הסוגר + אורכו בפועל (closeStart/closeLen
       // מהסורק) — נכון גם לתוחמים מרובי-תווים (']]'/END) ולצורה העברית ]ם. בעבר
       // נוסף אורך התוחם המוגדר למיקום התו האחרון — קיצוץ/דילוג תווים בתוחם ארוך.
       const cs = p.closeStart != null ? p.closeStart : p.close;
       const cl = p.closeLen != null ? p.closeLen : closeCh.length;
-      const noteText = line.slice(p.open + openCh.length, cs).trim().replace(/ +/g, ATOMIC_SPACE);
+      const innerStart = p.open + openCh.length;
+      const innerEnd = cs;
+      const noteText = line.slice(innerStart, cs).trim().replace(/ +/g, ATOMIC_SPACE);
       notes.push(noteText);
       parts.push({ kind: 'note-ref', noteIndex: notes.length - 1 });
+      partRanges.push({
+        kind: 'note-ref', noteIndex: notes.length - 1,
+        openStart: p.open, openEnd: p.open + openCh.length,
+        innerStart, innerEnd,
+        closeStart: cs, closeEnd: cs + cl,
+        start: p.open, end: cs + cl
+      });
       cursor = cs + cl;
     }
-    const tail = line.slice(cursor).trim();
-    if (tail) parts.push({ kind: 'text', value: tail });
+    const tailRaw = line.slice(cursor);
+    const tail = tailRaw.trim();
+    if (tail) {
+      const segStart = cursor + (tailRaw.length - tailRaw.trimStart().length);
+      parts.push({ kind: 'text', value: tail });
+      partRanges.push({ kind: 'text', start: segStart, end: segStart + tail.length });
+    }
 
     tokens.push(mkToken('paragraph', { parts, notes, unmatchedClosers: segs.unmatchedClosers, raw: line }));
+    lines.push({
+      bodyLineIndex: li, kind: 'paragraph', stage1: s1, stage2: stage2 || null,
+      canonicalAfterEditorial: line, partRanges,
+      editorialTokenIds, unmatchedClosers: segs.unmatchedClosers,
+      delimiters: { open: openCh, close: closeCh, enabled: fnEnabled },
+      tokenId: tokens[tokens.length - 1].id
+    });
   }
-  return tokens;
+  return { tokens, lines, delimiters: { fnOpen, fnClose, fnEnabled } };
 }
 
 /** CP1: hash של מולטיסט הטוקנים — עקרון שימור תוכן (BRZ-15).
- * **S4.5 (ביקורת 03.11):** כותרת הוראת ההערות (endnote-class) נכנסת לחשיבון —
- * היא טקסט שמופיע בפלט (כותרת עמודי ההערות); השמטתה איפשרה בעבר לתוכן
+ * **S4.5 (ביקורת 03.11):** כותרת הוראת ההערות (endnote-class) נכנסת לחשיבות —
+ * היא טקסט שמופיע בפלט (כותרת עמודי ההערות); השמטתה אפשרה בעבר לתוכן
  * שסווג בטעות כהוראה להיעלם בלי שה-hash יתריע. */
 function contentHash(tokens) {
   const stable = JSON.stringify(tokens.flatMap(t => {
@@ -143,4 +315,4 @@ function contentHash(tokens) {
   return crypto.createHash('sha256').update(stable, 'utf8').digest('hex');
 }
 
-module.exports = { tokenize, contentHash, normalizeText, ATOMIC_SPACE };
+module.exports = { tokenize, tokenizeDetailed, contentHash, normalizeText, normalizeStage, editorialStage, isNormalizedChar, ATOMIC_SPACE };

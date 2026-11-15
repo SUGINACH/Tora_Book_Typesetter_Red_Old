@@ -46,3 +46,21 @@ core/          : pipeline ← כל השכבות (כולל shaar-pages/ornament-p
 ## תלויות זמן־ריצה
 - אפס תלויות חיצוניות (zero runtime dependencies; engines: node>=18).
 - offline-guard: exit 7 על בקשה חיצונית (Orange doctrine).
+
+
+## שלב 2 — שכבת המודל הקנוני (16.11.2026)
+
+- **מסלול DP מתחיל כעת במודל:** `pipeline.typeset` → `lexDocument` →
+  `tokenizeDetailed` → **`model/document-model.buildDocumentModel`** →
+  `model/adapter.modelToTokens` → צריכת טוקנים כרגיל. המודל = מקור הסמכות
+  בפענוח; הטוקנים = תחזית נגזרת (adapter עם תנאי הסרה: שלבים 3–4).
+- `model/document-model` תלוי ב: `parser/dfa-lexer`, `parser/block-tokenizer`
+  (tokenizeDetailed), `parser/inline-content` (ריצות), `model/{kinds,identity}`;
+  אינו תלוי במדידה/שבירה/תכנון/הקרנה (אפס החלטות גאומטריה).
+- `model/roundtrip.reconstructSource` — בדיקת נכס (לא נתיב ריצה): שחזור המקור
+  מהמודל; מאומת על very_long char-exact.
+- `model/registry` — נקודת הרחבה יחידה לסוגי פריטים; `parser/inline-content`
+  קורא לו לפריטים מותאמים (parseInlineItemAt).
+- **המסלול המורשת לא שונה:** `legacy-imud-flow.tokenizeDoc` נותר עצמאי
+  (רגיסטר כפילויות D-2; מיזוג בשלב 9 בלבד).
+- באנדלים: ה-Worker וה-UI בנויים מחדש כולל שכבת המודל (D-65 — sha נבדק).

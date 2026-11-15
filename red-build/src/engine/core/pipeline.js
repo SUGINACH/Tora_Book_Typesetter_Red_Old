@@ -25,7 +25,12 @@
 
 const { getDefaultSettings, derivePlacementFlags } = require('./settings-registry');
 const { lexDocument } = require('../parser/dfa-lexer');
-const { tokenize, contentHash, normalizeText } = require('../parser/block-tokenizer');
+const { tokenizeDetailed, contentHash, normalizeText } = require('../parser/block-tokenizer');
+// **שלב 2 (מודל תוכן אחיד):** המודל הקנוני הוא מקור הסמכות של שלב הפענוח;
+// זרם הטוקנים נגזר ממנו דרך adapter יציאה זמני (תנאי הסרה ב-model/adapter.js).
+// הוכחת שקילות מלאה לעומת הטוקניזר הישיר: בדיקות round-trip ב-suite של שלב 2.
+const { buildDocumentModel } = require('../model/document-model');
+const { modelToTokens } = require('../model/adapter');
 const { scanBrackets } = require('../parser/bracket-scanner');
 const { MeasureAPI, resolveMeasureImpl } = require('../typography/measure-api');
 const { protectWords } = require('../typography/protectors');
@@ -161,8 +166,19 @@ function typeset(rawText, settingsIn, env = {}) {
     fnOpen: settings['fn-delim-open'],
     fnClose: settings['fn-delim-close']
   };
-  const { metadata, bodyLines } = lexDocument(rawText, parseOpts);
-  const tokens = tokenize(bodyLines, parseOpts);
+  // **שלב 2 — פענוח דרך המודל הקנוני:** lexer+tokenizer (הפרסר הקיים, לא חדש)
+  // → buildDocumentModel (מבנה + זהות + מקור) → modelToTokens (תחזית נגזרת).
+  // הטוקנים זהים במלואם לישירים (בדיקות adapter-equality על הקורפוסים);
+  // המודל נבנה טרום-מדידה ואינו מכיל שום החלטה גאומטרית.
+  const lexResult = lexDocument(rawText, parseOpts);
+  const detail = tokenizeDetailed(lexResult.bodyLines, parseOpts);
+  const inlineOptions = {
+    fontMarkers: settings['_inline-font-markers'] || settings._inlineFontStyles || settings._inlineFontMarkers || [],
+    knownFamilies: settings['_inline-font-families'] || settings._inlineFontFamilies || []
+  };
+  const documentModel = buildDocumentModel(rawText, { lexResult, detail, parseOpts, inlineOptions });
+  const tokens = modelToTokens(documentModel);
+  const metadata = lexResult.metadata;
   for (const t of tokens) {
     const rawLine = String(t.raw != null ? t.raw : (t.text != null ? t.text : ''));
     settings._tokenTexts.set(t.id, {
