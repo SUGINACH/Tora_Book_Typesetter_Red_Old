@@ -17704,6 +17704,14 @@ function createMeasuredInlineItems(runs, options = {}) {
       : sizePt;
   }
 
+  // Effective size is always used for measurement; only a real deviation
+  // from the paragraph baseline is exposed as a per-fragment override.
+  function explicitSizeOverride(run) {
+    if (!run || run.sizePt == null) return null;
+    const value = effectiveSize(run);
+    return sizePt == null || value !== sizePt ? value : null;
+  }
+
   function measure(text, family, runSizePt) {
     const clean = String(text).split(String.fromCharCode(0xE102)).join('');
     const width = options.measureText(clean, family || null, runSizePt == null ? sizePt : runSizePt);
@@ -17754,7 +17762,7 @@ function createMeasuredInlineItems(runs, options = {}) {
       stretchPx: widthPx * stretchRatio,
       shrinkPx: widthPx * shrinkRatio,
       fontFamily: family,
-      ...(runSizePt != null ? { sizePt: runSizePt } : {}),
+      ...(explicitSizeOverride(run) != null ? { sizePt: explicitSizeOverride(run) } : {}),
       ...(Number.isFinite(sourceStart) ? { sourceStart } : {}),
       ...(Number.isFinite(sourceEnd) ? { sourceEnd } : {})
     });
@@ -17814,7 +17822,7 @@ function createMeasuredInlineItems(runs, options = {}) {
             fontFamily: family,
             widthPx,
             heightPx,
-            ...(runSizePt != null ? { sizePt: runSizePt } : {}),
+            ...(explicitSizeOverride(run) != null ? { sizePt: explicitSizeOverride(run) } : {}),
             ...(Number.isFinite(sourceStart) ? { sourceStart } : {}),
             ...(Number.isFinite(sourceEnd) ? { sourceEnd } : {})
           });
