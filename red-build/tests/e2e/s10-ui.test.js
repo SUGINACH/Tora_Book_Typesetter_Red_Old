@@ -897,6 +897,26 @@ describe('חבילות הדפדפן (D-65) — הפרדת מנוע, שימה, of
     assert(err, 'שגיאה מדווחת במקום קריסה');
   });
 
+  it('shared inline item bootstrap is bundled independently into headless, UI and Worker realms', () => {
+    const pipelineSource = fs.readFileSync(path.join(SRC, 'engine', 'core', 'pipeline.js'), 'utf8');
+    const browserEntry = fs.readFileSync(path.join(UI_SRC, 'browser-entry.js'), 'utf8');
+    const workerEntry = fs.readFileSync(path.join(UI_SRC, 'engine-worker-main.js'), 'utf8');
+    const sharedEntryPath = path.join(SRC, 'engine', 'layout', 'inline-item-types.js');
+    const sharedEntry = fs.readFileSync(sharedEntryPath, 'utf8');
+    assert(pipelineSource.includes("require('../layout/inline-item-types')"),
+      'headless pipeline loads the project item registration entry');
+    assert(browserEntry.includes("require('../engine/layout/inline-item-types')"),
+      'browser UI loads the same registration entry for DOM rendering');
+    assert(workerEntry.includes("require('../engine/layout/inline-item-types')"),
+      'Worker loads the same registration entry for parsing and measurement');
+    assert(sharedEntry.includes('Add each project item module exactly once'),
+      'the single registration point documents its cross-realm contract');
+    assert(workerSrc.includes('"src/engine/layout/inline-item-types.js"'),
+      'the Worker bundle contains the shared item registration module');
+    assert(appSrc.includes('"src/engine/layout/inline-item-types.js"'),
+      'the UI bundle contains the same registration module');
+  });
+
   it('הפרדה: אצרור האפליקציה בלי המנוע; offline-safe', () => {
     assert(!appSrc.includes('"src/ui/engine-worker-main.js"'), 'אין צד־Worker באצרור ה־UI');
     assert(!/__modules\["src\/engine\/core\/pipeline\.js"\]/.test(appSrc), 'אין pipeline באצרור ה־UI');
