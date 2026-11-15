@@ -806,8 +806,8 @@ describe('S14 — custom inline page items use one registration through the comp
     });
 
     try {
-      const settings = getDefaultSettings();
-      const source = 'טקסט לפני ⟦qr:book-17⟧ וטקסט אחרי הפריט';
+      const settings = { ...getDefaultSettings(), 'paren-style-scale':0.8 };
+      const source = 'טקסט לפני ⟦qr:book-17⟧ ומיד אחרי (מילה מעוצבת) וסיום';
       const result = typeset(source, settings, { noRecommendations:true });
       assert(result.contentPreserved === true, 'custom source syntax is not lost as body text');
       const pageLines = result.pages.flatMap(page => page.columns.flat());
@@ -818,6 +818,23 @@ describe('S14 — custom inline page items use one registration through the comp
       assertEq(item.layoutKey, 'book-17');
       assertEq(item.widthPx, 32);
       assertEq(item.heightPx, 22);
+
+      // Custom syntax is zero-width in the visible-text projection. A later
+      // parenthesis span must therefore keep the same flat offset as before
+      // the custom item was introduced.
+      const bodyFragments = pageLines.flatMap(line => line.fragments || [])
+        .filter(fragment => fragment.kind === 'text');
+      const parenthetical = bodyFragments.flatMap(fragment => fragment.segments || [])
+        .find(segment => segment.text.includes('מילה'));
+      assert(parenthetical, 'parenthetical text remains a measured segment after the custom item');
+      const bodySizePt = Number(settings['body-font-size-pt']);
+      assert(Math.abs(parenthetical.sizePt - bodySizePt * 0.8) < 1e-9,
+        'the parenthesis size factor stays attached to its text after a custom item');
+      const finalText = bodyFragments.flatMap(fragment => fragment.segments || [])
+        .find(segment => segment.text.includes('וסיום'));
+      assert(finalText, 'text after the closing parenthesis remains present');
+      assert(Math.abs(finalText.sizePt - bodySizePt) < 1e-9,
+        'the parenthesis size factor does not leak beyond the closing delimiter');
 
       const html = exportHtml(result, settings, makeDoc(), { title:'Custom item integration' });
       assert(calls.dom > 0 && html.includes('QR:book-17'), 'the registered DOM renderer is used by standalone HTML');
