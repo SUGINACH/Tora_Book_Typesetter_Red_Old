@@ -189,10 +189,37 @@ function renderLine(ln, doc, settings = {}) {
     }
   }
   if (Array.isArray(ln.fragments)) {
-    for (const fragment of ln.fragments) {
+    // Fragments already contain measured inter-item glue. DOM must consume
+    // the exact same gaps as geometry-projector/PDF; relying on CSS whitespace
+    // here would introduce a second, font-dependent spacing calculation.
+    const fragments = ln.fragments;
+    const styleAlign = ln.customStyle && ln.customStyle.styleSpec
+      ? ln.customStyle.styleSpec.align
+      : null;
+    const lastMode = String(settings['body-last-line-align'] || 'center');
+    const inlineAlign = ln.kind === 'heading' ? 'center'
+      : styleAlign === 'stretch' || styleAlign === 'justify' ? 'justify'
+        : styleAlign === 'right' || styleAlign === 'left' || styleAlign === 'center' ? styleAlign
+          : ln.isLast ? (lastMode === 'stretch' ? 'justify' : lastMode) : 'justify';
+    const naturalWidth = fragments.reduce((sum, fragment) =>
+      sum + Number(fragment.widthPx || 0) + Number(fragment.gapAfterPx || 0), 0);
+    const gapCount = fragments.reduce((count, fragment) =>
+      count + (Number(fragment.gapAfterPx || 0) > 0 ? 1 : 0), 0);
+    const remainingWidth = Number.isFinite(ln.measureW)
+      ? Math.max(0, ln.measureW - naturalWidth)
+      : 0;
+    const justifyGap = inlineAlign === 'justify' && gapCount > 0
+      ? remainingWidth / gapCount
+      : 0;
+
+    for (const fragment of fragments) {
+      const naturalGap = Math.max(0, Number(fragment.gapAfterPx || 0));
+      const renderedGap = naturalGap + (naturalGap > 0 ? justifyGap : 0);
+      const gapStyle = renderedGap > 0 ? String(Math.round(renderedGap * 1000) / 1000) + 'px' : '';
       if (fragment.kind === 'text') {
         const word = doc.createElement('span');
         word.className = 'w';
+        if (gapStyle) word.style.marginLeft = gapStyle;
         if (fragment.id != null) word.dataset.inlineId = String(fragment.id);
         if (Array.isArray(fragment.segments) && fragment.segments.length) {
           for (const segment of fragment.segments) {
@@ -213,6 +240,7 @@ function renderLine(ln, doc, settings = {}) {
       if (fragment.kind === 'anchor') {
         const anchor = doc.createElement('span');
         anchor.className = 'inline-anchor';
+        if (gapStyle) anchor.style.marginLeft = gapStyle;
         anchor.setAttribute('aria-hidden', 'true');
         if (fragment.id != null) anchor.dataset.inlineId = String(fragment.id);
         anchor.style.display = 'inline-block';
@@ -226,6 +254,7 @@ function renderLine(ln, doc, settings = {}) {
       if (fragment.kind === 'image') {
         const image = doc.createElement('img');
         image.className = 'inline-image';
+        if (gapStyle) image.style.marginLeft = gapStyle;
         image.alt = fragment.alt || fragment.resourcePath || '';
         image.draggable = false;
         image.style.display = 'inline-block';
@@ -260,6 +289,7 @@ function renderLine(ln, doc, settings = {}) {
       wrapper.dataset.inlineKind = fragment.kind;
       if (fragment.id != null) wrapper.dataset.inlineId = String(fragment.id);
       wrapper.style.display = 'inline-block';
+      if (gapStyle) wrapper.style.marginLeft = gapStyle;
       wrapper.style.boxSizing = 'border-box';
       wrapper.style.width = String(fragment.widthPx) + 'px';
       wrapper.style.height = String(fragment.heightPx) + 'px';
