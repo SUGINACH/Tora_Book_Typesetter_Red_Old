@@ -188,11 +188,12 @@ describe('S77 בקשה 1 — שורת החיתוך מיושבת לשני הצד�
     const { generateTestDocument } = require('../../src/ui/test-doc-generator');
     const text = generateTestDocument({ mode: 'fixed' });
     const r = legacyTypeset(text, s, {});
-    assert(r.layoutHash.startsWith('legacy-6a06e3108c8ec'),
-      `body-first נעול על ההאש של S76 — התקבל ${r.layoutHash.slice(0, 20)} (cutLast/centerLast אסור שיזיזו שורות)`);
+    // **R-03 (יובא מ-Red PR #48):** נעילות מחודשות בעקבות תיקון שורש דגלי-סוגריים-סמן-הערה: body-first legacy-6a06e→legacy-a0946; legacy-3ce38→legacy-1231b.
+    assert(r.layoutHash.startsWith('legacy-a0946f99c7c19'),
+      `body-first נעול על ההאש של S76+R-03 — התקבל ${r.layoutHash.slice(0, 20)} (cutLast/centerLast אסור שיזיזו שורות)`);
     const rOld = legacyTypeset(text, { ...s, 'fn-placement-mode': 'legacy' }, {});
-    assert(rOld.layoutHash.startsWith('legacy-3ce387962aa20101'),
-      `legacy נשאר נעול על S74 — התקבל ${rOld.layoutHash.slice(0, 20)}`);
+    assert(rOld.layoutHash.startsWith('legacy-1231b1b7e15cb'),
+      `legacy נשאר נעול על S74+R-03 — התקבל ${rOld.layoutHash.slice(0, 20)}`);
   });
 });
 

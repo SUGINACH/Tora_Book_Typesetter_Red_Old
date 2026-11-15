@@ -100,9 +100,10 @@ describe('S72.1 מורשת — יישור תחתיות במסמך הבדיקה �
     // פילבק "סמן-בלבד" שבזבז שורות, ושטיפת המשכים לעמודים ייעודיים
     // לפני פתיחת פרק ("הערות של פרק אחד לא יכולות להמשיך בפרק הבא").
     // שינוי מכוון מאושר (דיווח משתמש מפורש). הקודם: legacy-3f865b10dfe55be2 (S75).
+    // **R-03 (יובא מ-Red PR #48):** נעילה מחודשת legacy-6a06e→legacy-a0946 — תיקון שורש של דגלי סוגריים של מילה עם סמן הערה מודבק + דליפת עומק; שינוי פריסה מכוון של מדידה נכונה (12pt במקום 10pt שגוי). הקודם: legacy-6a06e3108c8eca9b.
     // **נייטרליות legacy הוכחה:** במצב fn-placement-mode=legacy ה-hash חוזר
     // בדיוק לנעילת S74 (legacy-3ce387962aa20101) — נבדק ב-S76 מחדש.
-    assertEq(result.layoutHash, 'legacy-6a06e3108c8eca9b', 'hash של מסמך הבדיקה הקבוע השתנה — שורה זזה!');
+    assertEq(result.layoutHash, 'legacy-a0946f99c7c197bd', 'hash של מסמך הבדיקה הקבוע השתנה — שורה זזה!');
     const r2 = legacyTypeset(text, imudSettings(), {});
     assertEq(result.layoutHash, r2.layoutHash, 'דטרמיניזם — hash שונה בין הרצות');
   });
