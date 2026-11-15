@@ -169,6 +169,27 @@ describe('e2e-pipeline', () => {
       'the shared measured-item solver must preserve every eligible legacy paragraph break before runtime unification');
   });
 
+  it('S14 runtime: ordinary body paragraphs use measured fragments in the shared page model', () => {
+    const settings = getDefaultSettings();
+    const source = [
+      'פסקה רגילה ראשונה עם מילים רבות שנועדה לבדוק את מנוע שבירת השורות המשותף.',
+      'פסקה רגילה שנייה ממשיכה את המסמך ומוודאת שאין חזרה למסלול מילים מקביל.',
+      'פסקה רגילה שלישית בודקת את שימור התוכן ואת יציבות המודל לאחר תכנון העמוד.'
+    ].join('\\n\\n');
+    const result = typeset(source, settings, { noRecommendations:true });
+    const lines = result.pages.flatMap(page => page.columns.flat())
+      .filter(line => line.kind === 'paragraph');
+    assert(lines.length >= 3, 'all three source paragraphs reach the page planner');
+    assert(lines.every(line => Array.isArray(line.fragments) && line.fragments.length > 0),
+      'every eligible paragraph line is represented by measured fragments');
+    assert(lines.every(line => line.fragments.every(fragment =>
+      Number.isFinite(fragment.widthPx) && Number.isFinite(fragment.heightPx)
+    )), 'every fragment reaches the page model with finite measured geometry');
+    assert(result.contentPreserved, 'the measured runtime path preserves all source content');
+    const repeated = typeset(source, settings, { noRecommendations:true });
+    assertEq(result.layoutHash, repeated.layoutHash, 'measured ordinary paragraphs remain deterministic');
+  });
+
   it('determinism: two runs yield identical layoutHash', () => {
     const s = getDefaultSettings();
     const a = typeset(FIXTURE, s);
