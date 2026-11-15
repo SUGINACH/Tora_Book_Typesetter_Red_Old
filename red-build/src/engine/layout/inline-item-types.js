@@ -5,9 +5,7 @@
 // Never send callbacks through postMessage: Worker messages carry data, not executable code.
 'use strict';
 
-// Example:
-// require('./inline-items/my-item');
-//
-// A module in inline-items/ should call registerInlineItemType(kind, descriptor).
+// To add a project item, create a module under src/engine/layout/inline-items/
+// and add its import here (once). That module calls registerInlineItemType(kind, descriptor).
 // Keep its parser deterministic and its measurement independent of the DOM.
 module.exports = {};
