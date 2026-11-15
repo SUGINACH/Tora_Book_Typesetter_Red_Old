@@ -13,6 +13,8 @@ const { WorkerEngineClient } = require('./worker-client');
 const { createImudLibrary } = require('./imud-library');
 const { createSettingsPersistence } = require('./settings-persistence'); // **S6.1 (פער 2):** SRS §17.1
 const { BASE_CSS } = require('../engine/output/html-export');
+// The UI realm needs the DOM adapter for the same custom item types as the Worker.
+require('../engine/layout/inline-item-types');
 
 /** **03.11(ג) תיקון קטסטרופת התצוגה:** הזרקת BASE_CSS — מקור הכללים של העמודים
  * (טורים/שורות/פסים/עיטורים/שערים) המשמש את הייצוא העצמאי — גם לתצוגה החיה.
