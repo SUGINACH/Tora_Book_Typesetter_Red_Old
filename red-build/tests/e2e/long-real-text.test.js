@@ -122,26 +122,35 @@ describe('D-83 — ספרי־אמת ארוכים: עימוד מלא ללא קר�
     const words = raw.split(/\s+/).filter(Boolean).length;
     // נתיב ה-DP (העימוד הכללי)
     const t0 = Date.now();
-    const r1 = typeset(raw, getDefaultSettings(), { noRecommendations: true });
+    let r1 = typeset(raw, getDefaultSettings(), { noRecommendations: true });
     const dt = Date.now() - t0;
     assert(r1.contentPreserved === true, 'שימור תוכן — הקורפוס ההיסטורי, נתיב DP');
     assert(r1.pages.length > 1000, `ספר שלם במדדי הקורפוס ההיסטורי (קיבלנו ${r1.pages.length})`);
     assert(dt < 120000, `זמן סביר (${dt}ms)`);
-    const r1b = typeset(raw, getDefaultSettings(), { noRecommendations: true });
-    assertEq(r1.layoutHash, r1b.layoutHash, 'דטרמיניזם — נתיב DP, הקורפוס ההיסטורי');
-    assertEq(r1.pages.length, r1b.pages.length, 'מספר עמודים יציב');
+    // **מקטע ב׳:** השוואת הדטרמיניזם על הערכים שחולצו — התוצאות המלאות של
+    // ספרים שלמים אינן נשמרות בזיכרון במקביל (ה-LineModel המלא של כל שורה כבד
+    // מנתיב המחרוזות; מחריתים בדיוק אחרי חילוץ המדדים להשוואה).
+    const i1 = { hash: r1.layoutHash, pages: r1.pages.length, preserved: r1.contentPreserved };
+    r1 = null;
+    let r1b = typeset(raw, getDefaultSettings(), { noRecommendations: true });
+    assertEq(i1.hash, r1b.layoutHash, 'דטרמיניזם — נתיב DP, הקורפוס ההיסטורי');
+    assertEq(i1.pages, r1b.pages.length, 'מספר עמודים יציב');
+    r1b = null;
 
     // נתיב המורשת (פרופיל המקור — importImudSettings)
     const { importImudSettings } = require('../../src/engine/core/legacy-settings-map');
     const { getSettingDefs } = require('../../src/engine/core/settings-registry');
     const LEGACY = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'ui', 'assets', 'imud', 'default_settings.json'), 'utf8'));
     const imp = importImudSettings(LEGACY, new Set(getSettingDefs().map(r => r.id)));
-    const r2 = typeset(raw, imp.settings, { noRecommendations: true });
+    let r2 = typeset(raw, imp.settings, { noRecommendations: true });
     assert(r2.contentPreserved === true, 'שימור תוכן — הקורפוס ההיסטורי, פרופיל המורשת');
     assert(r2.legacyProfile === true, 'פרופיל המורשת הופעל');
-    const r2b = typeset(raw, imp.settings, { noRecommendations: true });
-    assertEq(r2.layoutHash, r2b.layoutHash, 'דטרמיניזם — פרופיל המורשת, הקורפוס ההיסטורי');
-    console.log(`  [real] orange-historical: words=${words} DP=${r1.pages.length}pages/${r1.layoutHash.slice(0, 10)} legacy=${r2.pages.length}pages/${r2.layoutHash.slice(0, 10)} ${dt}ms`);
+    const i2 = { hash: r2.layoutHash, pages: r2.pages.length };
+    r2 = null;
+    let r2b = typeset(raw, imp.settings, { noRecommendations: true });
+    assertEq(i2.hash, r2b.layoutHash, 'דטרמיניזם — פרופיל המורשת, הקורפוס ההיסטורי');
+    r2b = null;
+    console.log(`  [real] orange-historical: words=${words} DP=${i1.pages}pages/${i1.hash.slice(0, 10)} legacy=${i2.pages}pages/${i2.hash.slice(0, 10)} ${dt}ms`);
   });
 
 });

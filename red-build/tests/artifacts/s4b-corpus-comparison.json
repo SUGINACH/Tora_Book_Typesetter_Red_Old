@@ -1,0 +1,34 @@
+{
+  "schema": "s4b-corpus-comparison-v1",
+  "corpus": "canonical_corpus.txt",
+  "basis": "main@5d22a2a (לפני מקטע ב׳) מול המסלול הקנוני",
+  "pages": {
+    "was": 36,
+    "now": 36
+  },
+  "hash": {
+    "was": "80f9ed6c82ea3855",
+    "now": "f6f32c4073c4fd35"
+  },
+  "blocks": {
+    "total": 170,
+    "identical": 162,
+    "markerExplained": 8,
+    "unexplained": 0
+  },
+  "causes": [
+    "הצמדת סמן-עוגן מבנית (תיקון P-1): בנתיב הישן protectWords פירק את ההצמדה — הסמן צף כמילה חופשית ויכול היה להישאר בסוף שורה",
+    "מדידת סמן הערה בגודל הרישום (חוזה שלב 3) במקום גודל הגוף"
+  ],
+  "markerBlocks": [
+    "t8",
+    "t30",
+    "t52",
+    "t74",
+    "t96",
+    "t118",
+    "t140",
+    "t162"
+  ],
+  "unexplained": []
+}

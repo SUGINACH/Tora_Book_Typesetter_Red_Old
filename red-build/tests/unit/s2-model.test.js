@@ -10,6 +10,12 @@ const { describe, it, assert, assertEq, report } = require('../harness');
 
 const { buildDocumentModel } = require('../../src/engine/model/document-model');
 const { modelToTokens, tokensEqual } = require('../../src/engine/model/adapter');
+
+/** **שלב 4 מקטע ב׳:** blockId הוא הערת-זיהוי נגזרת של ה-adapter (מצביע
+ * לבלוק המודל — לא תוכן); השוויון מול הטוקניזר הישיר נבדק בלעדיה. */
+function stripDerivedAnnotations(tokens) {
+  return tokens.map(t => { const { blockId, ...rest } = t; void blockId; return rest; });
+}
 const { reconstructSource, rebuildCanonicalLine } = require('../../src/engine/model/roundtrip');
 const { validateDocumentModel } = require('../../src/engine/model/validate');
 const { BLOCK_KINDS, ITEM_KINDS } = require('../../src/engine/model/kinds');
@@ -275,7 +281,7 @@ describe('שלב 2 — adapter היציאה: שקילות מלאה לטוקני�
     it(`modelToTokens ≡ tokenize [${name}]`, () => {
       const { bodyLines } = lexDocument(raw, {});
       const orig = tokenize(bodyLines, {});
-      const derived = modelToTokens(buildDocumentModel(raw, {}));
+      const derived = stripDerivedAnnotations(modelToTokens(buildDocumentModel(raw, {})));
       assert(tokensEqual(orig, derived), `זרם הטוקנים הנגזר שונה [${name}]`);
     });
   }
@@ -286,7 +292,7 @@ describe('שלב 2 — adapter היציאה: שקילות מלאה לטוקני�
     const raw = fs.readFileSync(corpusPath, 'utf8');
     const { bodyLines } = lexDocument(raw, {});
     const orig = tokenize(bodyLines, {});
-    const derived = modelToTokens(buildDocumentModel(raw, {}));
+    const derived = stripDerivedAnnotations(modelToTokens(buildDocumentModel(raw, {})));
     assertEq(orig.length, derived.length, 'מספר טוקנים שונה');
     assert(tokensEqual(orig, derived), 'זרם הטוקנים של הקורפוס הראשי שונה');
   });

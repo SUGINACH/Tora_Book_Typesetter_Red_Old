@@ -106,7 +106,7 @@ describe('שלב 3 — measureItem: MeasuredItem קנוני ובלתי-ניתן 
     const api2 = MeasureAPI.forFontId(f2, { 'body-font-size-pt': 12 });
     assert(Math.abs(api1.measureTextWidth('לום', 12, 0) - api2.measureTextWidth('לום', 12, 0)) > 0.001, 'משפחות שונות נמדדות שונה');
   });
-  it('טווחי גופן מקוננים מהמקור — נשמרים כ-runs ונמדדים פר-מקטע', () => {
+  it('טווחי גופן מקוננים מהמקור — נשמרים כ-runs ונמדדים פר-מקטע (גבול מדידה יחיד — שלב 4 מקטע ב׳, הוראה §5)', () => {
     registerRealFonts();
     const inlineOptions = { fontMarkers: [
       { id: 'david', open: '<<', close: '>>', family: 'David Libre' }
@@ -116,10 +116,22 @@ describe('שלב 3 — measureItem: MeasuredItem קנוני ובלתי-ניתן 
     const para = model.blocks.find(b => b.kind === 'paragraph');
     const runs = para.items[0].payload.runs;
     assert(runs.length === 3 && runs[1].fontFamily === 'David Libre', JSON.stringify(runs.map(r => r.fontFamily)));
+    // **הגבול החדש:** measureDocumentModel מודד את פריטי השורה הקנוניים (מילים)
+    // — את אותן יחידות שה-LineBreaker צורך — ולא את הפריט המקורי בנפרד. המילה
+    // חוצת-הריצות ש<<לום>>ם = תיבה אחת עם 3 פרגמנטים (§4.1-3) — לעולם לא מחרוזת שטוחה.
     const res = measureDocumentModel(model, { settings: { 'body-font-size-pt': 12, 'body-font': 'Frank Ruhl Libre' } });
-    const item = res.measured.get(para.items[0].id);
-    assert(item && item.segments.length === 3, 'שלושה מקטעים');
-    assertEq(item.segments[1].fontId, fontResolver.fontIdOfAlias('David Libre'));
+    const seq = res.sequences.find(s => s.blockId === para.id);
+    assert(seq, 'רצף הפסקה קיים');
+    const mixedWord = seq.items.find(it => it.role === 'box' && it.kind === 'text' && (it.fragments || []).length === 3);
+    assert(mixedWord, 'מילה חוצת-ריצות עם 3 פרגמנטים: ' + JSON.stringify(seq.items.filter(i => i.role === 'box').map(i => i.itemId)));
+    assertEq(mixedWord.fragments[1].fontId, fontResolver.fontIdOfAlias('David Libre'), 'פרגמנט הגופן הפנימי');
+    // המדידה של התיבה מקושרת במפה — אותו MeasuredItem קפוא, בדיוק פעם אחת
+    const m = res.measured.get(mixedWord.itemId);
+    assert(m === mixedWord.measured, 'קישור MeasuredItem מהמפה');
+    assert(m.ok && Math.abs(m.advance - mixedWord.measuredAdvance) < 1e-12, 'advance תואם');
+    // סכום הפרגמנטים = הרוחב הכולל של המילה (מדידה פר-מקטע נשמרה ברמת הפרגמנט)
+    const sum = mixedWord.fragments.reduce((s, f) => s + f.advancePx, 0);
+    assert(Math.abs(sum - mixedWord.measuredAdvance) < 1e-9, 'סכום פרגמנטים');
   });
   it('תמונה: מדידה מ-metadata אמיתי + fit/scale + יחס-גובה נשמר (§3.1-3/4)', () => {
     registerRealFonts();
@@ -188,6 +200,41 @@ describe('שלב 3 — מטמון מדידה: מפתח מלא ובידוד (§3.
     const m1 = measureItem(i1, { sizePt: 12, fontIds: [f] }, {});
     const m2 = measureItem(i2, { sizePt: 12, fontIds: [f] }, {});
     assert(m1 !== m2 && m1.itemId !== m2.itemId, 'פריטים נפרדים');
+  });
+  it('חסימת זיכרון (שלב 4 מקטע ב׳, תיקון שורש): המטמון חסום-תקרה; ניפוי אינו משנה תוצאות', () => {
+    // רקע: בלי חסימה, המטמון שומר לנצח MeasuredItem לכל פריט שנמדד אי-פעם
+    // (ספר 3.4MB ≈ 682 אלף ערכים ≈ 766MB — נמדד; OOM בבדיקות הספרים הארוכים
+    // ודליפה ב-Worker). המטמון הוא מֵימוּז של פונקציה דטרמיניסטית טהורה —
+    // חסימתו אינה יכולה לשנות פלט, וזו ההוכחה שמונעת שינוי-שקט בעתיד.
+    const { clearRegisteredFonts } = require('../../src/engine/typography/measure-api');
+    clearRegisteredFonts(); // מימוש הטבלה — מהיר וללא גופנים רשומים
+    clearItemMeasureCache();
+    const stats0 = itemCacheStats();
+    assert(Number.isFinite(stats0.capacity) && stats0.capacity > 0, 'תקרה נחשפת בסטטיסטיקה: ' + JSON.stringify(stats0));
+    const first = { id: 'itm-bound-first', kind: 'text', payload: { runs: [{ text: 'מילה-ראשונה-לחסימה' }] } };
+    const r1 = measureItem(first, { sizePt: 12 }, {});
+    assert(r1.ok, 'מדידה ראשונה תקינה');
+    // מילוי מעבר לתקרה (תקרה + אצוות ניפוי + שוליים) בפריטים ייחודיים —
+    // כל פריט נמדד בפועל (אין עקיפת המנגנון)
+    const fill = stats0.capacity + 9000;
+    for (let i = 0; i < fill; i++) {
+      measureItem({ id: `itm-bound-${i}`, kind: 'text', payload: { runs: [{ text: 'מ' + i }] } }, { sizePt: 12 }, {});
+    }
+    const stats1 = itemCacheStats();
+    assert(stats1.entries <= stats1.capacity, `המטמון חסום: ${stats1.entries} ≤ ${stats1.capacity}`);
+    // הפריט הראשון נופה (הוכנס לפני המילוי) — מדידה חוזרת מחזירה אובייקט
+    // חדש, אך **תוצאה זהה עד רמת הערכים** (דטרמיניזם טהור: ניפוי אינו
+    // משנה פלט) — עדות שהחסימה בטוחה לתוצאות
+    const r2 = measureItem(first, { sizePt: 12 }, {});
+    assert(r2.ok, 'מדידה חוזרת אחרי ניפוי תקינה');
+    assert(r1 !== r2, 'אובייקט חדש (הרשומה נופתה ונמדדה מחדש)');
+    assertEq(JSON.stringify(r1), JSON.stringify(r2), 'תוצאה זהה ביט-לביט אחרי ניפוי ומדידה מחדש');
+    // פגיעה חוזרת (hit) — עדיין חסום
+    const r3 = measureItem(first, { sizePt: 12 }, {});
+    assert(r3 === r2, 'hit רגיל אחרי המדידה החוזרת');
+    assert(itemCacheStats().entries <= itemCacheStats().capacity, 'חסום גם לאחר הפגיעות');
+    clearItemMeasureCache();
+    assertEq(itemCacheStats().entries, 0, 'ניקוי מלא עדיין עובד');
   });
   it('חית סביבה מגיבה לסט הגופנים הרשום (רישום חדש משנה חית)', () => {
     registerRealFonts();

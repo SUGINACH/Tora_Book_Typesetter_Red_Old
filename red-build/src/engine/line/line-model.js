@@ -182,6 +182,8 @@ function assembleLine(items, cut, maxWidthPx, wrap, opts, policy, sequence, line
       constraints: it.constraints,
       sourceRange: it.sourceRange || null,
       sourceAnchor: it.sourceAnchor || null,
+      overlay: it.overlay || null, // §7: שכבת סגנון המילה (סוגריים/סגנון inline) — לגזירת spans
+      ...(it.sourceText != null ? { sourceText: it.sourceText } : {}), // תמונות/אטומים — טקסט המקור (תצוגת המוצר)
       diagnostics: it.diagnostics || []
     });
   }
@@ -237,7 +239,8 @@ function assembleLine(items, cut, maxWidthPx, wrap, opts, policy, sequence, line
     floatAreas.push({
       itemId: f.itemId, sourceItemId: f.sourceItemId, side: f.side,
       widthPx: round3(f.widthPx), heightPx: round3(f.heightPx),
-      lines: wrap.linesSpanned, anchor: f.anchor
+      lines: wrap.linesSpanned, anchor: f.anchor,
+      sourceText: f.sourceText != null ? f.sourceText : null
     });
   }
 
@@ -281,7 +284,9 @@ function centeredImageLine(item, maxWidthPx, sequence) {
     fragments: [{
       itemId: item.itemId, sourceItemId: item.sourceItemId, kind: 'image',
       fontId: null, fragments: [], measuredAdvance: w, inkBounds: m && m.inkBounds,
-      constraints: item.constraints, sourceRange: item.sourceRange || null, sourceAnchor: null, diagnostics: []
+      constraints: item.constraints, sourceRange: item.sourceRange || null, sourceAnchor: null,
+      sourceText: item.sourceText != null ? item.sourceText : null, // §22: טקסט המקור — תצוגה/חשבונאות עד שלב 8
+      diagnostics: []
     }],
     itemIds: [item.itemId],
     naturalWidthPx: round3(w),
@@ -324,6 +329,7 @@ function extractFloats(items) {
         heightPx: (it.measured && it.measured.ok && it.measured.height) || 0,
         inkBounds: it.inkBounds, constraints: it.constraints,
         sourceRange: it.sourceRange || null,
+        sourceText: it.sourceText != null ? it.sourceText : null, // §22: טקסט המקור — לתצוגה/חשבונאות עד שלב 8
         anchor: {
           prevItemId: lastKeptBox ? lastKeptBox.itemId : null,
           nextItemId: nextBox ? nextBox.itemId : null

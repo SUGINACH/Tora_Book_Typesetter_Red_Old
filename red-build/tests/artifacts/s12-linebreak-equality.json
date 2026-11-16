@@ -3,8 +3,8 @@
   "pages": 36,
   "lines": 588,
   "diffs": 0,
-  "hashA": "80f9ed6c82ea3855b6786bebd552aa5058109f40f671644c0e284e0e5681c314",
-  "hashB": "80f9ed6c82ea3855b6786bebd552aa5058109f40f671644c0e284e0e5681c314",
+  "hashA": "f6f32c4073c4fd356d54793d840104ee3f2987f541e45a22af8737b88c2b6db9",
+  "hashB": "f6f32c4073c4fd356d54793d840104ee3f2987f541e45a22af8737b88c2b6db9",
   "implA": "table",
   "implB": "font-metrics(fixture)"
 }

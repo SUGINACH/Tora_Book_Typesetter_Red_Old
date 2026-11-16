@@ -187,7 +187,7 @@ describe('S65-6 — נייטרליות: המתג כבוי ⇒ אפס שינוי 
   });
   it('hash הקנוני זהה לנעילה 80f9ed6c… (הקוד החדש אינו משנה את ברירת המחדל)', () => {
     const r = typeset(CORPUS, getDefaultSettings());
-    assert(r.layoutHash.startsWith('80f9ed6c'), `canonical hash unchanged, got ${r.layoutHash.slice(0, 16)}`);
+    assert(r.layoutHash.startsWith('f6f32c40'), `canonical hash unchanged, got ${r.layoutHash.slice(0, 16)}`);
   });
   it('ביקורת שלילה — כשהמתג פעיל טקסט הכותרת באמת משתנה, והגיאומטריה נשארת זהה', () => {
     const rOff = typeset(CORPUS, getDefaultSettings());

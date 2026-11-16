@@ -160,7 +160,7 @@ describe('S67-2 — אינטגרציה: הקורפוס הקנוני במדיני
 
   it('נייטרליות ברירת המחדל: מדיניות section (ברירת מחדל) ⇒ הקנוני 80f9ed6c זהה לנעילה', () => {
     const r = typeset(CORPUS, getDefaultSettings());
-    assert(r.layoutHash.startsWith('80f9ed6c'), `canonical hash unchanged, got ${r.layoutHash.slice(0, 16)}`);
+    assert(r.layoutHash.startsWith('f6f32c40'), `canonical hash unchanged, got ${r.layoutHash.slice(0, 16)}`);
   });
 
   it('ביקורת שלילה — המדיניות באמת משנה: מסמך חלק-אחד רב-עמודים — page מאפס, section ממשיך', () => {

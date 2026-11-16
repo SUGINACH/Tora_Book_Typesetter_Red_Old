@@ -159,20 +159,32 @@ describe('שלב 3 — measureDocumentModel: מפת התוצאות קריאה-ב
     let n = 0; for (const [k, v] of res.measured) { assert(v.itemId === k || v.itemId != null); n++; }
     assertEq(n, res.stats.measured, 'Symbol.iterator');
   });
-  it('rejected ו-stats קפואים; דחייה מתועדת ולא נעלמת', () => {
+  it('rejected ו-stats קפואים; דחייה מתועדת ולא נעלמת (גבול מדידה יחיד — מקטע ב׳)', () => {
     clearItemMeasureCache();
     const model = buildDocumentModel('כותרת 1 - חלק\nפסקה עם תמונה #img/missing.png# בפנים.\n', {});
     const res = measureDocumentModel(model, {
       settings: { 'body-font-size-pt': 12, 'body-font': 'Frank Ruhl Libre' },
-      assetResolver: null // אין resolver ⇒ התמונה נדחית במפורש, לא נעלמת
+      assetResolver: null // אין resolver ⇒ התמונה אינה נעלמת ואינה מתכווצת לאפס
     });
-    assert(!res.ok && res.rejected.length === 1, 'דחייה מפורשת: ' + JSON.stringify(res.rejected));
-    assert(res.rejected[0].code === 'no-asset-resolver', res.rejected[0].code);
-    assert(Object.isFrozen(res.rejected) && Object.isFrozen(res.rejected[0]), 'rejected קפוא');
-    assert(Object.isFrozen(res.stats), 'stats קפוא');
+    // **מקטע ב׳ (הוראה §6):** תמונה שלא נפתרה ברצף השורות מקבלת מדידת-טקסט
+    // מאובחנת (התנהגות המוצר — ה-syntax מוצג) + אבחון מפורש
+    // image-unresolved-text-fallback — לא פלובק שקט ולא דחיקה לאפס.
+    assert(res.ok, 'הרצף נמדד (פלובק מאובחן): ' + JSON.stringify(res.rejected));
+    const imgItem = [...res.measured.values()].find(m => m.kind === 'image');
+    assert(imgItem, 'לתמונה יש רשומת מדידה — היא לא נעלמה');
+    const diag = (imgItem.diagnostics || []).find(d => d.code === 'image-unresolved-text-fallback');
+    assert(diag, 'אבחון מפורש: ' + JSON.stringify(imgItem.diagnostics));
+    assert(diag.reason === 'no-asset-resolver', 'הסיבה מתועדת: ' + diag.reason);
+    assert(imgItem.advance > 0, 'רוחב טקסט המקור — לא אפס');
+    assert(Object.isFrozen(res.rejected) && Object.isFrozen(res.stats), 'rejected/stats קפואים');
     let threw = false;
     try { res.rejected.push({}); } catch (e) { threw = true; }
     assert(threw, 'דחיות לא ניתנות להרחבה');
+    // **רמת measureItem (חוזה שלב 3 המקורי) לא השתנתה:** פריט תמונה בלי
+    // resolver נדחה במפורש — הפלובק הוא החלטת שכבת הרצף, לא של מנוע המדידה.
+    const { measureItem } = require('../../src/engine/typography/measure-api');
+    const direct = measureItem({ id: 'itm-x', kind: 'image', payload: { assetId: 'ast-x', resourcePath: 'nope.png' } }, {}, {});
+    assert(!direct.ok && direct.code === 'no-asset-resolver', 'measureItem עצמו עדיין דוחה במפורש');
   });
   it('מודל חסר — הפלט עדיין בלתי-ניתן לשינוי', () => {
     const res = measureDocumentModel(null, {});

@@ -7,10 +7,13 @@
  * של מילה אחת כאשר היא כוללת כמה משפחות גופן או סגנונות. שבירה אינה רשאית
  * למזג אותם למחרוזת שטוחה."
  *
- * **LineItem** — יחידת הקלט של מנוע השורות המאוחד (kp-linebreak.breakItemSequence).
- * שדות חוזה (§13 בהוראת הביצוע): itemId, sourceRange/sourceAnchor, kind, fontId,
- * styleRef, measuredAdvance, inkBounds, breakOpportunities, constraints, diagnostics.
- * מילה מרובת-גופנים = תיבה אחת עם fragments מרובים — לעולם לא מחרוזת שטוחה.
+ * **שלב 4 מקטע ב׳ — גבול מדידה יחיד (הוראה §5):** הבנייה מפורקת לשלושה שלבים
+ * מחייבים: (א) הכנת הרצף — פיצול מילים/ריצות/glue/penalties/תמונות ופריטים
+ * אטומיים תוך שמירת מקור וזהות; (ב) **מדידה קנונית אחת** לכל פריט שורה —
+ * מעבר אחד, כל תיבה נמדדת בדיוק פעם אחת דרך measureItem היחיד, והתוצאה
+ * הקפואה נקשרת לפריט; (ג) הזרמה — glue/penalty לפי הצמדות, והעברה ל-LineModel
+ * ול-Planner בלי מדידה נוספת. אין כאן API מדידה שני ואין מדידת פסקה-ואז-מילה:
+ * measureDocumentModel (measure-model) הוא מתזמר על אותם שלבים בדיוק.
  *
  * **זהות נגזרת-מקור (§3.5 בהוראה, תיקון שורש):** מזהי מילים/רווחים נגזרים
  * מזהות פריט המקור ומטווח המקור המוחלט שלהם — `#w@<docStart>-<docEnd>` /
@@ -19,20 +22,74 @@
  * payload מלאה). sourceRange ממופה לקואורדינטות המסמך הקנוניות (לא אינדקס
  * מקומי בריצה), ו-blockId ממולא תמיד כשהוא ידוע.
  *
- * **בניית הרצף:** DocumentModel (שלב 2) → פיצול למילים לפי breaks.splitWordsOfRun
- * (מקור האמת להזדמנויות) → מדידת כל תיבה דרך measureItem היחיד (שלב 3) → רצף
- * box/glue/penalty מוכן ל-KP. אין מדידה שנייה ואין API מקבילי.
+ * **שכבת סגנון פר-מילה (הוראה §7 — סגנון אמת):** המיכל יכול לשאת `baseStyle`
+ * (גודל/גובה-שורה/משפחה/פקטור משפחה — לכותרות לפי רמה, לגוף, להערות) ופונקציית
+ * `wordStyleOf(docStart, docEnd)` שמחזירה שכבת-על למילה (advanceFactor לסוגריים/
+ * סגנון inline). ההחלטות מגיעות מה-pipeline (בלוק-לפני-מדידה — דפוס D-42) ואין
+ * כאן שום החלטת פריסה.
+ *
+ * **תמונות (הוראה §6):** תמונה נמדדת דרך AssetResolver (ctx.assetResolver).
+ * תמונה שלא נפתרה (אין resolver/נכס) אינה נעלמת ואינה מתרחבת לאפס בשקט:
+ * היא נמדדת ברוחב טקסט המקור שלה (התנהגות המוצר הקיימת — ה-syntax מוצג כטקסט)
+ * עם אבחון מפורש `image-unresolved-text-fallback` — לא פלובק שקט.
  */
 
-const { measureItem } = require('../typography/measure-api');
-const { resolveStyleFor } = require('../measure/measure-model');
+const { measureItem, familyWidthProfileOf } = require('../typography/measure-api');
 const fontResolver = require('../typography/font-resolver');
 const { splitWordsOfRun } = require('./breaks');
 
+/** פתרון סגנון פריט — מקור יחיד (הועבר לכאן בשלב 4 מקטע ב׳ כדי לנתק תלות
+ * מעגלית measure-model ⇄ line-items): מזהי גופן לפי ריצה (מה-resolver), גודל
+ * לפי סוג הפריט. measure-model מייצא הלאה לצרכנים קיימים — אותה פונקציה.
+ * **§7 (סגנון אמת):** כשהמיכל מביא baseStyle מפורש (כותרות לפי רמה, גוף,
+ * הערות) — הוא גובר; זהו הנתיב של ה-pipeline ממקטע ב׳. */
+function resolveStyleFor(item, container, base) {
+  const sizePt = item.kind === 'noteMarker' ? base.fnSize : base.bodySize;
+  const fontIds = [];
+  if (item.kind === 'text' && item.payload && Array.isArray(item.payload.runs)) {
+    for (const run of item.payload.runs) {
+      const fid = fontResolver.fontIdOfAlias(run.fontFamily) || fontResolver.fontIdOfAlias(base.defaultFamily);
+      fontIds.push(fid);
+    }
+  } else if (base.defaultFamily) {
+    fontIds.push(fontResolver.fontIdOfAlias(base.defaultFamily));
+  }
+  return {
+    sizePt,
+    lineHeight: item.kind === 'noteMarker' ? 1.2 : base.lineHeight,
+    fontIds,
+    family: (item.payload && item.payload.runs && item.payload.runs[0] && item.payload.runs[0].fontFamily) || base.defaultFamily,
+    defaultFamily: base.defaultFamily
+  };
+}
+
+/** בסיס סגנון לפי הגדרות — כולל פתרון פרופיל הרוחב למשפחה שאינה רשומה (§7).
+ * משמש את ה-pipeline (baseStyle לכותרות) ואת buildLineSequences (ברירת מחדל). */
+function baseStyleOf(settings, kind, level) {
+  const s = settings || {};
+  let sizePt = Number.isFinite(s['body-font-size-pt']) ? s['body-font-size-pt'] : 12;
+  let family = s['body-font'] || null;
+  if (kind === 'heading' && level != null && Number.isFinite(s[`heading-${level}-size-pt`])) {
+    sizePt = s[`heading-${level}-size-pt`];
+    family = s[`heading-${level}-font`] || family;
+  }
+  const prof = familyWidthProfileOf(family, s);
+  return {
+    sizePt,
+    lineHeight: Number.isFinite(s['body-line-height']) ? s['body-line-height'] : 1.34,
+    fnSize: Number.isFinite(s['f-note-body-size-pt']) ? s['f-note-body-size-pt'] : 8,
+    family,
+    defaultFamily: s['body-font'] || null,
+    ...(prof ? { familyFactor: prof.factor, familyUnknownFloor: prof.floor } : {})
+  };
+}
+
 /** גרסת חוזה פריט-השורה — חלק מזהות הרצף ומהאבחון.
  * v2: זהות נגזרת-מקור (ביטול המונה הרץ), sourceRange מוחלט + blockId,
- * מפרידים מדויקים בין פריטים (פער מקור), תיקון carry חוצה-ריצות. */
-const LINE_ITEM_CONTRACT_VERSION = 'line-item-v2(source-derived-identity)';
+ * מפרידים מדויקים בין פריטים (פער מקור), תיקון carry חוצה-ריצות.
+ * v2.1 (מקטע ב׳): גבול מדידה יחיד — הכנה → מדידה אחת → הזרמה; baseStyle
+ * ו-wordStyleOf לסגנון האמיתי; פלובק תמונה מאובחן. */
+const LINE_ITEM_CONTRACT_VERSION = 'line-item-v2.1(single-measurement-boundary)';
 
 /** קבועי כותרת 3 (D-S2H3, שלב 2 — התנהגות שנקבעה ותוקנה): פסיחה בין-שורות
  * 34px, הפס האחרון 38px, הרווח התחתון (38−34) שייך לפריט כולו ומופיע פעם אחת
@@ -43,18 +100,15 @@ const H3_LAST_BAND_PX = 38;
 /**
  * בניית רצף פריטי-שורה של מסמך שלם.
  * @param {object} model — פלט buildDocumentModel
- * @param {object} ctx — { settings, assetResolver, direction, language, constraints }
- * @returns {{ok, sequences:[{blockId, blockKind, semantic, items}], rejected, stats, contractVersion }}
+ * @param {object} ctx — { settings, assetResolver, direction, language, constraints,
+ *                         instrument?:boolean }
+ * @returns {{ok, sequences:[{blockId, blockKind, semantic, items}], rejected, stats, contractVersion, measureLog?}}
  */
 function buildLineSequences(model, ctx = {}) {
   if (!model || !Array.isArray(model.blocks)) {
     return { ok: false, sequences: [], rejected: [{ code: 'no-model', message: 'buildLineSequences: מודל חסר' }], stats: { blocks: 0, items: 0 }, contractVersion: LINE_ITEM_CONTRACT_VERSION };
   }
   const settings = ctx.settings || {};
-  const dir = ctx.direction || 'rtl';
-  const lang = ctx.language || 'he';
-  const constraints = ctx.constraints || null;
-  const constraintsKey = constraints ? `w${constraints.availableWidthPx || 'auto'}` : '';
   const base = {
     bodySize: Number.isFinite(settings['body-font-size-pt']) ? settings['body-font-size-pt'] : 12,
     lineHeight: Number.isFinite(settings['body-line-height']) ? settings['body-line-height'] : 1.34,
@@ -65,21 +119,8 @@ function buildLineSequences(model, ctx = {}) {
   const rejected = [];
   let itemCount = 0;
 
-  const pushSeq = (blockId, blockKind, semantic, containers, baseOf) => {
-    const items = [];
-    for (const cont of containers) {
-      const b = baseOf || base;
-      const contStyle = resolveStyleFor(cont.item0Kind || 'text', cont, b);
-      buildContainerItems(cont, contStyle, { dir, lang, constraints, constraintsKey, ctx, blockId }, items, rejected);
-    }
-    if (!items.length) return;
-    itemCount += items.length;
-    items.push({ role: 'penalty', penaltyType: 'final', cost: 0, itemId: `${blockId}#end` });
-    sequences.push({ blockId, blockKind, semantic: semantic || null, items });
-  };
-
   for (const blk of model.blocks) {
-    // סגנטיקה של כותרת 3 (§21 בהוראה): פריט סמנטי אחד — הרווח התחתון שייך לכולו.
+    // סמנטיקה של כותרת 3 (§21 בהוראה): פריט סמנטי אחד — הרווח התחתון שייך לכולו.
     let semantic = null;
     if (blk.kind === 'heading' && blk.level === 3) {
       semantic = {
@@ -89,7 +130,12 @@ function buildLineSequences(model, ctx = {}) {
         rule: 'bottom-space-once-after-last-fragment'
       };
     }
-    pushSeq(blk.id, blk.kind, semantic, [{ ...blk, item0Kind: blk.items && blk.items[0] ? blk.items[0].kind : 'text' }]);
+    const seq = buildContainerSequence(
+      { ...blk, item0Kind: blk.items && blk.items[0] ? blk.items[0].kind : 'text' },
+      ctx, { base, semantic }
+    );
+    if (seq) { sequences.push(seq); itemCount += seq.items.length; }
+    for (const r of seq ? seq.rejected : []) rejected.push(r);
   }
   // גופי הערות שוברים באותו מנוע (§4.1-2: אין breaker נוסף להערות)
   // במודל שלב 2 גוף ההערה = פריט noteBody עם runs ב-payload; מוזר לכרטוס טקסט בסגנון רישום.
@@ -106,44 +152,78 @@ function buildLineSequences(model, ctx = {}) {
         ? [{ id: `${note.id}#body`, kind: 'text', payload: { runs: note.payload.runs }, sourceRange: note.sourceRange, constraints: note.constraints }]
         : []);
     if (!noteItems.length) continue;
-    pushSeq(note.id, 'note', null, [{ id: note.id, kind: 'note', items: noteItems, item0Kind: 'text' }], fnBase);
+    const seq = buildContainerSequence(
+      { id: note.id, kind: 'note', items: noteItems, item0Kind: 'text' },
+      ctx, { base: fnBase, semantic: null }
+    );
+    if (seq) { sequences.push(seq); itemCount += seq.items.length; }
+    for (const r of seq ? seq.rejected : []) rejected.push(r);
   }
-  return {
+  const out = {
     ok: rejected.length === 0,
     sequences, rejected,
     stats: { blocks: model.blocks.length + (model.notes || []).length, items: itemCount },
     contractVersion: LINE_ITEM_CONTRACT_VERSION
   };
+  if (ctx.instrument && ctx.__measureLog) out.measureLog = ctx.__measureLog;
+  return out;
 }
 
-/** בניית פריטי מיכל אחד (פסקה/כותרת/גוף הערה) — מילים, דבקות, אטומים, תמונות. */
-function buildContainerItems(cont, style, env, out, rejected) {
-  const items = cont.items || [];
-  // מעבר ראשון: פריטי מילים + יחסי צמידה (סמן הערה ⇄ עוגן)
-  const boxes = []; // {source, word, joinedToPrev, trailingSep}
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i];
+/**
+ * **מקטע ב׳ (הוראה §5/§10):** בניית רצף פריטי-שורה של מיכל יחיד — הכניסה
+ * היחידה של ה-pipeline למנוע (אותו קוד שמשמש את buildLineSequences; אין מסלול
+ * שני). המיכל: { id, kind, items, item0Kind?, baseStyle?, wordStyleOf?, semantic? }.
+ * @returns {{blockId, blockKind, semantic, items, rejected}|null}
+ */
+function buildContainerSequence(cont, ctx = {}, opts = {}) {
+  const settings = ctx.settings || {};
+  const dir = ctx.direction || 'rtl';
+  const lang = ctx.language || 'he';
+  const constraints = ctx.constraints || null;
+  const constraintsKey = constraints ? `w${constraints.availableWidthPx || 'auto'}` : '';
+  const base = opts.base || {
+    bodySize: Number.isFinite(settings['body-font-size-pt']) ? settings['body-font-size-pt'] : 12,
+    lineHeight: Number.isFinite(settings['body-line-height']) ? settings['body-line-height'] : 1.34,
+    fnSize: Number.isFinite(settings['f-note-body-size-pt']) ? settings['f-note-body-size-pt'] : 8,
+    defaultFamily: settings['body-font'] || null
+  };
+  const blockId = cont.id;
+  const env = {
+    dir, lang, constraints, constraintsKey, ctx, blockId,
+    base,
+    baseStyle: cont.baseStyle || null,
+    wordStyleOf: typeof cont.wordStyleOf === 'function' ? cont.wordStyleOf : null
+  };
+  const items = (cont.items || []).length ? cont.items : [];
+  if (!items.length) return null;
+
+  // ── שלב (א): הכנה — פיצול לתיבות עם זהות ומקור (בלי מדידה) ──
+  const boxes = [];
+  const rejected = [];
+  for (const it of items) {
     if (it.kind === 'text') {
-      splitTextItem(it, env, style, boxes, rejected);
+      splitTextItem(it, env, boxes, rejected);
     } else if (it.kind === 'noteMarker' || it.kind === 'image' || it.kind === 'atomicToken' || it.kind === 'anchor' || it.kind === 'glue' || it.kind === 'penalty' || (it.kind && (it.kind === 'custom' || it.kind.startsWith('custom:')))) {
       boxes.push({ source: it, word: null, joinedToPrev: false });
     } else {
       rejected.push({ itemId: it.id, kind: it.kind, code: 'unsupported-in-line-sequence', message: `פריט לא נתמך ברצף שורות: ${it.kind}` });
     }
   }
-  // צמידת סמן ⇄ עוגן (P1-3/BRZ-11): הקישור מבוסס על noteRef — זהות העוגן
-  // במודל המקור, לא על סמיכות מקרית של תיבות. סמן בסוף שורה אסור — הסמן נצמד
-  // למילה שלפניו; סמן בפתיחת הרצף נצמד למילה שאחריו. יחידה חורגת מהרוחב ⇒
-  // הצמדה מתבטלת ומטופלת בערוץ ה-overflow המפורש (כלל §6.2(5)).
-  applyMarkerJoins(boxes, env, style);
-  // מעבר שני: הזרמה לרצף — glue המפריד המדויק בין תיבות; יחידה צמודה =
-  // glue פנימי (רוחב רווח, כמו NBSP במנוע הקיים) + penalty אסור — מבנית.
+
+  // ── שלב (ב): מדידה קנונית אחת — כל תיבה נמדדת בדיוק פעם אחת ──
+  for (const b of boxes) {
+    b._item = boxItemFor(b, env); // מודד דרך measureItem היחיד ומקפיא את הקישור
+  }
+
+  // ── שלב (ג): הזרמה — צמידות (לפי המדידות) ואז glue/penalty ──
+  applyMarkerJoins(boxes, env);
+  const out = [];
   let prev = null;
   for (const b of boxes) {
     if (prev && !b.joinedToPrev) {
-      out.push(glueItemFor(prev, b, env, style));
+      out.push(glueItemFor(prev, b, env));
     } else if (prev && b.joinedToPrev) {
-      out.push(internalGlueFor(prev, b, env, style));
+      out.push(internalGlueFor(prev, b, env));
       out.push({
         role: 'penalty', penaltyType: 'forbidden', cost: Number.POSITIVE_INFINITY,
         itemId: `${b.source.id}#join@${boxDocStart(b)}-${boxDocEnd(b)}`,
@@ -152,9 +232,15 @@ function buildContainerItems(cont, style, env, out, rejected) {
         fragments: [], breakOpportunities: [], constraints: null, diagnostics: []
       });
     }
-    out.push(boxItemFor(b, style, env));
+    out.push(b._item);
     prev = b;
   }
+  if (!out.length) return null;
+  out.push({ role: 'penalty', penaltyType: 'final', cost: 0, itemId: `${blockId}#end` });
+  return {
+    blockId, blockKind: cont.kind, semantic: opts.semantic || null,
+    items: out, rejected
+  };
 }
 
 /**
@@ -164,8 +250,7 @@ function buildContainerItems(cont, style, env, out, rejected) {
  * שפותחת ברווח — סוגרת את המילה הפתוחה עם המפריד המדויק; בעבר המילים
  * התמזגו והרווח ביניהן אבד ("אחר בסוף" ⇒ "אחרבסוף" — הפרת §22).
  */
-function splitTextItem(item, env, style, boxes, rejected) {
-  void style;
+function splitTextItem(item, env, boxes, rejected) {
   const runs = (item.payload && item.payload.runs) || [];
   if (!runs.length) { rejected.push({ itemId: item.id, kind: 'text', code: 'text-no-runs', message: 'פריט טקסט ללא ריצות' }); return; }
   // היסט מוחלט של כל ריצה בקואורדינטות המסמך הקנוניות: sourceRange של הפריט
@@ -254,9 +339,33 @@ function splitTextItem(item, env, style, boxes, rejected) {
   }
 }
 
-/** הזרמת תיבה אחת לרצף: בניית פריט-מילה קנוני + מדידה דרך measureItem היחיד. */
-function boxItemFor(b, style, env) {
+/** מדידה דרך measureItem היחיד — עם ספירת-הוכחה לבדיקות (גבול מדידה יחיד, §5). */
+function measuredVia(item, style, env) {
+  if (env.ctx && env.ctx.instrument) {
+    if (!env.ctx.__measureLog) env.ctx.__measureLog = new Map();
+    const k = String(item.id);
+    env.ctx.__measureLog.set(k, (env.ctx.__measureLog.get(k) || 0) + 1);
+  }
+  return measureItem(item, style, env.ctx);
+}
+
+/** הזרמת תיבה אחת לרצף: בניית פריט-מילה קנוני + מדידה דרך measureItem היחיד.
+ * הסגנון נפתר מהמיכל (baseStyle או resolveStyleFor המשותף) + שכבת-על פר-מילה. */
+function boxItemFor(b, env) {
   const src = b.source;
+  let style = styleForContainer(env, b);
+  // שכבת-על פר-מילה (§7): סוגריים/סגנון inline — advanceFactor על הרוחב בלבד.
+  if (env.wordStyleOf && b.word) {
+    const f0 = b.word.fragments[0];
+    const fN = b.word.fragments[b.word.fragments.length - 1];
+    const ov = env.wordStyleOf(f0.docStart, fN.docEnd);
+    if (ov) {
+      b._overlay = ov;
+      if (Number.isFinite(ov.advanceFactor) && ov.advanceFactor > 0 && ov.advanceFactor !== 1) {
+        style = { ...style, advanceFactor: ov.advanceFactor };
+      }
+    }
+  }
   if (b.word) {
     // פריט-מילה: kind 'text' עם ריצות-הפרגמנטים — נמדד כמכלול (advance = Σ פרגמנטים)
     const f0 = b.word.fragments[0];
@@ -265,7 +374,7 @@ function boxItemFor(b, style, env) {
     const wordItemId = `${src.id}#w@${docStart}-${docEnd}`;
     const runsPayload = b.word.fragments.map((f) => ({ text: f.text, fontFamily: f.fontFamily || (style && style.family) || undefined }));
     const measureStyle = wordStyleFor(style, b.word.fragments);
-    const m = measureItem({ id: wordItemId, kind: 'text', payload: { runs: runsPayload } }, measureStyle, env.ctx);
+    const m = measuredVia({ id: wordItemId, kind: 'text', payload: { runs: runsPayload } }, measureStyle, env);
     const fragments = b.word.fragments.map((f, k) => ({
       itemId: wordItemId,
       runIndex: f.runIndex,
@@ -280,6 +389,7 @@ function boxItemFor(b, style, env) {
       role: 'box', kind: 'text', itemId: wordItemId, sourceItemId: src.id,
       fragments,
       measured: m,
+      overlay: b._overlay || null,
       sourceRange: {
         blockId: env.blockId, itemId: src.id,
         runIndex: f0.runIndex,
@@ -290,13 +400,35 @@ function boxItemFor(b, style, env) {
     });
   }
   // פריט מודל שלם (noteMarker/image/atomic/...) — תיבה בפני עצמה
-  const m = measureItem(src, style, env.ctx);
+  let m = measuredVia(src, style, env);
+  // **תמונה שלא נפתרה (§6):** מדידת טקסט-המקור המאובחנת — התנהגות המוצר
+  // הקיימת (ה-syntax מוצג כטקסט) + אבחון מפורש. אין פלובק שקט ואין אפס-רוחב.
+  if (!m.ok && src.kind === 'image' && src.sourceText) {
+    const fb = measuredVia(
+      { id: `${src.id}#text-fallback`, kind: 'atomicToken', payload: { text: src.sourceText } },
+      style, env
+    );
+    if (fb.ok) {
+      m = {
+        ...fb, kind: 'image', itemId: src.id,
+        diagnostics: [...(fb.diagnostics || []), {
+          code: 'image-unresolved-text-fallback',
+          assetId: src.payload && src.payload.assetId,
+          resourcePath: src.payload && src.payload.resourcePath,
+          reason: m.code || 'asset-measure-failed',
+          message: `תמונה לא נפתרה (${m.code || 'asset-measure-failed'}) — נמדדה כטקסט המקור שלה (התנהגות המוצר; אבחון מפורש, לא שקט)`
+        }]
+      };
+    }
+  }
   const sr = src.sourceRange || null;
   const itemNoteRef = (src.payload && src.payload.noteRef) || null;
   return lineItemOf({
     role: 'box', kind: src.kind, itemId: src.id, sourceItemId: src.id,
     fragments: (m.ok && m.segments ? m.segments.map((s) => ({ itemId: src.id, runIndex: 0, text: s.text, start: 0, end: String(s.text || '').length, docStart: sr ? sr.start : null, docEnd: sr ? sr.end : null, fontId: s.fontId, fontFamily: s.family || null, advancePx: s.advancePx })) : []),
     measured: m,
+    overlay: b._overlay || null,
+    sourceText: src.sourceText != null ? src.sourceText : null, // תמונות/אטומים — טקסט המקור לתצוגת המוצר
     sourceRange: { blockId: env.blockId, itemId: src.id, runIndex: 0, start: sr ? sr.start : null, end: sr ? sr.end : null },
     sourceAnchor: itemNoteRef,
     noteRef: itemNoteRef,
@@ -361,12 +493,18 @@ function sepRangeAbs(range, owner) {
   };
 }
 
-/** glue בין שתי תיבות — המפריד המקורי המדויק נשמר (sep + gapChars) לשחזור מלא. */
-function glueItemFor(prevBox, nextBox, env, style) {
+/** glue בין שתי תיבות — המפריד המקורי המדויק נשמר (sep + gapChars) לשחזור מלא.
+ * **מקטע ב׳ (המדידה = הדיו):** רוחב השבירה של ה-glue הוא רוחב הצורה
+ * **המרונדרת** — מרווח בודד (הרנדררים מצמצמים רצפי רווחים: white-space:normal
+ * ב-DOM, gapW בודד במקרן ה-PDF; כך גם נהג הנתיב החי — split(/\s+/)). אין למדוד
+ * רצף-רווחים מלא כרוחב שהדיו לעולם אינו מציג; המקור המדויק נשמר ב-gapChars
+ * לשחזור ביט-לביט (§22). */
+function glueItemFor(prevBox, nextBox, env) {
+  const style = styleForContainer(env, prevBox);
   const { sep, range, owner } = separatorOf(prevBox, nextBox);
   const abs = sepRangeAbs(range, owner);
   const glueItemId = `${owner.id}#g@${abs.start}-${abs.end}`;
-  const m = measureItem({ id: glueItemId, kind: 'glue', payload: { text: sep } }, style, env.ctx);
+  const m = measuredVia({ id: glueItemId, kind: 'glue', payload: { text: ' ' } }, style, env);
   return lineItemOf({
     role: 'glue', kind: 'glue', itemId: glueItemId, sourceItemId: owner.id,
     sep, gapChars: sep,
@@ -380,12 +518,13 @@ function glueItemFor(prevBox, nextBox, env, style) {
  * הפריסה (זהה לנתיב החי — bindMarkersToNeighbors מדביק ב-NBSP), פנימי —
  * אסור לדלג בפתיחת שורה ואסור לחתוך בו (ה-penalty האסור שאחריו מבטיח זאת).
  * הקישור מבוסס noteRef — זהות העוגן נשמרת על ה-glue לשלבי התכנון. */
-function internalGlueFor(prevBox, nextBox, env, style) {
+function internalGlueFor(prevBox, nextBox, env) {
+  const style = styleForContainer(env, prevBox);
   const { sep, range, owner } = separatorOf(prevBox, nextBox);
   const abs = sepRangeAbs(range, owner);
   const glueItemId = `${nextBox.source.id}#j@${abs.start}-${abs.end}`;
   // המדידה ברוחב רווח (כמו המנוע הקיים: NBSP מוצג ברוחב רווח)
-  const m = measureItem({ id: glueItemId, kind: 'glue', payload: { text: ' ' } }, style, env.ctx);
+  const m = measuredVia({ id: glueItemId, kind: 'glue', payload: { text: ' ' } }, style, env);
   const noteRef = (nextBox.source.kind === 'noteMarker' && nextBox.source.payload && nextBox.source.payload.noteRef)
     || (prevBox.source.kind === 'noteMarker' && prevBox.source.payload && prevBox.source.payload.noteRef) || null;
   return lineItemOf({
@@ -398,19 +537,24 @@ function internalGlueFor(prevBox, nextBox, env, style) {
 }
 
 /** צמידת סמני הערה לעוגן — לפי הכללים התקפים (P1-3/BRZ-11), מנוסח פעם אחת.
- * הקישור מותר רק לסמן עם noteRef (זהות עוגן אמיתית במודל המקור). */
-function applyMarkerJoins(boxes, env, style) {
+ * הקישור מותר לפריט עם זהות עוגן (noteRef) ואילוץ bindToNeighbor — סמן
+ * הערה של המודל, ו-placeholder inline מסונתז (D-30). **מקטע ב׳:** פועל
+ * אחרי המדידה — הרוחבים מהמדידות הקפואות (אין מדידה כפולה). */
+function applyMarkerJoins(boxes, env) {
   for (let i = 0; i < boxes.length; i++) {
     const b = boxes[i];
-    if (!b.source || b.source.kind !== 'noteMarker') continue;
+    if (!b.source) continue;
+    const bindable = (b.source.kind === 'noteMarker')
+      || (b.source.kind === 'atomicToken' && b.source.constraints && b.source.constraints.bindToNeighbor);
+    if (!bindable) continue;
     if (!(b.source.payload && b.source.payload.noteRef)) continue; // בלי זהות עוגן — אין צמידה
     const prev = i > 0 ? boxes[i - 1] : null;
     const next = i + 1 < boxes.length ? boxes[i + 1] : null;
-    if (prev && !prev.joinedToPrev && !(prev.source && prev.source.kind === 'noteMarker')) {
-      if (unitFits(prev, b, env, style)) { b.joinedToPrev = true; continue; }
+    if (prev && !prev.joinedToPrev && !(prev.source && (prev.source.kind === 'noteMarker' || (prev.source.kind === 'atomicToken' && prev.source.constraints && prev.source.constraints.bindToNeighbor)))) {
+      if (unitFits(prev, b, env)) { b.joinedToPrev = true; continue; }
     }
     if (!prev && next) {
-      if (unitFits(b, next, env, style)) { next.joinedToPrev = true; continue; }
+      if (unitFits(b, next, env)) { next.joinedToPrev = true; continue; }
     }
   }
 }
@@ -418,31 +562,57 @@ function applyMarkerJoins(boxes, env, style) {
 /** בדיקת התאמת יחידה צמודה לרוחב — כולל רוחב הדבק הפנימי (רוחב רווח, כמו
  * ה-NBSP בנתיב החי). יחידה חורגת ⇒ הצמדה מתבטלת והטיפול עובר לערוץ
  * ה-overflow המפורש של המנוע (לא גלישה שקטה). */
-function unitFits(a, b, env, style) {
+function unitFits(a, b, env) {
   const maxW = env.constraints && Number.isFinite(env.constraints.availableWidthPx) ? env.constraints.availableWidthPx : null;
-  const wa = advanceOf(a, style, env);
-  const wb = advanceOf(b, style, env);
+  const wa = advanceOf(a);
+  const wb = advanceOf(b);
   if (maxW == null) return true; // אין אילוץ ידוע — הצמדה נשמרת (ההחלטה הסופית ב-KP)
-  const spaceW = glueSpaceWidth(style, env);
+  const spaceW = glueSpaceWidth(env);
   return (wa + spaceW + wb) <= maxW;
 }
 
-function advanceOf(b, style, env) {
+/** רוחב תיבה — מהמדידה הקפואה שלה (שלב ב׳; אין מדידה בזמן הצמדה). */
+function advanceOf(b) {
   if (b._adv != null) return b._adv;
-  const it = boxItemFor(b, style, env);
-  b._adv = it.measured && it.measured.ok ? it.measured.advance : 0;
+  const it = b._item;
+  b._adv = it && it.measured && it.measured.ok ? it.measured.advance : 0;
   return b._adv;
 }
 
 /** רוחב רווח הדבק הפנימי — מדידה דרך measureItem היחיד (מטומן לפי מפתח שלב 3). */
-function glueSpaceWidth(style, env) {
-  const m = measureItem({ id: '#join-space', kind: 'glue', payload: { text: ' ' } }, style, env.ctx);
+function glueSpaceWidth(env) {
+  const style = styleForContainer(env, null);
+  const m = measuredVia({ id: '#join-space', kind: 'glue', payload: { text: ' ' } }, style, env);
   return m && m.ok ? m.advance : 0;
 }
 
-/** סגנון מילה: fontIds לפי הריצות של אותה מילה בלבד. */
+/** סגנון המיכל — baseStyle מפורש (הוראה §7) או resolveStyleFor המשותף. */
+function styleForContainer(env, box) {
+  if (env.baseStyle) {
+    // סמן הערה נמדד בגודל הרישום גם כשהמיכל בסגנון אחר (חוזה שלב 3)
+    if (box && box.source && box.source.kind === 'noteMarker' && env.baseStyle.fnSize != null) {
+      return { ...env.baseStyle, sizePt: env.baseStyle.fnSize, lineHeight: 1.2 };
+    }
+    return env.baseStyle;
+  }
+  return resolveStyleFor((box && box.source && box.source.kind) || 'text', box && box.source ? box.source : { kind: 'text' }, {
+    bodySize: env.base.bodySize, lineHeight: env.base.lineHeight,
+    fnSize: env.base.fnSize, defaultFamily: env.base.defaultFamily
+  });
+}
+
+/** סגנון מילה: fontIds לפי הריצות של אותה מילה בלבד. **familyOverridesRuns
+ * (§7/§12):** בכותרות המוצר מודד ומציג את השורה בגופן הרמה (S4.26) — ריצות
+ * inline אינן גוברות במדידה; family המקורי נשמר בפרגמנט (אין אובדן נתון). */
 function wordStyleFor(style, fragments) {
-  return { ...style, fontIds: fragments.map((f) => fontResolver.fontIdOfAlias(f.fontFamily || (style && style.family) || '') || (style && style.fontIds && style.fontIds[0]) || null) };
+  const base0 = (style && style.fontIds && style.fontIds[0]) || null;
+  const ids = fragments.map((f) => {
+    if (style && style.familyOverridesRuns) {
+      return fontResolver.fontIdOfAlias(style.family || '') || base0;
+    }
+    return fontResolver.fontIdOfAlias(f.fontFamily || (style && style.family) || '') || base0;
+  });
+  return { ...style, fontIds: ids };
 }
 
 /** הרכבת LineItem סופי — כל שדות החוזה מולאו; הקישור ל-MeasuredItem שלם. */
@@ -469,6 +639,11 @@ function lineItemOf(base) {
     diagnostics: ok ? (m.diagnostics || []) : [{ code: m && m.code, message: m && m.message, measureFailed: true }],
     // פרגמנטים (§4.1-3): מילה מרובת גופנים — לעולם לא מחרוזת שטוחה
     fragments: base.fragments || [],
+    // טקסט מקור של פריט שלם (תמונה/אטום) — לתצוגת המוצר עד שלב 8
+    sourceText: base.sourceText != null ? base.sourceText : null,
+    // שכבת-על של סגנון המילה (§7: סוגריים/סגנון inline) — נשמרת על הפריט
+    // ומועברת לפרגמנטים של ה-LineModel (לזיהוי span-ים בגזירת התצוגה)
+    overlay: base.overlay || null,
     // glue/penalty semantics
     sep: base.sep != null ? base.sep : null,
     gapChars: base.gapChars != null ? base.gapChars : null, // המפריד המקורי המדויק (לשחזור §22)
@@ -480,6 +655,7 @@ function lineItemOf(base) {
 }
 
 module.exports = {
-  LINE_ITEM_CONTRACT_VERSION, buildLineSequences,
+  LINE_ITEM_CONTRACT_VERSION, buildLineSequences, buildContainerSequence,
+  resolveStyleFor, baseStyleOf,
   H3_LINE_PITCH_PX, H3_LAST_BAND_PX
 };

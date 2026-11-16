@@ -301,6 +301,34 @@ function resolveMeasureImpl(settings) {
 const { ptToPx, UNITS_VERSION } = require('./units');
 const fontResolver = require('./font-resolver');
 
+/** **שלב 4 מקטע ב׳ (§7 בהוראה — חיבור גופנים):** פרופילי רוחב-גופן למשפחות
+ * שאינן רשומות — מקור יחיד. הועברו לכאן מ-pipeline.js (widthFor המקומי נמחק
+ * במעבר למנוע השורות המאוחד); שתי הדרכים — החי והקנוני — קוראות מכאן.
+ * משפחה רשומה ⇒ מטריקות אמת (forFontId/forFamily) ואין פקטור; משפחה בפרופיל
+ * ⇒ פקטור על הטבלה המכוילת; משפחה לא-מוכרת ⇒ רצפת 0.6em/תו. */
+const FONT_WIDTH_PROFILES = {
+  'Frank Ruhl Libre': null,
+  'David HB': { factor: 1.06 },
+  'David': { factor: 1.04 },
+  'Narkisim': { factor: 1.10 },
+  'Nachlieli': { factor: 0.96 },
+  'Alef': { factor: 1.02 },
+  'Rubin': { factor: 1.05 }
+};
+
+/** פתרון רוחב למשפחה שאינה רשומה — אותה החלטה שהייתה ב-widthFor של ה-pipeline,
+ * מנוסחת פעם אחת: { factor, floor } | null (null ⇒ משפחת הגוף — בסיס ישר).
+ * הקנוני (measureItem) והנתיב החי קוראים את אותה הפונקציה — אין עותקים. */
+function familyWidthProfileOf(family, settings) {
+  const fam = String(family || '');
+  const bodyFont = settings && settings['body-font'];
+  if (!fam || fam === bodyFont) return null; // גוף הטקסט — בסיס ללא פקטור
+  if (registeredFonts.has(fam)) return null; // רשומה — מטריקות אמת (forFontId)
+  const prof = FONT_WIDTH_PROFILES[fam];
+  if (prof && prof.factor) return { factor: prof.factor, floor: false };
+  return { factor: 1, floor: true }; // לא-מוכרת — רצפת 0.6em/תו (כמו החי)
+}
+
 /** גרסת מנוע המדידה — חלק ממפתח המטמון ומחית הסביבה (§3.1-10). */
 const MEASURE_ENGINE_VERSION = 'measure-v1(item+style+env;advance/ink-split)';
 
@@ -377,24 +405,27 @@ function _assetIdentityFp(item, ctx) {
  * + מפתח הקשר; (9) גרסת מנוע המדידה; (10) חית סביבה **חיה** (מחושבת כעת
  * מהרישומים בפועל — לא הצהרת caller) + חית ההקשר שהועברה. */
 function _itemCacheKey(item, style, ctx) {
+  // **מקטע ב׳ (זיכרון):** המפתח קומפקטי — sha256 יחיד על שריות הקנוניות המלאות
+  // (אותה חד-משמעיות, כולל זהות-תוכן של החלקים) — בספרים גדולים
+  // מיליוני מחרוזות-מפתח משוריבות זיכרון משמעותית.
   const it = item || {};
-  return [
+  return 'ik2:' + sha256Hex([
     'item-key-v2',
     MEASURE_ENGINE_VERSION,
     environmentFingerprint(),
     (ctx && ctx.environmentFingerprint) || '',
     it.kind || '',
     it.id != null ? String(it.id) : '',
-    sha256Hex(_canonicalStringify(it.payload !== undefined ? it.payload : it)),
-    sha256Hex(_canonicalStringify(it.constraints || null)),
-    sha256Hex(_canonicalStringify(style || null)),
+    _canonicalStringify(it.payload !== undefined ? it.payload : it),
+    _canonicalStringify(it.constraints || null),
+    _canonicalStringify(style || null),
     (ctx && ctx.direction) || '',
     (ctx && ctx.language) || '',
-    sha256Hex(_canonicalStringify((ctx && ctx.constraints) || null)),
+    _canonicalStringify((ctx && ctx.constraints) || null),
     (ctx && ctx.constraintsKey) || '',
     (ctx && ctx.assetId) != null ? String(ctx.assetId) : '',
     _assetIdentityFp(item, ctx)
-  ].join('~');
+  ].join('~'));
 }
 
 /** **תיקון ביקורת PR #22 (immutability אמיתי):** הקפאה עמוקה — כל המבנים
@@ -435,7 +466,8 @@ function measureItem(item, style, ctx) {
   const dir = (ctx && ctx.direction) || 'rtl';
   const lang = (ctx && ctx.language) || 'he';
   const key = _itemCacheKey(item, style, ctx);
-  if (_itemMeasureCache.has(key)) return _itemMeasureCache.get(key);
+  const hit = _itemCacheGet(key);
+  if (hit !== undefined) return hit;
 
   let out;
   const kind = item.kind;
@@ -446,6 +478,12 @@ function measureItem(item, style, ctx) {
       out = { ok: false, code: 'text-no-runs', message: `פריט טקסט ללא ריצות: ${item.id}` };
     } else {
       // מדידה פר-ריצה בגופן שלה — כמה משפחות באותה מילה (§3.1-6)
+      // **שלב 4 מקטע ב׳ (סגנון אמת — הוראה §7):** style.advanceFactor (סוגריים/
+      // סגנון inline — הכפלת רוחב בלבד, בדיוק כמו measureWithParen של הנתיב
+      // החי; גובה/בסיס נשארים בגודל השורה) ו-style.familyFactor/familyUnknownFloor
+      // (פרופיל רוחב למשפחה שאינה רשומה — מקור יחיד familyWidthProfileOf)
+      // משתתפים כאן ובשום מקום אחר.
+      const advanceFactor = (style && Number.isFinite(style.advanceFactor) && style.advanceFactor > 0) ? style.advanceFactor : 1;
       const segments = [];
       let advance = 0;
       let ascentEmMax = 0, descentEmMax = 0;
@@ -475,8 +513,13 @@ function measureItem(item, style, ctx) {
             if (res.fallbackUsed) diagnostics.push({ code: 'font-fallback', from: run.fontFamily, to: res.record.face, reason: 'not-registered' });
           } else {
             // מימוש הטבלה — הקירוב המכויל; מתועד במפורש ולא שקט
+            // **§7:** פרופיל רוחב למשפחה — factor על הבסיס / רצפת 0.6em ללא-מוכרת,
+            // בדיוק כפי ש-widthFor של הנתיב החי עשה; מקור ההחלטה אחד.
+            const famFactor = (style && Number.isFinite(style.familyFactor) && style.familyFactor > 0) ? style.familyFactor : 1;
+            const famFloor = !!(style && style.familyUnknownFloor);
             const fallbackApi = new MeasureAPI({ 'body-font-size-pt': sizePt, 'body-font': (style && style.defaultFamily) || '' }, 'table');
-            const w = fallbackApi.measureTextWidth(run.text, sizePt, 0);
+            let w = fallbackApi.measureTextWidth(run.text, sizePt, 0) * famFactor;
+            if (famFloor) w = Math.max(w, String(run.text).length * 0.6 * sizePt * (96 / 72));
             segments.push({ fontId: null, text: run.text, advancePx: w, family: null, tableApproximation: true });
             ascentEmMax = Math.max(ascentEmMax, fallbackApi.ascentEm());
             descentEmMax = Math.max(descentEmMax, fallbackApi.descentEm());
@@ -484,6 +527,10 @@ function measureItem(item, style, ctx) {
             diagnostics.push({ code: 'font-unavailable-table-approximation', requested: run.fontFamily || (style && style.family), message: res.message });
           }
         }
+      }
+      if (advanceFactor !== 1) {
+        advance *= advanceFactor;
+        for (const s of segments) s.advancePx *= advanceFactor;
       }
       const sizePx = ptToPx(sizePt);
       out = {
@@ -562,7 +609,11 @@ function measureItem(item, style, ctx) {
     const text = (item.payload && (item.payload.text != null ? item.payload.text : item.payload.atomicText)) || '';
     const api = new MeasureAPI({ 'body-font-size-pt': sizePt, 'body-font': (style && style.defaultFamily) || '' },
       (style && style.fontIds && style.fontIds[0]) ? 'font-metrics' : 'table');
-    const w = text ? api.measureTextWidth(text, sizePt, 0) : 0;
+    // **§5 (מדידה יחידה — הוראת שלב 4 ב׳):** advanceFactor חל גם כאן (אטומים
+    // עם שכבת סגנון) — אותו חוזה כמו פריטי טקסט.
+    const advanceFactor = (style && Number.isFinite(style.advanceFactor) && style.advanceFactor > 0) ? style.advanceFactor : 1;
+    let w = text ? api.measureTextWidth(text, sizePt, 0) : 0;
+    if (advanceFactor !== 1) w *= advanceFactor;
     const sizePx = ptToPx(sizePt);
     out = {
       ok: true, kind, itemId: item.id,
@@ -584,7 +635,7 @@ function measureItem(item, style, ctx) {
     out.environmentFingerprint = environmentFingerprint();
     out.measureEngineVersion = MEASURE_ENGINE_VERSION;
     _deepFreeze(out);
-    _itemMeasureCache.set(key, out);
+    _itemCacheSet(key, out);
   } else if (out) {
     _deepFreeze(out); // דחייה — גם היא בלתי-ניתנת לשינוי (אותו חוזה)
   }
@@ -592,7 +643,13 @@ function measureItem(item, style, ctx) {
 }
 
 /** הזדמנויות שבירה של רצף ריצות טקסט — מיקומי רווחים (מפתחות לשלב 4). */
+const EMPTY_ARR = Object.freeze([]);
 function _textBreaks(runs) {
+  // מקטע ב׳: מילה בדרך כלל איננה מכילה רווחים — מערך ריק משותף
+  // (חיסכון מיליוני הקצאות בספרים גדולים).
+  let any = false;
+  for (const run of runs) { if (String(run.text).includes(' ')) { any = true; break; } }
+  if (!any) return EMPTY_ARR;
   const breaks = [];
   let pos = 0;
   for (const run of runs) {
@@ -605,9 +662,52 @@ function _textBreaks(runs) {
   return breaks;
 }
 
-/** מטמון מדידות פריט — מפתח מלא בלבד (§3.1-10). */
+/** מטמון מדידות פריט — מפתח מלא בלבד (§3.1-10).
+ *
+ * **חסימת זיכרון (שלב 4 מקטע ב׳, תיקון שורש שנמצא באימות ה-PR):** מדידת
+ * פריט היא מֵימוּז של פונקציה דטרמיניסטית טהורה — חסימת המטמון אינה יכולה
+ * לשנות פלט, אלא זמן CPU בלבד (ולכן גם ה-hash אטום לה). בלי חסימה,
+ * המטמון שומר לנצח MeasuredItem לכל פריט-שורה שנמדד אי-פעם בתהליך:
+ * ספר של 3.4MB השאיר ~682 אלף ערכים ≈ 766MB (נמדד) — דליפה גם ב-Worker
+ * של המוצר וגם קריסת OOM בבדיקות הספרים הארוכים (4 ספרים בתהליך אחד
+ * הצטברו ל-1.9GB+). התועלת שנמדדה בריצה-חוזרת זהה (טקסט+סגנון ללא
+ * שינוי): האצה של ×1.35 בלבד — שולית מול העלות. התקרה נגזרת מתקציב
+ * הזיכרון הקיים של s13 (memoryMaxMB=1500 לספר גדול): 65,536 ערכים
+ * ≈ 75MB (~1.16KB לפריט, נמדד) ≈ 5% מהתקציב — המטמון לעולם אינו דומיננטי.
+ * מסמכים עד ~130 עמ' נשמרים במלואם; ספרים גדולים יותר שומרים את הערכים
+ * האחרונים בלבד. גם בתוך typeset בודד אין לחסימה השפעה: חוזה גבול המדידה
+ * היחיד מבטיח שכל פריט נמדד בדיוק פעם אחת (מוכח ב-s4b-production-path)
+ * — המטמון משרת רק בניות-חוזרות של אותו מסמך ללא שינוי.
+ *
+ * **ניפוי באצוות (נמדד):** ניפוי של ערך-בודד בכל הכנסה מעל התקרה האט את
+ * ההכנסות פי ~2 (יצירת איטרטור + מחיקה לכל אחת מ-617 אלף ההכנסות של
+ * ספר גדול). ניפוי באצוות של 8,192 מחזיר את המהירות לקו הבסיס (13.0s
+ * מול 27.4s — נמדד על very_long) בלי לפגוע בחסימה. */
+const ITEM_MEASURE_CACHE_MAX_ENTRIES = 65536;
+const ITEM_CACHE_EVICT_BATCH = 8192;
 const _itemMeasureCache = new Map();
-function itemCacheStats() { return { entries: _itemMeasureCache.size }; }
+function _itemCacheGet(key) {
+  if (!_itemMeasureCache.has(key)) return undefined;
+  const v = _itemMeasureCache.get(key);
+  // LRU: חידוש עדכניות — מחיקה והחזרה לסוף (סדר ה-Map = סדר הכנסה)
+  _itemMeasureCache.delete(key);
+  _itemMeasureCache.set(key, v);
+  return v;
+}
+function _itemCacheSet(key, value) {
+  if (_itemMeasureCache.size >= ITEM_MEASURE_CACHE_MAX_ENTRIES) {
+    // ניפוי הערכים העתיקים ביותר באצווה אחת (הראשונים שהוכנסו ולא נגעו בהם מאז)
+    const it = _itemMeasureCache.keys();
+    for (let i = 0; i < ITEM_CACHE_EVICT_BATCH; i++) {
+      const k = it.next().value;
+      _itemMeasureCache.delete(k);
+    }
+  }
+  _itemMeasureCache.set(key, value);
+}
+function itemCacheStats() {
+  return { entries: _itemMeasureCache.size, capacity: ITEM_MEASURE_CACHE_MAX_ENTRIES };
+}
 function clearItemMeasureCache() { _itemMeasureCache.clear(); }
 
 /** API כבול לזהות גופן קנונית (fontId מה-resolver) — לא לשם בלבד. */
@@ -633,5 +733,6 @@ module.exports = {
   MeasureAPI, registerFont, unregisterFont, clearRegisteredFonts, restoreFontRegistration,
   charWidthEm, registeredFonts, resolveMeasureImpl,
   measureItem, environmentFingerprint, MEASURE_ENGINE_VERSION, itemCacheStats, clearItemMeasureCache,
+  FONT_WIDTH_PROFILES, familyWidthProfileOf,
   deepFreeze: _deepFreeze, canonicalStringify: _canonicalStringify
 };

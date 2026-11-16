@@ -25,7 +25,7 @@
 
 const { getDefaultSettings, derivePlacementFlags } = require('./settings-registry');
 const { lexDocument } = require('../parser/dfa-lexer');
-const { tokenizeDetailed, contentHash, normalizeText } = require('../parser/block-tokenizer');
+const { tokenizeDetailed, contentHash } = require('../parser/block-tokenizer');
 // **שלב 2 (מודל תוכן אחיד):** המודל הקנוני הוא מקור הסמכות של שלב הפענוח;
 // זרם הטוקנים נגזר ממנו דרך adapter יציאה זמני (תנאי הסרה ב-model/adapter.js).
 // הוכחת שקילות מלאה לעומת הטוקניזר הישיר: בדיקות round-trip ב-suite של שלב 2.
@@ -33,8 +33,12 @@ const { buildDocumentModel } = require('../model/document-model');
 const { modelToTokens } = require('../model/adapter');
 const { scanBrackets } = require('../parser/bracket-scanner');
 const { MeasureAPI, resolveMeasureImpl } = require('../typography/measure-api');
-const { protectWords } = require('../typography/protectors');
 const { applyDropWord } = require('../typography/dropword');
+// **שלב 4 מקטע ב׳ (הוראה §§9-10):** מסלול השורות הקנוני — הגשר המרכזי היחיד
+// (DocumentModel → LineItems → מדידה יחידה → LineModel → תצוגה נגזרת). ארבע
+// נקודות השבירה של ה-pipeline (כותרות/הערות-סיום בגוף/פסקאות-הערה מוסגנות/
+// פסקאות) עוברות כולן דרכו; אין עוד words[] שמחליט שבירה במסלול ה-DP.
+const { layoutModelBlock, flatTextOf } = require('../line/pipeline-bridge');
 const { planPages, layoutHash, bodyGeometryHash } = require('../layout/dp-planner');
 const { buildPageTemplate, PAGE_TYPES } = require('../layout/page-templates');
 const { assignNumbers } = require('../decoration/folio');
@@ -44,17 +48,13 @@ const { applyHeadingModes } = require('../layout/headings-escort');
 // **S5.2 (תיקון 11):** splitPlaceholder הוסר מ-markers — קוד מת מלכודתי
 // (פיצול על ':' היה מבתק שעות כמו 12:30; ה-placeholder האמיתי משתמש ב-U+E000).
 const { markerFor, makeCounter, MARK_TAG } = require('../notes/markers');
+// **מקטע ב׳:** רווח אטומי (E000) — מפריד placeholder סמן טקסט בחשבונאות שימור התוכן (D-30). במנוע השורות הקינוני ה-placeholder
+// סונזז בגשר עם אותו מפריד — התוכן זהה לביט.
+const ATOMIC = '\uE000';
 const Ledger = require('./ledger').Ledger;
 const EventLog = require('./events').EventLog;
 const { computeEditingRecommendations } = require('../audit/editing-recommendations');
 
-const PAREN_SENTINEL = '\uE101';
-const ATOMIC = '\uE000';
-// **S11 (REQ-PAR-06):** סנטינל סגנון inline: \uE103<styleId>\uE104<word> — דפוס PAREN_SENTINEL (D-42).
-// המדידה מכפילה בגורם הגודל של הסגנון; הרנדרר מקיף span.custom-style עם data-style.
-const CUSTOM_SENTINEL = '\uE103';
-const CUSTOM_SEP = '\uE104';
-const CUSTOM_RE = /^\uE103([^\uE104]+)\uE104/;
 
 /** זיהוי דיבור המתחיל: עד נקודה/מקף (REQ-PAR-ST-03; dh-auto-detect). */
 function detectDh(text, enabled) {
@@ -73,37 +73,9 @@ function columnWidthFor(block, settings) {
   return Math.max(...tpl.columns.map(c => c.w));
 }
 
-/**
- * **S4.21 (EXT-11):** הטבעת מידת-השבירה בפועל על כל שורה (`measureW`).
- * הרקע: פסקת ההקדמה (H0) נמדדת במידת טור-הגוף (~330px) אך מוצבת בעמוד
- * פתיחה חד-טורי רחב (674px) — בדיקת ה-runt שהשוותה מול רוחב התבנית סימנה
- * שורה תקינה בת 82% מהמידה כ"קצרה מדי". השוואה מול המידה שבה השורה נשברה
- * היא האמת הגיאומטרית. שדה פסיבי — לא נצרך על ידי המנוע, ההיפוך (hash)
- * מבוסס מילים+seq בלבד.
- */
-function stampMeasureW(lines, w) {
-  for (const ln of lines) ln.measureW = w;
-}
-
 function fullWidthWidth(settings) {
   const tpl = buildPageTemplate(PAGE_TYPES.PREFACE, settings, true);
   return tpl.columns[0].w;
-}
-
-/**
- * **D-42 (P1-2): קדם־פאס סוגריים עגולים** — מיפוי טווחי (...) על הטקסט השטוח
- * של חלקי הטקסט (בלי הערות). מחזיר [{from,to}] במדדי תווים של הטקסט המשורשר.
- */
-function parenSpansOfFlat(flat) {
-  const spans = [];
-  const stack = [];
-  for (let i = 0; i < flat.length; i++) {
-    if (flat[i] === '(') stack.push(i);
-    else if (flat[i] === ')') {
-      if (stack.length) { spans.push({ from: stack.pop(), to: i }); }
-    }
-  }
-  return spans;
 }
 
 /** האם מיקום מילה בתוך טווח סוגריים (פתיחה אחרי ה'(' ולפני ה')'). */
@@ -176,8 +148,21 @@ function typeset(rawText, settingsIn, env = {}) {
     fontMarkers: settings['_inline-font-markers'] || settings._inlineFontStyles || settings._inlineFontMarkers || [],
     knownFamilies: settings['_inline-font-families'] || settings._inlineFontFamilies || []
   };
-  const documentModel = buildDocumentModel(rawText, { lexResult, detail, parseOpts, inlineOptions });
+  // **שלב 4 מקטע ב׳ (הוראה §6 — חיבור נכסים):** ה-AssetResolver המאומת שהגיע מה-Worker
+  // מוזרם לבניית המודל (תמונות מזוהות כפריטי תוכן עם assetId + מידות
+  // מהבתים), ובהמשך למנגנון המדידה דרך ctx.assetResolver של הגשר —
+  // אותו resolver, אותן זהויות, בלי נתיבי קבצים מקומיים. נכס שלא נפתר — אבחון
+  // מפורש (image-unresolved-text-fallback), לא פלובק שקט.
+  const docAssets = (env && env.assets) || null;
+  const documentModel = buildDocumentModel(rawText, { lexResult, detail, parseOpts, inlineOptions, assets: docAssets });
   const tokens = modelToTokens(documentModel);
+  // מיפוי טוקן ← בלוק מודל (blockId נגזר ב-adapter) — פריטי המודל הם הקלט
+  // למנוע השורות הקנוני (הוראה §10: DocumentModel → LineItems ישירות).
+  const blockById = new Map(documentModel.blocks.map(b => [b.id, b]));
+  // טקסט שטוח של בלוקי המודל — לחשבונאות שימור התוכן (מקטע ב׳):
+  // אותו מקור של הגוף ושל הפלט — טקסט קנוני בלי תחביר.
+  const modelFlatByToken = new Map();
+  for (const b of documentModel.blocks) modelFlatByToken.set(b.id, flatTextOf(b).flat);
   const metadata = lexResult.metadata;
   for (const t of tokens) {
     const rawLine = String(t.raw != null ? t.raw : (t.text != null ? t.text : ''));
@@ -207,67 +192,12 @@ function typeset(rawText, settingsIn, env = {}) {
   // בודקים את measure.impl ומדלגים על הפקטור ב-impl B.
   const measureWithImpl = (t, s) => api.measureTextWidth(t, s);
   measureWithImpl.impl = api.impl;
-  // **שלב 3 (§3.1-2, שער צריכה — שלב 4, תיקון ביקורת PR #22):** נכסי
-  // המסמך שהגיו מה-Worker (או מקריאה ישירה) נקלטים כאן ונרשמים בעקבות — הם אינם נבלעים בשקט כמו שהיה `void env`.
-  // עדיין אינם נצרכים בנתיב הפעיל: הצריכה תבוא עם מנוע השורות המאוחד (§4) שיקבל את
-  // ה-MeasuredItemים מתוך measureDocumentModel עם ה-resolver הזה — לא מוקדם כעט מנגנון מדידה כפול לנתיב.
-  const docAssets = (env && env.assets) || null;
+  // **שלב 3 (§3.1-2) → מקטע ב׳ (הוראה §6):** נכסי המסמך שהגיעו מה-Worker
+  // כבר חוברו לבניית המודל וזורמים למדידה דרך ctx.assetResolver של הגשר
+  // (אותן זהויות בדיוק). האירוע מתעד את הקליטה; אין עוד צריכה תלוית-סביבה.
   if (docAssets) {
     const st = typeof docAssets.stats === 'function' ? docAssets.stats() : null;
-    eventLog.emit('measure', 'doc-assets-received', { assets: st ? st.assets : null, consumptionGate: 'stage4-line-engine' });
-  }
-
-  const FONT_WIDTH_PROFILES = {
-    'Frank Ruhl Libre': null,
-    'David HB': { factor: 1.06 },
-    'David': { factor: 1.04 },
-    'Narkisim': { factor: 1.10 },
-    'Nachlieli': { factor: 0.96 },
-    'Alef': { factor: 1.02 },
-    'Rubin': { factor: 1.05 }
-  };
-  function widthFor(text, sizePt, fontName) {
-    const base = api.measureTextWidth(text, sizePt);
-    if (!fontName || fontName === settings['body-font']) return base;
-    // **S5.2 (תיקון 6 — כותרת בגופן הרשום שלה):** כשמשפחת הכותרת רשומה
-    // במדידה (registerFont) — מודדים במטריקות האמת שלה בגודל הכותרת
-    // (MeasureAPI.forFamily — דפוס apiFor של legacy-projector), כמו שה-DOM
-    // מרנדר בפועל. הקירובים (FONT_WIDTH_PROFILES ×, Math.max(base, len×0.6em))
-    // נשארים כ-fallback למשפחות לא-רשומות בלבד (בדיקות/headless).
-    const hApi = MeasureAPI.forFamily(fontName, settings);
-    if (hApi) return hApi.measureTextWidth(text, sizePt);
-    const prof = FONT_WIDTH_PROFILES[fontName];
-    if (prof && prof.factor) return Math.round(base * prof.factor * 100) / 100;
-    const perChar = 0.6 * sizePt * (96 / 72);
-    return Math.max(base, String(text).length * perChar);
-  }
-
-  /**
-   * **P1-3 + BRZ-11 — הדבקת סמן הערה למילה הקודמת** (כל הסגנונות):
-   * סמן בסוף שורה אסור. הסמן נצמד למילת העוגן שלפניו כיחידת NBSP;
-   * protectWords מבטל קשירה אם היחידה חורגת מרוחב הטור (Claude §6.2(5)).
-   */
-  function bindMarkersToNeighbors(words, markerSet) {
-    const out = [];
-    let i = 0;
-    while (i < words.length) {
-      const w = words[i];
-      if (markerSet.has(w)) {
-        const prev = out.length ? out[out.length - 1] : null;
-        const next = i + 1 < words.length ? words[i + 1] : null;
-        if (prev && !prev.includes('\u00A0') && !prev.includes(ATOMIC)) {
-          out[out.length - 1] = `${prev}\u00A0${MARK_TAG}${w}`; // הדבקה לאחור + תג (D-53)
-        } else if (next && !next.includes('\u00A0') && !markerSet.has(next)) {
-          out.push(`${MARK_TAG}${w}\u00A0${next}`); i++;        // סמן בראש פסקה ⇒ הדבקה קדימה + תג
-        } else {
-          out.push(`${MARK_TAG}${w}`);                        // סמן מתויג גם בודד
-        }
-      } else {
-        out.push(w);
-      }
-      i++;
-    }
-    return out;
+    eventLog.emit('measure', 'doc-assets-received', { assets: st ? st.assets : null, consumption: 'model+measure (stage4b)' });
   }
 
   // ---- תקציבי גיאומטריה נגזרים לפני ה‑DP (מקור יחיד; ה‑DP והצינור קוראים אותם) ----
@@ -339,9 +269,20 @@ function typeset(rawText, settingsIn, env = {}) {
       const wLimit = (t.level <= 1 || hMode === 'full-width')
         ? fullWidthWidth(settings)
         : columnWidthFor({ kind: 'heading', level: t.level }, settings);
-      const words = protectWords(t.text.split(/\s+/).filter(Boolean), (x) => widthFor(x, hSize, hFont), wLimit);
-      const lines = api.layoutLines(words, wLimit, hSize, {}, (x) => widthFor(x, hSize, hFont));
-      stampMeasureW(lines, wLimit); // **S4.21:** המידה שבה השורה נשברה בפועל (runt-check אמת)
+      // **שלב 4 מקטע ב׳:** שבירה קנונית — פריטי המודל → מדידה יחידה → LineModel →
+      // תצוגה נגזרת. הסגנון: גוף/גודל/משפחה לפי רמת הכותרת (הוראה §7) בגופן
+      // הרמה שלה — כמו שהמוצר מציג ומודד את שורת הכותרת כולה (S4.26).
+      // אין עוד words[] עצמאי שמחליט שבירה.
+      const hBuilt = layoutModelBlock(blockById.get(t.blockId), {
+        settings, kind: 'heading', level: t.level, widthPx: wLimit,
+        lineHeightPx: api.lineHeightPx(hSize),
+        measureCtx: { assetResolver: docAssets }
+      });
+      const lines = hBuilt.view;
+      for (const d of (hBuilt.diagnostics || [])) {
+        ledger.create('line-engine', `heading:${t.id}`, null, d, 'measure');
+      }
+ // **S4.21:** המידה שבה השורה נשברה בפועל (runt-check אמת)
       blocks.push({
         kind: 'heading', level: t.level, tokenId: t.id, part: currentPart, mode: hMode, font: hFont,
         forceNewPage: hMode === 'new-page', sideNote: hMode === 'side-note',
@@ -354,7 +295,9 @@ function typeset(rawText, settingsIn, env = {}) {
       if (t.level === 2) {
         const { h2OrnamentReservedHeight } = require('../decoration/ornament-fit');
         const h2FontPx = Math.round(hSize * 96 / 72 * 100) / 100;
-        const titleW = Math.max(1, ...lines.map(ln => widthFor((ln.words || []).join(' '), hSize, hFont)));
+        // **מקטע ב׳:** רוחב הכותרת מה-LineModel שכבר נמדד (טובע טבעי) —
+        // אין מדידה חוררת של מחרוזת מוחרגת.
+        const titleW = Math.max(1, ...lines.map(ln => ln.widthPx || 0));
         const reserved = h2OrnamentReservedHeight(titleW, settings, h2FontPx);
         if (reserved.scope.any) {
           const blk = blocks[blocks.length - 1];
@@ -389,9 +332,19 @@ function typeset(rawText, settingsIn, env = {}) {
         continue;
       }
       const w = columnWidthFor({ kind: 'paragraph' }, settings);
-      const words = protectWords(t.text.split(/\s+/).filter(Boolean), (x) => api.measureTextWidth(x), w);
-      const lines = api.layoutLines(words, w, null, { runts: settings['runt-min-width-pct'] });
-      stampMeasureW(lines, w); // **S4.21:** המידה שבה השורה נשברה בפועל (runt-check אמת)
+      // **שלב 4 מקטע ב׳:** הערת-סיום גלויה בגוף — שבירה קנונית מפריטי המודל
+      // (המספרון של המקור אינו תוכן — עוגן סמן, D-30) בסגנון הגוף.
+      const enBuilt = layoutModelBlock(blockById.get(t.blockId), {
+        settings, kind: 'paragraph', widthPx: w,
+        lineHeightPx: api.lineHeightPx(null),
+        runts: settings['runt-min-width-pct'],
+        measureCtx: { assetResolver: docAssets }
+      });
+      const lines = enBuilt.view;
+      for (const d of (enBuilt.diagnostics || [])) {
+        ledger.create('line-engine', `endnote-body:${t.id}`, null, d, 'measure');
+      }
+ // **S4.21:** המידה שבה השורה נשברה בפועל (runt-check אמת)
       blocks.push({
         kind: 'paragraph', tokenId: t.id, parts: [{ kind: 'text', value: t.text }],
         notes: [], bodyMarkers: [], lines, part: currentPart, dh: null, isEndnoteSource: true
@@ -401,33 +354,21 @@ function typeset(rawText, settingsIn, env = {}) {
 
     // ---- paragraph ----
     // (colW נקבע לאחר התאמת הסגנון המותאם — full-width נמדד ברוחב מלא; S11)
+    const mBlk = blockById.get(t.blockId);
     let dh = null;
+    // **מקטע ב׳:** הטקסט השטוח להחלטות ברמת הבלוק (dh, סגנונות מותאמים) — מהמודל
+    // הקנוני: פריטי הטקסט שלו (תחביר סמנים/תמונות אינו תוכן — המודל כבר הסיר אותו).
+    // המפרידים והטווחים של סוגריים/סגנון inline מחושבים בגשר
+    // (pipeline-bridge.wordOverlayFactory) על אותו טקסט — מקור אחד, אותן כללי החברות.
+    const flatBody = mBlk
+      ? flatTextOf(mBlk).flat
+      : t.parts.filter(p => p.kind === 'text').map(p => p.value).join(' ');
     if (settings['dh-auto-detect']) {
-      const flat = t.parts.filter(p => p.kind === 'text').map(p => p.value).join(' ');
-      dh = detectDh(flat, true);
+      dh = detectDh(flatBody, true);
     }
     // **S73 (צבע פר-גופן):** צבע דיבור-המתחיל מההגדרות — מוצמד למודל
-    // (כמו dh.font; שחור כברירת מחדל — null ⇒ ירושת ברירת מחדל ברינדור).
+    // (כמו dh.font; שחור ברירת מחדל — null ⇒ ירושת ברירת מחדל ברינדר).
     if (dh) { dh.font = settings['dh-font']; dh.color = settings['dh-color'] || null; }
-
-    // **D-42 (P1-2): pre-pass of parentheses before measurement** — ranges of (...) on the body text;
-    // Words inside the parentheses are measured in the paren-style-scale scale (1.0 = off) before
-    // breaking the lines — the causal root of V23 (9 geometry changes from late application).
-    // Word mapping: the words of the text parts (in order) correspond 1:1 to the words of the flattened
-    // text from which flatBody was built — a shared running index (exact, no searches).
-    const textParts = t.parts.filter(p => p.kind === 'text');
-    const flatBody = textParts.map(p => p.value).join(' ');
-    const parenSpans = parenScale !== 1 ? parenSpansOfFlat(flatBody) : [];
-    const flatWordOffsets = [];
-    {
-      let cum = 0;
-      for (const w of flatBody.split(/\s+/)) {
-        if (!w) continue;
-        flatWordOffsets.push({ word: w, at: cum });
-        cum += w.length + 1;
-      }
-    }
-    let flatWordIdx = 0;
 
     const allWords = [];
     const notes = [];
@@ -460,17 +401,27 @@ function typeset(rawText, settingsIn, env = {}) {
       const fnMark = mark || markerFor(nextMarkerNum({ page: null, part: currentPart || 1 }), markerStyle);
       const fnNotes = [{ text: flatBody, marker: fnMark, tokenId: t.id, part: currentPart || 1, customStyle: csBlock.style.id }];
       const fnBodyMarkers = [fnMark];
-      // הסמן בגוף מתויג (D-53) ומודבק לשכן כמו כל סמן — מקור יחיד bindMarkersToNeighbors
-      const fnWords = bindMarkersToNeighbors([fnMark], new Set([fnMark]));
+      // הסמן בגוף מתויג (D-53) — תיבת סמן של מנוע השורות הקנוני (מקטע ב׳)
+      // **מקטע ב׳:** הסמן בגוף — תיבת סמן יחידה במנוע השורות הקנוני:
+      // מודד בגודל הרישום (חוזה שלב 3) — הרחבה מתועדפת בדוח ההשוואה.
       const fnWLimit = columnWidthFor({ kind: 'paragraph' }, settings);
-      const fnLines = api.layoutLines(fnWords, fnWLimit, null, { runts: settings['runt-min-width-pct'] });
-      stampMeasureW(fnLines, fnWLimit); // **S4.21:** המידה שבה השורה נשברה בפועל
+      const fnBuilt = layoutModelBlock(blockById.get(t.blockId), {
+        settings, kind: 'paragraph', widthPx: fnWLimit,
+        lineHeightPx: api.lineHeightPx(null),
+        runts: settings['runt-min-width-pct'],
+        items: [{
+          id: `t-${t.id}#fnmark`, kind: 'noteMarker',
+          payload: { markerText: fnMark, noteRef: `fnstyle:${t.id}` },
+          constraints: { atomic: true, participates: 'inline', splittable: 'never', bindToNeighbor: true }
+        }],
+        measureCtx: { assetResolver: docAssets }
+      });
+      const fnLines = fnBuilt.view;
       const fnBlk = {
         kind: 'paragraph', tokenId: t.id, parts: t.parts, notes: fnNotes, bodyMarkers: fnBodyMarkers,
         lines: fnLines, unmatchedClosers: t.unmatchedClosers || [], part: currentPart, dh: null,
         // **S11:** הקצאת הסמן נרשמת כמו note-ref — עקביות סמנים גוף/מרזב (P1-3, D-30)
         noteAssignments: [{ noteIndex: 0, marker: fnMark }],
-        parenCharSpans: [], flatWordOffsets: [],
         customStyle: { id: csBlock.style.id, name: csBlock.style.name, layoutMode: 'footnote', styleSpec: csBlock.style.style, counterMark: fnMark, linkedOrnaments: csBlock.style.linkedOrnaments }
       };
       for (const ln of fnBlk.lines) ln.customStyle = fnBlk.customStyle;
@@ -486,88 +437,46 @@ function typeset(rawText, settingsIn, env = {}) {
     const customFactorById = new Map(csInlineSpans.map(s => [s.styleId, s.factor]));
     let csInfo = null; // **S11:** סגנון הבלוק שיוצמד לשורות ולבלוק (מדלג על ערכי איטרציות קודמות)
 
+    // **שלב 4 מקטע ב׳:** הקצאת סמנים לפי זהות העוגן (noteRef) — סדר
+    // החלקים = סדר פריטי הסמן של המודל; הסמן זורם למנוע כ-markerText
+    // על פריט הסמן של המודל — הזהות והעוגן מן המקור (D-30/D-41).
+    const notesByRef = new Map();
+    const markerItems = mBlk ? (mBlk.items || []).filter(i => i.kind === 'noteMarker') : [];
+    let markerItemIdx = 0;
+    const inlineNoteMode = notesMode === 'inline' || (!settings['footnotes-enabled'] && notesMode !== 'endnotes');
     for (const p of t.parts) {
-      if (p.kind === 'text') {
-        const src = normalizeText(p.value);
-        for (const wordRaw of src.split(/\s+/).filter(Boolean)) {
-          const info = flatWordOffsets[Math.min(flatWordIdx, flatWordOffsets.length - 1)];
-          flatWordIdx++;
-          const inParen = parenSpans.length > 0 && info && offsetInSpans(info.at, parenSpans);
-          // **S11:** חברות בטווח inline = **חפיפה** (לא הכלה): מילה הפותחת במפריד «
-          // («וזה) חופפת את טווח התוכן שאחריו; מילה שלפני הפתיחה לא. וכך גם בסגירה.
-          const wLen = info ? String(info.word || wordRaw).length : String(wordRaw).length;
-          const inCustom = csInlineSpans.length > 0 && info
-            ? csInlineSpans.find(s => info.at < s.to && (info.at + wLen) > s.from) : null;
-          // עדיפות: טווח inline מותאם על פני סוגריים (שניהם לא יכולים לחפור בפועל — הסגנון תופס ראשון)
-          if (inCustom) allWords.push(CUSTOM_SENTINEL + inCustom.styleId + CUSTOM_SEP + wordRaw);
-          else if (inParen && parenScale !== 1) allWords.push(PAREN_SENTINEL + wordRaw);
-          else allWords.push(wordRaw);
-        }
-      } else {
-        // note-ref: uniform marker allocation (D-30/D-41) — policy numbering + style
-        const noteRaw = t.notes[p.noteIndex];
-        const marker = markerFor(nextMarkerNum({ page: null, part: currentPart || 1 }), markerStyle);
-        assignedMarkers.add(marker);
-        noteAssignments.push({ noteIndex: p.noteIndex, marker });
-        if (notesMode === 'inline' || (!settings['footnotes-enabled'] && notesMode !== 'endnotes')) {
-          // (c) inline / fn-off: full placeholder in the body — `${marker}\uE000${text}`
-          // (D-30: the separator is the first \uE000 — atomic in measurement, exact in extraction)
-          const noteFlat = String(noteRaw).replace(/\uE000/g, ' ');
-          const placeholder = `${MARK_TAG}${marker}${ATOMIC}${noteFlat.replace(/ /g, ATOMIC)}`; // תג (D-53): אחרי kp ה‑E000 נהיה NBSP — התג מזהה את הסמן
-          const prev = allWords.length ? allWords[allWords.length - 1] : null;
-          if (prev && !prev.includes('\u00A0') && !prev.includes(ATOMIC)) {
-            allWords[allWords.length - 1] = `${prev}\u00A0${placeholder}`; // the marker sticks to its anchor (BRZ-11)
-          } else {
-            allWords.push(placeholder);
-          }
-          continue;
-        }
-        // footnotes / endnotes: only the marker is pushed in the body (counted once — at the anchor);
-        // the text of the note flows to its display location (gutter / pages of notes — D-30).
+      if (p.kind !== 'note-ref') continue;
+      const noteRaw = t.notes[p.noteIndex];
+      const marker = markerFor(nextMarkerNum({ page: null, part: currentPart || 1 }), markerStyle);
+      noteAssignments.push({ noteIndex: p.noteIndex, marker });
+      const mItem = markerItems[markerItemIdx++];
+      if (mItem && mItem.payload && mItem.payload.noteRef) {
+        notesByRef.set(mItem.payload.noteRef, inlineNoteMode
+          ? { marker, inlineText: noteRaw } // placeholder אטומי בגוף (D-30) — סונזז בגשר
+          : { marker }); // רק הסמן בגוף; הטקסט זורם למקום ההצגה
+      }
+      if (!inlineNoteMode) {
         notes.push({ text: String(noteRaw).replace(/\uE000/g, ' '), marker, tokenId: t.id, noteIndex: p.noteIndex, part: currentPart || 1 });
         bodyMarkers.push(marker);
-        allWords.push(marker);
       }
     }
     markersByToken.set(t.id, noteAssignments);
 
-    // Pasting lone markers to their neighbors (BRZ-11) — before measurement
-    const boundWords = bindMarkersToNeighbors(allWords, assignedMarkers);
-
-    // Measurement with a pre-pass of parentheses (D-42) + custom inline styles (S11):
-    // PAREN_SENTINEL → parenScale; CUSTOM_SENTINEL<id> → size factor of the style.
-    const measureWithParen = (x) => {
-      const clean0 = String(x).replace(/\uE102/g, ''); // תג סמן — מוסר ממדידה (D-53)
-      const csM = CUSTOM_RE.exec(clean0);
-      if (csM) {
-        const f = customFactorById.get(csM[1]);
-        const base = api.measureTextWidth(clean0.slice(csM[0].length));
-        return f != null ? base * f : base;
-      }
-      const isParen = clean0.startsWith(PAREN_SENTINEL);
-      const clean = isParen ? clean0.slice(PAREN_SENTINEL.length) : clean0;
-      const base = api.measureTextWidth(clean);
-      return isParen ? base * parenScale : base;
-    };
-    const protectedWords = protectWords(boundWords, measureWithParen, colW);
-    const lines = api.layoutLines(protectedWords, colW, null, { runts: settings['runt-min-width-pct'] }, measureWithParen);
-    stampMeasureW(lines, colW); // **S4.21:** המידה שבה השורה נשברה בפועל (runt-check אמת) — פסקת ההקדמה נמדדת במידת טור הגוף, לא ברוחב העמוד החד-טורי
-
-    // Cleaning the sentinels from the lines + tagging parenSpans/customSpans for rendering
-    for (const ln of lines) {
-      const spans = [];
-      const customSpans = [];
-      ln.words = (ln.words || []).map((w, wi) => {
-        if (CUSTOM_RE.test(w)) {
-          const m = CUSTOM_RE.exec(w);
-          customSpans.push({ wi, styleId: m[1] });
-          return w.slice(m[0].length);
-        }
-        if (w.startsWith(PAREN_SENTINEL)) { spans.push(wi); return w.slice(PAREN_SENTINEL.length); }
-        return w;
-      });
-      if (spans.length && parenScale !== 1) ln.parenSpans = spans;
-      if (customSpans.length) ln.customSpans = customSpans;
+    // **שלב 4 מקטע ב׳ (הוראה §10):** השבירה הקנונית של הפסקה — פריטי המודל
+    // (כולל תיבות סמן מסונזזות עם ההקצאות, תמונות אטומיות) → מדידה יחידה →
+    // LineModel → תצוגה נגזרת. שכבות-על של סוגריים/סגנון inline מוחלות בתוך הגשר בקואורדינטות
+    // מקור; אין סנטינלים ואין ניקוי סנטינלים — המידע נוסע על הפרגמנטים
+    // (לינאריות הרוחב בלבד — הגובה/הבסיס נשארים של השורה, כמו הנתיב החי).
+    const built = layoutModelBlock(mBlk, {
+      settings, kind: 'paragraph', widthPx: colW,
+      lineHeightPx: api.lineHeightPx(null),
+      runts: settings['runt-min-width-pct'],
+      notesByRef, customStyles,
+      measureCtx: { assetResolver: docAssets }
+    });
+    const lines = built.view;
+    for (const d of (built.diagnostics || [])) {
+      ledger.create('line-engine', `para:${t.id}`, null, d, 'measure');
     }
     // **S11:** הסגנון ברמת הבלוק על הפסקה (לא-footnote): דגלי פריסה + מונה + עיטורים מקושרים
     if (csBlock && csBlock.style.layoutMode !== 'footnote' && csBlock.style.layoutMode !== 'endnote') {
@@ -593,7 +502,7 @@ function typeset(rawText, settingsIn, env = {}) {
     const blk = {
       kind: 'paragraph', tokenId: t.id, parts: t.parts, notes, bodyMarkers, lines,
       unmatchedClosers: t.unmatchedClosers || [], part: currentPart, dh,
-      noteAssignments, parenCharSpans: parenSpans, flatWordOffsets,
+      noteAssignments,
       customStyle: csInfo
     };
     if (blk.customStyle) {
@@ -963,7 +872,13 @@ function typeset(rawText, settingsIn, env = {}) {
     // paragraph: גוף + לכל note-ref: סמן (בעוגן שבגוף) + טקסט ההערה
     // (ממקום הצגתו). הסמן אחד לכל המצטרים — הוקצה אחדת
     // בשלב הבלוק (מדיניות + סגנון) — identity-by-construction (D-30).
-    const body = t.parts.filter(p => p.kind === 'text').map(p => p.value).join(' ');
+    // **מקטע ב׳:** הגוף מסידת המקור של הפסקה — טקסט המודל הקנוני
+    // (ריצות טקסט + טקסט-מקור של תמונות; תחביר סמני-גופן/תמונה אינו תוכן
+    // אלא תחביר — המודל כבר פרק אותו לריצות/פריטים). הצד הפלט
+    // מציג את אותו טקסט מהפרגמנטים — ההשוואה חד-משמעית.
+    const body = (t.blockId && modelFlatByToken.has(t.blockId))
+      ? modelFlatByToken.get(t.blockId)
+      : t.parts.filter(p => p.kind === 'text').map(p => p.value).join(' ');
     const refs = t.parts.filter(p => p.kind === 'note-ref');
     const assigns = markersByToken.get(t.id) || [];
     const out = [...wordSeq(body)];
@@ -1065,6 +980,10 @@ function typeset(rawText, settingsIn, env = {}) {
     const countKnown = (w) => {
       // מדויק (D-53): סמן מזוהה רק לפי תג (E102) או placeholder (E000).
       // מילה רגילה (ספרה 1 בטקסט, סגנון decimal) אינה סמן (NC-10).
+      // **מקטע ב׳ (תיקון נלווה ל-P-1):** הצמדה מבנית של המנוע המאוחד יוצרת
+      // יחידות מרובות-סמנים (שני סמנים עוקבים בפתיחת פסקה: סמן₁‏NBSP‏סמן₂) —
+      // החשבונאות מונה את כל הסמנים המתויגים במילה, לא רק את הראשון. בנתיב
+      // הישן זה עבד רק מפני ש-protectWords פירק את ההצמדות (הבאג P-1).
       const sw = String(w);
       if (sw.includes(ATOMIC)) {
         // placeholder עם E000 (reject-to-body; נוצר אחרי תכנון השורות):
@@ -1074,20 +993,27 @@ function typeset(rawText, settingsIn, env = {}) {
         // ההדבקה נשמרת (BRZ-11) והחשבונאות חייבת לפצל אותה בעצמה.
         const at = sw.indexOf(ATOMIC);
         const frags = wordSeq(sw.slice(0, at).replace(/\u00A0/g, ' '));
-        return frags.slice().reverse().find(f => knownMarkers.has(f)) || null;
+        const last = frags.slice().reverse().find(f => knownMarkers.has(f)) || null;
+        return last ? [last] : [];
       }
-      if (!sw.includes(MARK_TAG)) return null;
-      const at = sw.indexOf(MARK_TAG);
-      const frag = sw.slice(at + 1).split(/[\u00A0 ]/)[0];
-      return knownMarkers.has(frag) ? frag : null;
+      if (!sw.includes(MARK_TAG)) return [];
+      const found = [];
+      let from = 0;
+      while (true) {
+        const at = sw.indexOf(MARK_TAG, from);
+        if (at < 0) break;
+        const frag = sw.slice(at + 1).split(/[\u00A0 ]/)[0];
+        if (frag && knownMarkers.has(frag)) found.push(frag);
+        from = at + 1 + (frag ? frag.length : 1);
+      }
+      return found;
     };
 
 
     const bodyMarkers = [];
     for (const pg of pages) for (const ln of pageLines(pg)) { // FWD-1: כולל פס חוצה־טורים
       for (const w of (ln.words || [])) {
-        const km = countKnown(w); // תג/E000 בלבד — ראה D-53; מילה רגילה אינה סמן
-        if (km) bodyMarkers.push(km);
+        for (const km of countKnown(w)) bodyMarkers.push(km); // תג/E000 בלבד — D-53; יחידה מרובת-סמנים מפורקת לכל סמניה
       }
     }
     // \u05d4\u05d0\u05de\u05ea: \u05d4\u05e1\u05de\u05e0\u05d9\u05dd \u05e9\u05d4\u05d5\u05e7\u05e6\u05d5 \u05dc\u05de\u05e1\u05de\u05da (\u05de\u05d5\u05e0\u05d9\u05dd \u05de\u05d5\u05d1\u05df \u05d0\u05d7\u05d3) \u2014 \u05de\u05d5\u05db\u05d7\u05d9\u05dd \u05de\u05d5\u05dc \u05d4\u05e1\u05de\u05da

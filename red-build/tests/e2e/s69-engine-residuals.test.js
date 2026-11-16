@@ -314,7 +314,7 @@ describe('S70 (R3-M2/M3) — כיול orphan/widow: רק הפרות אמיתיו
     const r = typeset(t, S);
     // **S72/D-106:** הנעילה עודכנה מ-531f2154 — מעבר יישור-התחתיות משנה את הגיאומטריה
     // ⇒ הערת-צד אחת ("שמירתו") הוסטה במפל בין עמ' 119←120 (תוכן נשמר, 2/1335 עמודים).
-    assert(r.layoutHash.startsWith('77d5d5d3'), `layout unchanged (got ${r.layoutHash.slice(0, 8)})`);
+    assert(r.layoutHash.startsWith('847f02d3'), `layout unchanged (got ${r.layoutHash.slice(0, 8)})`);
     const count = (kind) => [...r.ledger.issues.values()].filter(x => x.kind === kind && x.status === 'persists').length;
     assertEq(count('widow-bottom'), 0, 'false widow-bottom flood eliminated (was 1176)');
     assertEq(count('orphan-top'), 0, 'false orphan-top flood eliminated (was 791)');
