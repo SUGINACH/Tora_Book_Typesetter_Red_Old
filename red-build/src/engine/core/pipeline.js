@@ -1227,6 +1227,35 @@ function typeset(rawText, settingsIn, env = {}) {
     violations: pageItemValidation.violations.length
   });
 
+  // ---- **שלב 7 (§§18–22): PageModel יחיד, סופי ו-immutable** ----
+  // הבונה היחיד: מאמת את התוכנית, מוכיח כיסוי מלא (אין יתומים/כפילויות),
+  // משמר עוגנים, מקרין fragments פעם אחת, מאמת גיאומטריה/הזמנות/נכסים,
+  // מפיק אבחונים ומקפיא עמוק. מכאן ואילך אין החלטות עימוד חדשות — המקרינים
+  // (שלב 8) יקראו בלבד. נבנה בסוף הזרימה, אחרי כל ההחלטות (DP, נסיגות,
+  // שערים/TOC, איזון, AQ, הערות, עיטורים, ריהוט ומספור).
+  const { buildPageModel } = require('./page-model');
+  // אינטגריטי נכסים (§21-10): מזהי הנכסים שנפתרו בפועל — לאימות שכל הפניה
+  // ב-LineModel נפתרה (resolvedAssetIds — API קריאה של ה-resolver).
+  const resolvedAssetIds = (docAssets && typeof docAssets.resolvedAssetIds === 'function')
+    ? new Set(docAssets.resolvedAssetIds()) : null;
+  const pageModelResult = buildPageModel({
+    pages, tokens, settings, contentHashIn: hashIn
+  }, {
+    measure: api,
+    ...(resolvedAssetIds && resolvedAssetIds.size ? { assets: { ids: resolvedAssetIds } } : {})
+  });
+  for (const v of pageModelResult.validation.violations) {
+    const rec = ledger.create('page-model-invalid', `${v.code}:${(v.detail || '').slice(0, 40)}`, null, v, 'page-model');
+    ledger.transition(rec.issue_id, 'persists', 'page-model', `PageModel invariant violated: ${v.code}`);
+  }
+  eventLog.emit('page-model', 'page-model-built', {
+    schema: pageModelResult.model.schema,
+    pages: pageModelResult.model.pages.length,
+    geometryHash: pageModelResult.model.geometryHash.slice(0, 16),
+    contentHash: pageModelResult.model.contentHash.slice(0, 16),
+    validation: pageModelResult.validation.summary
+  });
+
   return {
     metadata, tokens, pages, ledger, events: eventLog,
     toc, numbers,
@@ -1251,6 +1280,11 @@ function typeset(rawText, settingsIn, env = {}) {
     // **פרוסה 2:** חוזי התכנון + ה-trace
     planContracts,
     pageItemValidation,               // **שלב 6 פרוסה 2:** אימות החוזים מול ה-registry
+    // **שלב 7:** מודל העמוד הסופי — immutable; המקרינים (שלב 8) יקראו בלבד.
+    // לא עובר בסריאליזציה של ה-Worker (ui-result-v1) — ה-UI אינו צריך עדין
+    // את המודל המלא; הייצוא והבדיקות צורכים אותו ישירות מהתוצאה.
+    pageModel: pageModelResult.model,
+    pageModelValidation: pageModelResult.validation,
     plannerTrace: plannerTrace.enabled ? plannerTrace.toJSON() : plannerTrace.stats()
   };
 }

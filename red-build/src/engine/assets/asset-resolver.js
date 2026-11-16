@@ -287,6 +287,12 @@ class AssetResolver {
   stats() {
     return { assets: this._byId.size, refs: this._byRef.size, providers: this._providers.length, diagnostics: this.diagnostics.length };
   }
+
+  /** **שלב 7 (§21-10 — אינטגריטי נכסים):** מזהי הנכסים שנפתרו בפועל — קריאה
+   * בלבד, ממויגת (דטרמיניזם); ה-PageModel מאמת מולה שכל הפניה ב-LineModel נפתרה. */
+  resolvedAssetIds() {
+    return [...this._byId.keys()].sort();
+  }
 }
 
 module.exports = { AssetResolver, normalizeRefPath, SUPPORTED_EXTENSIONS };

@@ -6,6 +6,7 @@
     "justify",
     "ledger-finalize",
     "measure",
+    "page-model",
     "page-plan",
     "parse",
     "protections",
@@ -13,6 +14,6 @@
     "scope-map",
     "toc"
   ],
-  "eventsTotal": 12,
+  "eventsTotal": 13,
   "notExercised": []
 }
