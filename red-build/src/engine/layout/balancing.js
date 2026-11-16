@@ -8,12 +8,26 @@
 
 // (moveLineForward אינו נדרש עוד באיזון: optimalSplit מכסה את מרחב המצבים כולו — EXT-8)
 
-const { colCapacityOf } = require('./column-flow'); // **S5.2 (P-2):** קיבולת הטור — מקור יחיד
+const { colCapacityOf, normalizeColumnGaps } = require('./column-flow'); // **S5.2 (P-2):** קיבולת הטור — מקור יחיד; **פרוסה 2:** נרמול פערים אחרי פיצול מחדש
 const { seamIsClean, escortCleanBoundary } = require('./constraint-matrix'); // **שלב 5:** תפר נקי + תפר מודע-ליווי — מקור יחיד (חילוץ שורש מ-#16/#17)
 
 function usedHeight(col) {
   // **EXT-20:** גובה בפועל — כולל מקדם ה-AQ האנכי (לפני ה-AQ כל המקדמים 1).
-  return col.reduce((s, ln) => s + ln.heightPx * (ln.aqStretch || 1), 0);
+  // **FX-6 (פרוסה 2):** פער הבלוקים (gapBeforePx) נכלל — הפער הוא גאומטריה
+  // מתוכננת; הוא קבוע ואינו מתמתח עם aqStretch (המתיחה חלה על גובה השורה).
+  return col.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1) + (ln.gapBeforePx || 0), 0);
+}
+
+/** **FX-6 (פרוסה 2):** מרכיבי הגובה של טור — שורות מתיחות ופערים קבועים.
+ * שימוש: חישוב מקדם מתיחה מדויק (target/cur) שבו הפערים אינם מתמתחים:
+ * factor = (target − Σgap) / Σ(heightPx×stretch). */
+function columnStretchParts(col) {
+  let lines = 0, gaps = 0;
+  for (const ln of col) {
+    lines += (ln.heightPx || 0) * (ln.aqStretch || 1);
+    gaps += ln.gapBeforePx || 0;
+  }
+  return { lines, gaps };
 }
 
 /** הערכת "איזון" עמוד: הפרש גובה טורים. */
@@ -42,7 +56,9 @@ function optimalSplit(cols, opts = {}) {
   const seq = [...c0, ...c1];
   const n = seq.length;
   if (!n) return null;
-  const h = (ln) => (ln.heightPx || 0) * (ln.aqStretch || 1);
+  // **FX-6 (פרוסה 2):** פערי בלוקים נכללים בגובה השורה במרחב המצבים —
+  // הפיצול ממזער את ה-|Δ| האמיתי (כולל הפערים המתוכננים).
+  const h = (ln) => (ln.heightPx || 0) * (ln.aqStretch || 1) + (ln.gapBeforePx || 0);
   const pre = new Float64Array(n + 1);
   for (let i = 0; i < n; i++) pre[i + 1] = pre[i] + h(seq[i]);
   const total = pre[n];
@@ -99,6 +115,10 @@ function balancePage(page, maxDelta) {
   const k0 = page.columns[0].length;
   page.columns[0] = seq.slice(0, best.k);
   page.columns[1] = seq.slice(best.k);
+  // **FX-6 (פרוסה 2):** נרמול פערים אחרי הפיצול מחדש — ראש כל טור אינו
+  // נושא פער-כניסה (GAP_HEAD_POLICY; אותו כלל שחל בהצבה המקורית).
+  normalizeColumnGaps(page.columns[0]);
+  normalizeColumnGaps(page.columns[1]);
   const after = pageImbalance(page);
   return { changed: true, moves: Math.abs(best.k - k0), before, after, optimal: true, cleanBoundary: best.clean };
 }
@@ -127,7 +147,9 @@ function alignColumnBottoms(pages, settings, eventLog, opts = {}) {
     if (cols.length !== 2) continue;
     const c0 = cols[0], c1 = cols[1];
     if (!c0.length || !c1.length) { skipped++; continue; } // טור ריק — אין מה למתוח
-    const hh = (c) => c.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1), 0);
+    // **FX-6 (פרוסה 2):** גבהים כוללים פערי בלוקים — אותה סמנטיקה כמו usedHeight
+    // (הפער קבוע; המתיחה חלה על השורות בלבד — ראה columnStretchParts).
+    const hh = (c) => c.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1) + (ln.gapBeforePx || 0), 0);
     const h0 = hh(c0), h1 = hh(c1);
     const delta = Math.abs(h0 - h1);
     if (delta <= maxDelta) continue; // כבר מאוזן — אין התערבות
@@ -144,7 +166,12 @@ function alignColumnBottoms(pages, settings, eventLog, opts = {}) {
     const shortI = h0 < h1 ? 0 : 1;
     const shortCol = cols[shortI];
     const usedS = Math.min(h0, h1);
-    const raw = usedS > 0.5 ? target / usedS : 1; // **S72 (שיפור 4):** מקדם מדויק — יעד/נוכחי
+    // **FX-6 (פרוסה 2):** מקדם מדויק עם פערים קבועים — הפערים אינם מתמתחים:
+    // factor = (target − Σgap) / Σ(heightPx×stretch). בלי זה, מתיחה שחושבה
+    // מ-used כולל-פערים לא הגיעה ליעדה בפועל (הפערים נשארו בגובהם המקורי).
+    const partsS = columnStretchParts(shortCol);
+    const stretchTo = (target) => partsS.lines > 0.5 ? (target - partsS.gaps) / partsS.lines : 1;
+    const raw = stretchTo(Math.max(h0, h1));
     if (!(raw > 1 + 1e-4)) continue;
     const lo = settings['aq-word-spacing-min'];
     const tallCol = cols[1 - shortI];
@@ -154,8 +181,9 @@ function alignColumnBottoms(pages, settings, eventLog, opts = {}) {
     // (פער גדול על טורים קצרים) — מתיחה חד-צדדית עד התקרה ושארית
     // מדווחת באירוע (clamped=true).
     const mid = (Math.max(h0, h1) + usedS) / 2;
-    const fShort = usedS > 0.5 ? mid / usedS : 1;
-    const fTall = Math.max(h0, h1) > 0.5 ? mid / Math.max(h0, h1) : 1;
+    const partsT = columnStretchParts(tallCol);
+    const fShort = stretchTo(mid);
+    const fTall = partsT.lines > 0.5 ? (mid - partsT.gaps) / partsT.lines : 1;
     let factor, shared = false;
     if (raw > hi + 1e-9 && fShort <= hi + 1e-9 && fTall >= lo - 1e-9) {
       factor = fShort; shared = true;
@@ -166,8 +194,9 @@ function alignColumnBottoms(pages, settings, eventLog, opts = {}) {
     for (const ln of shortCol) ln.aqStretch = factor;
     if (shared) for (const ln of tallCol) ln.aqStretch = fTall;
     aligned++;
-    const afterShort = usedS * factor;
-    const afterTall = shared ? Math.max(h0, h1) * fTall : Math.max(h0, h1);
+    // **FX-6:** דיווח מדויק — הגובה בפועל אחרי מתיחה = Σgap + Σ(heightPx×factor)
+    const afterShort = partsS.gaps + partsS.lines * factor;
+    const afterTall = shared ? (partsT.gaps + partsT.lines * fTall) : Math.max(h0, h1);
     eventLog.emit('balance', 'bottom-align', {
       page: page.index, col: shortI, factor: Number(factor.toFixed(4)),
       factorTall: shared ? Number(fTall.toFixed(4)) : null,
@@ -234,11 +263,12 @@ function autoQualityPass(pages, settings, eventLog) {
       const cap = colCapacityOf(page, { colIndex: c });
       const deficit = cap - used;
       if (deficit > 4 && mayStretch) {
-        // **S72 (שיפור 4 — מקדם מדויק):** rawFactor = cap/used — מגיע
-        // ליעד בדיוק גם בטורים מעורבי-גבהים (כותרות+גוף). בעבר חושב
-        // 1+(deficit/n)/h(שורה-ראשונה) — קירוב שהחטיא את היעד בכל טור
-        // שאינו אחיד (נמדד: פספוס של עד ~10px בטור עם 2 כותרות).
-        const rawFactor = used > 0.5 ? cap / used : 1;
+        // **S72 (שיפור 4) + FX-6 (פרוסה 2):** מקדם מדויק עם פערים קבועים —
+        // (cap − Σgap)/Σ(heightPx×stretch) — מגיע ליעד בדיוק גם בטורים
+        // מעורבי-גבהים וגם כשפערי בלוקים בטור (הפערים אינם משתתפים במתיחה).
+        // בעבר חושב 1+(deficit/n)/h(שורה-ראשונה) — קירוב שהחטיא את היעד.
+        const parts = columnStretchParts(lines);
+        const rawFactor = parts.lines > 0.5 ? (cap - parts.gaps) / parts.lines : 1;
         for (const stage of AQ_STAGES) {
           const [lo, hi] = stageBounds(settings, stage);
           const factor = Math.min(hi, Math.max(lo, rawFactor));
@@ -255,9 +285,9 @@ function autoQualityPass(pages, settings, eventLog) {
         }
       } else if (deficit < -4 && compressFirst) {
         // עודף מעל התקרה ⇒ כיווץ עד min (כיווץ לפני מתיחה — compress-first)
-        // **S72 (שיפור 4):** מקדם מדויק גם בכיווץ — cap/used (היה קירוב
-        // first-line שהחטיא את היעד בטורים מעורבי-גבהים).
-        const rawFactor = used > 0.5 ? cap / used : 1;
+        // **S72 (שיפור 4) + FX-6:** מקדם מדויק גם בכיווץ — (cap − Σgap)/Σh.
+        const parts = columnStretchParts(lines);
+        const rawFactor = parts.lines > 0.5 ? (cap - parts.gaps) / parts.lines : 1;
         for (const stage of AQ_STAGES) {
           const [lo, hi] = stageBounds(settings, stage);
           const factor = Math.max(lo, Math.min(hi, rawFactor));
@@ -273,4 +303,4 @@ function autoQualityPass(pages, settings, eventLog) {
   return { applied };
 }
 
-module.exports = { balancePage, optimalSplit, pageImbalance, applyChapterEndMode, autoQualityPass, alignColumnBottoms, usedHeight };
+module.exports = { balancePage, optimalSplit, pageImbalance, applyChapterEndMode, autoQualityPass, alignColumnBottoms, usedHeight, columnStretchParts };

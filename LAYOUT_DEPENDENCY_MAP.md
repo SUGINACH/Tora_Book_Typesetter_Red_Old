@@ -116,3 +116,23 @@ core/          : pipeline ← כל השכבות (כולל shaar-pages/ornament-p
   capacity מורחב.
 - **הגבול:** נתיב המוצר עבר למנוע הקנוני (שלב 4 מקטע ב׳ — הגשר
   pipeline-bridge); breakLines נשאר למורשת עד שלב 9; אין breaker/MeasureAPI שניים.
+
+## שכבת ה-Planner הקנוני — חוזים ומדידה (שלב 5 פרוסה 2 — 17.11)
+
+- **gapBeforePx (FX-6):** החותמת על שורת פתיחת הבלוק היא מקור האמת היחיד
+  לפער בין בלוקים: שער הכניסה (pushLines), הגובה התפוס (planningUsedHeight
+  בתכנון; usedHeight ברינדור), הקרנת DOM (margin-top), הקרנת PDF
+  (התקדמות-y), מפריד הטורים ועוגן הערות-צד — כולם נגזרים ממנה. דיכוי
+  בראש טור (GAP_HEAD_POLICY); המתיחה חלה על השורות בלבד — הפער קבוע
+  (columnStretchParts).
+- **plan-model.js (חוזי PagePlan/ColumnModel):** page.plan נבנה בסוף
+  ה-pipeline (finalizePagePlans) — validation + freeze; הטורים בהפניה חיה
+  (אין מודל מקבילי ל-PageModel העתידי). עמודי זרימה מסומנים dpPlanned.
+- **reservations:** page.reservations (all-columns/last-column) — מופחתים
+  ב-colCapacityOf; capacityReservationsOf מייצג את כל הגורמים שוללי
+  שטח-הגוף — מנגנון הרחבת ריהוט-העמוד של שלב 6.
+- **מדידת הערות:** stampNoteMetrics (CP2) — מדידה חד-פעמית עם מבנה שורות
+  (noteRows) שהפיצול וההקרנה העתידית (שלב 6/7) יצרכו; noteHeight צורך
+  חותמת קודם חישוב; מונה __rowsStats לחשבונאות בדיקה.
+- **decision-trace.js:** opt-in; ספירות תמיד; רשומות {p,k,d} קומפקטיות —
+  הצבות/פיצולים/ליווי/הערות/נסיגות/overflow.

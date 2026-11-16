@@ -229,9 +229,13 @@ describe('S7.1.2/3 Gate — side-notes full contract + H7 conversion', () => {
         for (const ln of pg.columns[c]) {
           const tok = ln.tokenId != null ? ln.tokenId : (ln.meta && ln.meta.tokenId);
           if (tok === p.anchorToken) {
-            let y = pg.template.contentBox.top;
+            // **FX-6 (פרוסה 2):** ה-y הצפוי כולל את פערי הבלוקים (gapBeforePx)
+            // — אותה גיאומטריה שמוקרנת בפועל ב-DOM וב-PDF ושממנה lineYTop
+            // ממקם את ההערה. בלי זה העוגן נמדד מעל מקום השורה האמיתי.
+            let y = pg.template.contentBox.top
+              + (pg.spanning && pg.spanning.heightPx ? pg.spanning.heightPx : 0);
             const col = pg.columns[c];
-            for (let i = 0; i < col.length && col[i] !== ln; i++) y += col[i].heightPx || 0;
+            for (let i = 0; i < col.length && col[i] !== ln; i++) y += (col[i].gapBeforePx || 0) + (col[i].heightPx || 0) * (col[i].aqStretch || 1);
             return Math.abs(y - p.yTop) < 1.5;
           }
         }

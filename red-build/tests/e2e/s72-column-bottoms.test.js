@@ -162,7 +162,10 @@ describe('S72.2 DP — יישור תחתיות ככלל עימוד (שיפורי
   const result = typeset(corpus, S, {});
 
   it('עמודים מלאים בנתיב ה-DP מיושרים: לפני S7 היה Δ=פיץ-שלם כמעט בכל עמוד מלא', () => {
-    const colH = (c) => c.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1), 0);
+    // **FX-6 (פרוסה 2):** התחתית האמיתית כוללת את פערי הבלוקים — אותה
+    // גיאומטריה שמוקרנת ב-DOM/PDF ושהמנוע מיישר אליה (alignColumnBottoms
+    // עם פערים קבועים). מדידה ללא הפערים הייתה מודדת תחתית מעל האמיתית.
+    const colH = (c) => c.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1) + (ln.gapBeforePx || 0), 0);
     let full2col = 0, bad = 0;
     for (const pg of result.pages) {
       if (pg.type !== 'regular' || !pg.columns || pg.columns.length !== 2) continue;
@@ -195,14 +198,19 @@ describe('S72.2 DP — יישור תחתיות ככלל עימוד (שיפורי
     assert(min >= 0.95 - 1e-9 && max <= 1.05 + 1e-9, `מקדם מחוץ לגבולות: [${min}, ${max}]`);
   });
 
-  it('נייטרליות: hash הקורפוס זהה לנעילה (89108321) — aqStretch אינו משנה תוכן', () => {
+  it('נייטרליות: hash הקורפוס זהה לנעילה (4a1773cc) — aqStretch אינו משנה תוכן', () => {
     // ננעל מחדש 16.11 (שלב 5 פרוסה 1 — תיקוני FX במתכנן): bef8ebbed977→89108321.
     // הפער מסווג בשיטת s5-corpus-comparison: חלוקת השורות של כל הבלוקים זהה
     // לבסיס (0 redivision/0 marker/0 content-diff) — השינוי הוא אריזת עמודים
     // בלבד: קיבולת ב-yPx אמיתיים (FX-5) חיסלה עמודים ריקים-פנטום (ב-very_long:
     // 1335→1089, ‑18.5%); contentPreserved=true; aqStretch ממשיך לעבוד על הטורים
     // החדשים (הבדיקות הגיאומטריות לעיל מאמתות זאת על הפלט המעודכן).
-    assert(result.layoutHash.startsWith('89108321'), `hash הקורפוס השתנה: ${result.layoutHash.slice(0, 16)}`);
+    // **שלב 5 פרוסה 2 (FX-6):** ננעל מחדש 89108321→4a1773cc — פער הבלוקים
+    // נצבר בגובה התפוס ובהקרנה (במקום שער-כניסה שנעלם): אריזת העמודים
+    // בלבד השתנתה (ב-very_long: 1089→1108, +1.75%), חלוקת השורות של כל
+    // הבלוקים זהה ביט-לביט לבסיס (מוכח ב-s5-corpus-comparison: 4536/4536
+    // identical, 0 מכל השאר); contentPreserved=true.
+    assert(result.layoutHash.startsWith('4a1773cc'), `hash הקורפוס השתנה: ${result.layoutHash.slice(0, 16)}`);
     const r2 = typeset(corpus, getDefaultSettings(), {});
     assertEq(result.layoutHash, r2.layoutHash, 'דטרמיניזם');
     // הקנוני — נעילת f6f32c40 ממקטע ב׳ (מאומת ב-s13-acceptance)

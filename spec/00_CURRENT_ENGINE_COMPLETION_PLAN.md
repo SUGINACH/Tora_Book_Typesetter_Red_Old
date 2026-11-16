@@ -590,7 +590,7 @@ PR אינו יכול לטעון "השלמת שלב" אם רק API או בדיק�
 | 2. מודל קנוני | תשתיות חלקיות קיימות לפי היסטוריית העבודה | לא הוכח end-to-end | schema, round-trip, runtime coverage |
 | 3. נכסים ומדידה | API/asset work קיים בחלק מהענפים | לא הוכח שכל סוגי התוכן מחוברים | measured-item coverage, worker/assets/font tests |
 | 4. שבירת שורות | KP ו-inline item infrastructure קיימים בחלקם | לא הוכח שכל הפסקאות משתמשות במודל | single-breaker runtime proof |
-| 5. Planner | planner קיים; צריכת fragments מחייבת אימות | לא הוכח מודל אחיד | planner integration + invariants |
+| 5. Planner | planner קיים; צריכת fragments מחייבת אימות | **הושלם (פרוסאות 1+2; PR #25 + stage5b/planner-pageplan)** — FX-1..FX-6; חוזי ColumnModel/PagePlan + validation + immutability; reservations; trace; טוהר מדידה (0 מדידות בתכנון; הערות חד-פעמיות); RTL מאומת; 4536/4536 בלוקים זהים ביט-לביט ב-very_long (אריזה בלבד: 1089→1108) | planner integration + invariants — s5-unified-planner/s5-corpus-comparison/s5b-plan-contracts/s5b-measurement-purity |
 | 6. פריטי עמוד/הערות/עיטורים | יכולות רבות קיימות בנתיבים קיימים | נדרש להוכיח חוזה משותף | item registry + shared budgets |
 | 7. PageModel | projector קיים; completeness/immutability דורשים אימות | לא הוכח | canonical immutable PageModel |
 | 8. מקרינים/ייצוא | DOM/HTML/PDF קיימים | נדרש להוכיח שהם מקרינים בלבד | same-model projection tests |

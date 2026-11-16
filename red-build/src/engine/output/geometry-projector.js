@@ -200,9 +200,14 @@ function projectPage(page, settings, api) {
       const col = tpl.columns[ci] || { x: 0, w: 0 };
       let y = tpl.contentBox.top + spanOffset;
       for (const ln of colLines) {
+        // **FX-6 (פרוסה 2 — הפער מהחוזה הגיאומטרי):** התקדמות ה-y כוללת את
+        // פער הבלוקים מהחותמת שנקבעה בתכנון (gapBeforePx) — בדיוק כמו
+        // margin-top ב-DOM. מקור יחיד: אין כאן חישוב פער עצמאי ואין כפילה.
+        y += ln.gapBeforePx || 0;
         out.lines.push(projectLine(ln, col.x, y, col.w, settings, measure, lastAlignOf(ln, settings)));
         // **EXT-20:** מקדם ה-AQ מיושם על גובה השורה (אנכי) — השורות שאחריה
         // זזות בהתאם; התיבה והבסיס מחושבים מהגובה הנמתח (מודל תיבת שורה).
+        // **FX-6:** הפער קבוע — אינו מתמתח עם השורות.
         y += (ln.heightPx || 0) * (ln.aqStretch || 1);
       }
     });
@@ -570,7 +575,9 @@ function projectColumnDivider(page, settings, out) {
   const style = settings['column-divider-style'];
   if (!style || style === 'none' || !page.template || (page.columns || []).length < 2) return;
   const tpl = page.template;
-  const used = page.columns.map(col => col.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1), 0));
+  // **FX-6 (פרוסה 2):** גובה כולל פערי בלוקים — כמו renderColumnDivider ב-DOM
+  // (תצוגה = ייצוא; אותה נוסחה בדיוק).
+  const used = page.columns.map(col => col.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1) + (ln.gapBeforePx || 0), 0));
   const h = Math.max(0, Math.min(...used) - 8);
   if (h <= 0) return;
   const c1 = tpl.columns[1];

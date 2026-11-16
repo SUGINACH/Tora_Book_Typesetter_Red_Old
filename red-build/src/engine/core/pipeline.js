@@ -41,6 +41,11 @@ const { applyDropWord } = require('../typography/dropword');
 const { layoutModelBlock, flatTextOf } = require('../line/pipeline-bridge');
 const { planPages, layoutHash, bodyGeometryHash } = require('../layout/dp-planner');
 const { buildPageTemplate, PAGE_TYPES } = require('../layout/page-templates');
+// **שלב 5 פרוסה 2 (§§2.3/2.5/2.7 בביקורת):** מדדי הערה חד-פעמיים (חותמת CP2),
+// חוזי ColumnModel/PagePlan + validation + immutability, ורשם ה-trace.
+const { stampNoteMetrics } = require('../layout/footnote-budget');
+const { finalizePagePlans } = require('../layout/plan-model');
+const { createTraceRecorder } = require('../layout/decision-trace');
 const { assignNumbers } = require('../decoration/folio');
 const { buildHeader } = require('../decoration/headers-builder');
 const { autoQualityPass, applyChapterEndMode, alignColumnBottoms } = require('../layout/balancing');
@@ -456,7 +461,10 @@ function typeset(rawText, settingsIn, env = {}) {
           : { marker }); // רק הסמן בגוף; הטקסט זורם למקום ההצגה
       }
       if (!inlineNoteMode) {
-        notes.push({ text: String(noteRaw).replace(/\uE000/g, ' '), marker, tokenId: t.id, noteIndex: p.noteIndex, part: currentPart || 1 });
+        // **פרוסה 2 (§2.3 — מדידה אחת לכל פריט):** הערה נולדת עם חותמת מדדים
+        // מלאה (גובה/פיץ'/שורות מעוטפות) — מדידתה הראשונה והאחרונה; מכאן
+        // התקציב, ההצבה, הפיצול וההקרנה קוראים את החותמת ואינם מודדים שוב.
+        notes.push(stampNoteMetrics({ text: String(noteRaw).replace(/\uE000/g, ' '), marker, tokenId: t.id, noteIndex: p.noteIndex, part: currentPart || 1 }, settings, measureWithImpl));
         bodyMarkers.push(marker);
       }
     }
@@ -526,7 +534,10 @@ function typeset(rawText, settingsIn, env = {}) {
   const snapTracker = settings['audit-stage-snapshots'] === true ? createSnapshotTracker() : null;
 
   // ---- CP3: page plan (DP) + protections + retreat loop ----
-  const planned = planPages(blocks, settings, eventLog, ledger, { measure: measureWithImpl, onProgress });
+  // **פרוסה 2 (§2.7):** רשם ה-trace — opt-in (env.plannerTrace או settings._plannerTrace);
+  // כבוי בברירת המחדל. הספירות תמיד זמינות (stats) גם כשהרשומות כבויות.
+  const plannerTrace = (env && env.plannerTrace) || createTraceRecorder({ enabled: settings['_plannerTrace'] === true });
+  const planned = planPages(blocks, settings, eventLog, ledger, { measure: measureWithImpl, onProgress, trace: plannerTrace });
   let { pages } = planned;
   prog('page-plan', 70, 'הפריסה הושלמה', { totalPages: pages.length, pageIndex: pages.length });
 
@@ -1149,6 +1160,17 @@ function typeset(rawText, settingsIn, env = {}) {
   // + סיכום סיבתי Gold) — או null כשהמנגנון כבוי (ברירת מחדל).
   const stageSnapshots = snapTracker ? snapTracker.finalize(ledger) : null;
 
+  // **שלב 5 פרוסה 2 (§2.5 — חוזי ColumnModel/PagePlan):** השלמת התכנון —
+  // כאן, בסוף הזרימה (אחרי ה-DP, הנסיגות, שערים/TOC שמאנדקסים עמודים,
+  // איזון-סוף-פרק, AQ, הערות-צד ועיטורים), נבנים חוזי העמודים, מאומתים
+  // וקופאים: אין לזיזת שורה/הערה אחרי נקודה זו — תצוגה וייצוא קוראים בלבד.
+  // דיאגנוסטיקות חוזה נרשמות ל-ledger (page-plan-invalid) — לא מוסתרות.
+  const planContracts = finalizePagePlans(pages, {
+    settings, lineH: Math.round(settings['body-font-size-pt'] * (96 / 72) * settings['body-line-height']),
+    ledger, eventLog, trace: plannerTrace
+  });
+  eventLog.emit('page-plan', 'contracts-finalized', { ...planContracts, trace: plannerTrace.stats() });
+
   return {
     metadata, tokens, pages, ledger, events: eventLog,
     toc, numbers,
@@ -1169,7 +1191,10 @@ function typeset(rawText, settingsIn, env = {}) {
     scope,
     customStyles: customStylesRes,  // **S11:** הסגנונות שהופעלו בפועל (כולל שגיאות אימות)
     stageSnapshots,                 // **S1-ח:** צילומי-מצב/deltas/הקשר-עמוד (או null)
-    recommendations                 // **S11:** המלצות עריכה עם הוכחות (או null אם כובו)
+    recommendations,                // **S11:** המלצות עריכה עם הוכחות (או null אם כובו)
+    // **פרוסה 2:** חוזי התכנון + ה-trace
+    planContracts,
+    plannerTrace: plannerTrace.enabled ? plannerTrace.toJSON() : plannerTrace.stats()
   };
 }
 

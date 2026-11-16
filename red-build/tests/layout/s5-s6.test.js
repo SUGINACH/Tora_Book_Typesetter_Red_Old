@@ -19,13 +19,22 @@ const S = { ...getDefaultSettings() };
 describe('S5.1.2 candidate generator', () => {
   it('overflow candidates are HARD-rejected and ledgered with capacity evidence', () => {
     const ledger = new Ledger();
-    const blk = { tokenId: 't1', lineHeightPx: 20, lines: [ln(20), ln(20), ln(20), ln(20)] };
+    // **פרוסה 2 (חוזה החלון):** 6 שורות, maxFit=4 ⇒ חלון [2..4] (≥2 לכל צד
+    // וגם גבול הקיבולת) — בתוך החלון, cut=3..4 חורגים מ-cap 50 ⇒ דחיית
+    // overflow-before עם ראיית קיבולת (בעבר נבדק מקרה שכעת אין לו חלון כלל).
+    const blk = { tokenId: 't1', lineHeightPx: 20, lines: [ln(20), ln(20), ln(20), ln(20), ln(20), ln(20)] };
     const cands = generateCandidates(blk, 4, 50, S, ledger); // cap 50 → cut≥3 חורג
     for (const c of cands) assert(c.before <= 50, `overflow leaked: ${JSON.stringify(c)}`);
     const rejected = [...ledger.issues.values()].filter(r => r.kind === 'candidate-rejected');
     assert(rejected.length >= 1, 'every rejection must be written to ledger (S5.1.10)');
     assertEq(rejected[0].predicate_before.why, 'overflow-before');
     assert(Number.isInteger(rejected[0].predicate_before.cap));
+    // החלון עצמו: בלוק שאין לו פיצול חוקי (הכל נכנס / נשאר <2) — אפס מועמדים,
+    // דחיית no-legal-window מתועדת.
+    const ledger2 = new Ledger();
+    const none = generateCandidates({ tokenId: 't0', lineHeightPx: 20, lines: [ln(20), ln(20), ln(20), ln(20)] }, 4, 500, S, ledger2);
+    assertEq(none.length, 0, 'אין חלון ⇒ אין מועמדים');
+    assertEq(ledger2.issues.size >= 1 && [...ledger2.issues.values()][0].predicate_before.why, 'no-legal-window', 'דחיית החלון מתועדת');
   });
   it('candidates sorted by score ascending (deterministic)', () => {
     const blk = { tokenId: 't2', lineHeightPx: 20, lines: [ln(20), ln(20), ln(20), ln(20), ln(20)] };

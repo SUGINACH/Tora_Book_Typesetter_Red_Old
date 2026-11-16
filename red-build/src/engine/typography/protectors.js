@@ -72,10 +72,17 @@ function protectWords(words, measure, colWidthPx) {
  * **S5.2 (תיקון 2 — מיזוג ללא בדיקת רוחב):** בעבר המילה נדחפה לשורה הראשונה
  * של הטור הבא (`unshift` + `pop`) ללא מדידה מחדש — השורה המקבלת יכלה לגלוש
  * מהטור (נמדד +1.95..25px בביקורת) ⇒ הדפדפן עוטף מחדש ⇒ טקסט-על-טקסט
- * (מחלקת D-92). כעת: המיזוג נשמר רק אם הרוחב הטבעי הממוזג נכנס ב‑colW−FIT_EPS
- * (אותה מדידה של המתכנן: widthPx הקיים של השורה המקבלת + רווח + מדידת המילה);
- * לא ממזגים לתוך שורת כותרת/שורה אחרונה (isLast), לא מוציאים מילה מכותרת;
- * וללא מדידה (opts.measure) — אין מיזוג בכלל (שמרנות: מי שלא מודד לא מוכיח התאמה).
+ * (מחלקת D-92). כעת: המיזוג נשמר רק אם הרוחב הטבעי הממוזג נכנס ב‑colW−FIT_EPS.
+ *
+ * **פרוסה 2 (ביטול מדידה חוזרת — §2.3 בביקורת):** הרוחב הממוזג נגזר מה
+ * **מדדים שכבר נקבעו** במנוע השורות — שום קריאת מדידה חדשה בשלב התכנון:
+ *  - רוחב המילה הנופלת = `last.lineModel.naturalWidthPx` (שורת מילה בודדת —
+ *    הרוחב הטבעי שלה הוא רוחב המילה כולל תג הסמן שבה, בדיוק כפי שתוצג);
+ *  - רוחב הרווח המפריד = ה-glue הטבעי הראשון של השורה המקבלת
+ *    (`nextFirst.lineModel.glue[0].naturalPx` — אותו רווח שהמנוע מדד);
+ *  - רוחב השורה המקבלת = `nextFirst.widthPx` (נמדד בשבירה).
+ * נתיב המורשת (ללא lineModel) — נפילה חזרה ל-`opts.measure` אם סופק;
+ * בלי שניהם אין מיזוג (שמרנות: מי שלא מודד/לא קיבל מדדים לא מוכיח התאמה).
  * @param {Array<Array<object>>} columnLines
  * @param {number} minLen - אורך מינימלי של מילה "נופלת"
  * @param {{measure?:(t:string)=>number, colW?:number, fitEps?:number}} [opts]
@@ -96,11 +103,14 @@ function fixDropWordInColumns(columnLines, minLen = 3, opts = {}) {
     if (nextFirst.kind === 'heading' || nextFirst.isLast === true) continue;
     if (last.kind === 'heading') continue;
     if (last.words.length === 1 && last.words[0].length < minLen && nextFirst.words.length > 1) {
-      // רוחב טבעי ממוזג = widthPx שנמדד לשורה המקבלת + רווח + המילה הנמשכת.
-      // התג (MARK_TAG, D-53) מוסר מהמדידה — כמו ב-measureWithParen של ה-pipeline;
-      // NBSP נמדד כרווח (כמו internal-glue ב-kp).
+      // רוחב טבעי ממוזג מהמדדים הקיימים (LineModel) — ורק בהיעדרם, מדידה
+      // (נתיב מורשת). התג (MARK_TAG, D-53) כלול ברוחב הטבעי כפי שיוצג.
       let mergedW = null;
-      if (measure && colW > 0) {
+      const srcLM = last.lineModel;
+      const dstLM = nextFirst.lineModel;
+      if (srcLM && dstLM && dstLM.glue && dstLM.glue.length) {
+        mergedW = (nextFirst.widthPx || 0) + dstLM.glue[0].naturalPx + (srcLM.naturalWidthPx || 0);
+      } else if (measure && colW > 0) {
         const word = String(last.words[0]).replace(/\uE102/g, '').replace(/\u00A0/g, ' ');
         mergedW = (nextFirst.widthPx || 0) + measure(' ') + measure(word);
       }
