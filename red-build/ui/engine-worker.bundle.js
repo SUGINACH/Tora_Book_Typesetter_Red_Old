@@ -1,6 +1,6 @@
 // ui/engine-worker.bundle.js — **נוצר אוטומטית** ע"י tools/build-worker-bundle.js (אין לערוך ידנית)
 // חבילת ה־Worker (המנוע המלא — אין לטעון בחוט ה־UI)
-// מודולים: 84 · בלי חותמות זמן (דטרמיניזם)
+// מודולים: 85 · בלי חותמות זמן (דטרמיניזם)
 'use strict';
 
 var __crypto = (function () {
@@ -448,6 +448,7 @@ var __paths = {
   "src/engine/output/dom-renderer.js|../decoration/page-decorations": "src/engine/decoration/page-decorations.js",
   "src/engine/output/dom-renderer.js|../decoration/shaar-boxes": "src/engine/decoration/shaar-boxes.js",
   "src/engine/output/dom-renderer.js|../decoration/ornament-fit": "src/engine/decoration/ornament-fit.js",
+  "src/engine/output/dom-renderer.js|../layout/furniture-geometry": "src/engine/layout/furniture-geometry.js",
   "src/engine/output/dom-renderer.js|../decoration/asset-registry": "src/engine/decoration/asset-registry.js",
   "src/engine/output/dom-renderer.js|../decoration/ornament-ink": "src/engine/decoration/ornament-ink.js",
   "src/engine/output/dom-renderer.js|../layout/page-templates": "src/engine/layout/page-templates.js",
@@ -455,12 +456,14 @@ var __paths = {
   "src/engine/output/dom-renderer.js|../layout/footnote-lanes": "src/engine/layout/footnote-lanes.js",
   "src/engine/output/dom-renderer.js|./line-font": "src/engine/output/line-font.js",
   "src/engine/output/dom-renderer.js|./shaar-content": "src/engine/output/shaar-content.js",
+  "src/engine/output/dom-renderer.js|../typography/measure-api": "src/engine/typography/measure-api.js",
   "src/engine/output/dom-renderer.js|../layout/legacy-imud-flow": "src/engine/layout/legacy-imud-flow.js",
   "src/engine/decoration/page-decorations.js|../layout/page-templates": "src/engine/layout/page-templates.js",
   "src/engine/decoration/ornament-ink.js|./asset-registry": "src/engine/decoration/asset-registry.js",
   "src/engine/typography/font-subset.js|./font-metrics": "src/engine/typography/font-metrics.js",
   "src/engine/output/geometry-projector.js|./dom-renderer": "src/engine/output/dom-renderer.js",
   "src/engine/output/geometry-projector.js|../typography/measure-api": "src/engine/typography/measure-api.js",
+  "src/engine/output/geometry-projector.js|../layout/furniture-geometry": "src/engine/layout/furniture-geometry.js",
   "src/engine/output/geometry-projector.js|../layout/footnote-budget": "src/engine/layout/footnote-budget.js",
   "src/engine/output/geometry-projector.js|../notes/markers": "src/engine/notes/markers.js",
   "src/engine/output/geometry-projector.js|../layout/side-notes": "src/engine/layout/side-notes.js",
@@ -10880,19 +10883,26 @@ function noteRowsOf(note, settings, measure) {
   const spaceW = measure(' ', sizePt) * factor;
   const mkTxt = note && note.marker != null ? String(note.marker) : '';
   const mkW = mkTxt ? measure(mkTxt, sizePt) * factor + spaceW : 0;
+  // **שלב 6 פרוסה 1 (הכנת "תקציב=הצבה=הקרנה"):** כל שורה נושאת גם את רוחבי
+  // המילים שלה (wordW) — כך שהקרנת המרזב (פרוסה 2) תוכל למקם מילים מהחותמת
+  // עצמה מבלי למדוד שוב; הרוחב בפינה הימנית של השורה הראשונה כולל את הסמן.
   const rows = [];
   let rowW = Math.min(mkW, colW); // סמן בפינת השורה הראשונה
   let wFrom = 0;
+  let rowWordW = [];
   for (let i = 0; i < words.length; i++) {
     const ww = measure(words[i], sizePt) * factor;
     const addW = (rowW > 0 ? spaceW : 0) + ww;
     if (rowW + addW > colW && rowW > 0) {
-      rows.push({ wFrom, wTo: i, widthPx: rowW });
-      wFrom = i; rowW = ww;
-    } else rowW += addW;
+      rows.push({ wFrom, wTo: i, widthPx: Math.round(rowW * 1000) / 1000, wordW: rowWordW });
+      wFrom = i; rowW = ww; rowWordW = [Math.round(ww * 1000) / 1000];
+    } else {
+      rowW += addW;
+      rowWordW.push(Math.round(ww * 1000) / 1000);
+    }
   }
-  rows.push({ wFrom, wTo: words.length, widthPx: rowW });
-  return { rows, heightPx: rows.length * lh, linesCount: rows.length, lineH: lh, words };
+  rows.push({ wFrom, wTo: words.length, widthPx: Math.round(rowW * 1000) / 1000, wordW: rowWordW });
+  return { rows, heightPx: rows.length * lh, linesCount: rows.length, lineH: lh, words, markerW: mkW ? Math.round(mkW * 1000) / 1000 : 0, spaceW: Math.round(spaceW * 1000) / 1000 };
 }
 
 /**
@@ -10910,6 +10920,9 @@ function stampNoteMetrics(note, settings, measure) {
   note.linesCount = m.linesCount;
   note.noteRows = m.rows;
   note.noteWords = m.words;
+  // **שלב 6 פרוסה 1:** רוחבי הסמן/הרווח — חלק מהחותמת (להקרנה עתידית מהמדדים)
+  note.markerW = m.markerW;
+  note.spaceW = m.spaceW;
   return note;
 }
 
@@ -20418,7 +20431,8 @@ function bgRgba(color, opacity) {
 const { markerFor } = require('../notes/markers');
 const { planDecorations } = require('../decoration/page-decorations');
 const { resolveShaarBox } = require('../decoration/shaar-boxes');
-const { columnDividerHeightPx } = require('../decoration/ornament-fit');
+const { columnDividerHeightPx } = require('../decoration/ornament-fit');const { folioGeometry } = require('../layout/furniture-geometry'); // **שלב 6:** גיאומטריית הגיליון — מקור יחיד עם הפרויקטור ל-PDF
+
 const { resolveAssetRef } = require('../decoration/asset-registry');
 const { ornamentInk } = require('../decoration/ornament-ink'); // **03.11:** imud: → data-URI
 const { MM_TO_PX } = require('../layout/page-templates');
@@ -20686,6 +20700,23 @@ function renderFolio(page, settings, doc) {
     folio.appendChild(badge);
   } else {
     folio.textContent = page.folioDisplay;
+  }
+  // **שלב 6 פרוסה 1 (§8 בהוראה — "אין לחשב מיקומם בנפרד ב-DOM וב-PDF"):**
+  // המיקום המפורש מגיע מאותו מקור יחיד של הפרויקטור ל-PDF
+  // (layout/furniture-geometry). ה-class נשאר אחראי לעור בלבד (מסגרת/צבע);
+  // הגיאומטריה — top/line-height מפורשים מהמודל, לא מהתנהגות CSS משוערת.
+  // המדידה בגופן הגיליון כשרשום — אותו אינסטנס שהפרויקטור בונה.
+  const pnFontGeo = settings['page-num-font'] || '';
+  const folioMeasure = pnFontGeo
+    ? new (require('../typography/measure-api').MeasureAPI)({ ...settings, 'body-font': pnFontGeo }, 'font-metrics')
+    : null;
+  if (folioMeasure) {
+    const geo = folioGeometry(page, settings, folioMeasure);
+    if (geo) {
+      folio.style.top = `${Math.round(geo.y * 100) / 100}px`;
+      folio.style.lineHeight = `${geo.lineHeightPx}px`;
+      folio.style.bottom = 'auto';
+    }
   }
   return folio;
 }
@@ -22141,6 +22172,75 @@ module.exports = {
 };
 
 };
+__modules["src/engine/layout/furniture-geometry.js"] = function (require, module, exports) {
+// src/engine/layout/furniture-geometry.js — גיאומטריית ריהוט עמוד ממקור יחיד (שלב 6 פרוסה 1)
+'use strict';
+
+/**
+ * **מעמד (הוראת שלב 6 §8):** "כותרות עליונות, תחתונות ומספרי עמוד יהיו Page
+ * Items בעלי placement model אחיד; **אין לחשב את מיקומם בנפרד ב-DOM וב-PDF**."
+ *
+ * עד כאן המקרן ל-PDF חישב את תיבת הגיליון והבסיס במתמטיקה מפורשת
+ * (FOLIO_BOTTOM_PX=25, half-leading, ascent) בעוד ה-DOM הסתמך על CSS חי
+ * (.folio{bottom:25px} וכו') שכויל להתאים בעבר (S69/S5.1) — שני מקורות
+ * של אותה גיאומטריה שכל אחד מהם יכול לסטות בשקט. מעתה שני המקרינים
+ * קוראים מכאן: המקרן מציב את המספרים כמות שהם; ה-DOM מציב אותם כסגנון
+ * מפורש (top/lineHeight) לצד ה-class הקיים שנשאר אחראי לעור (מסגרת/צבע).
+ */
+
+/** תחתית תיבת הגיליון מה-CSS החי (styles.css: .folio{bottom:25px}) — קבוע המקור. */
+const FOLIO_BOTTOM_PX = 25;
+/** ראש תיבת גיליון במצב top (styles.css: .folio--top{top:4px}). */
+const FOLIO_TOP_PX = 4;
+/** ראש תיבת גיליון בתוך הכותרת העליונה (styles.css: .folio--in-header{top:6px}). */
+const FOLIO_IN_HEADER_PX = 6;
+
+/**
+ * גיאומטריית הגיליון — מחושבת פעם אחת מאותם קלטים ששני המקרינים צורכים.
+ * @param {object} page — עמוד (index, folioDisplay, template)
+ * @param {object} settings
+ * @param {{measureTextWidth:(t:string,pt:number)=>number, ascentEm:()=>number, descentEm:()=>number}} folioMeasure
+ *   מדידת הגיליון (גופן הגיליון כשרשום — אותו מופע שהמקרן בונה)
+ * @returns {null|{y, baselineY, x, w, sizePt, text, lineHeightPx, position}}
+ */
+function folioGeometry(page, settings, folioMeasure) {
+  const pos = String((settings && settings['page-num-position']) || 'bottom-center');
+  if (pos === 'none' || !page || !page.folioDisplay) return null;
+  const tpl = page.template;
+  const text = String(page.folioDisplay);
+  const folioSz = Number(settings['page-num-size-pt']) > 0 ? Number(settings['page-num-size-pt']) : 10;
+  const fw = Math.max(1, Math.round(folioMeasure.measureTextWidth(text, folioSz)));
+  const folioPx = folioSz * (96 / 72);
+  // line-height: normal ≈ 1.2 (חסר הגדרה מפורשת ב-CSS לגיליון) — הנוסחה ההיסטורית
+  const folioLineH = Math.round(folioPx * 1.2);
+  const ascEm = folioMeasure.ascentEm(), descEm = folioMeasure.descentEm();
+  const halfLead = Math.max(0, (folioLineH - (ascEm + descEm) * folioPx) / 2);
+  const recto = (page.index % 2 === 0);
+  let fx = Math.round((tpl.width - fw) / 2);
+  let boxTop = tpl.height - FOLIO_BOTTOM_PX - folioLineH;
+  let baselineY = boxTop + halfLead + ascEm * folioPx;
+  if (pos === 'outer-left' || (pos === 'outer' && recto)) fx = 8;
+  else if (pos === 'outer-right' || (pos === 'outer' && !recto)) fx = Math.max(8, Math.round(tpl.width - fw - 8));
+  else if (pos === 'top') { boxTop = FOLIO_TOP_PX; baselineY = boxTop + halfLead + ascEm * folioPx; }
+  else if (pos === 'in-header') { boxTop = FOLIO_IN_HEADER_PX; baselineY = boxTop + halfLead + ascEm * folioPx; }
+  return {
+    y: boxTop, baselineY, x: fx, w: fw, sizePt: folioSz, text,
+    lineHeightPx: folioLineH, position: pos
+  };
+}
+
+/** ראש אזור הכותרת העליונה במרחב העמוד (מקור: המקרן ההיסטורי — contentBox.top − 18). */
+function headerGeometry(page) {
+  const tpl = page.template;
+  return { y: Math.max(0, tpl.contentBox.top - 18) };
+}
+
+module.exports = {
+  FOLIO_BOTTOM_PX, FOLIO_TOP_PX, FOLIO_IN_HEADER_PX,
+  folioGeometry, headerGeometry
+};
+
+};
 __modules["src/engine/decoration/ornament-ink.js"] = function (require, module, exports) {
 // src/engine/decoration/ornament-ink.js — הדיו של העיטורים: מקור יחיד (EXT-4)
 'use strict';
@@ -23309,6 +23409,7 @@ __modules["src/engine/output/geometry-projector.js"] = function (require, module
 
 const { scrubPUAText } = require('./dom-renderer');
 const { MeasureAPI } = require('../typography/measure-api');
+const { folioGeometry: folioGeoOf, headerGeometry: headerGeoOf } = require('../layout/furniture-geometry'); // **שלב 6:** גיאומטריית ריהוט — מקור יחיד ל-DOM ול-PDF
 // **S5.4 (P-5):** מקורות יחידים להקרנת ההערות — פקטורי רוחב הגופן מהתקציב
 // (אותם מספרים שקבעו את גובה ההערה) וסמן אחיד מ-notes/markers (כמו ה-DOM).
 const { NOTE_FONT_FACTORS } = require('../layout/footnote-budget');
@@ -23521,42 +23622,19 @@ function projectPage(page, settings, api) {
 
   // גיליון
   if (page.folioDisplay) {
-    // **D-81:** מיקום/רוחב מהמקור היחיד (הקרן, מדידה 10pt) — הכותב וה-ink-bbox צורכים אותו.
-    const ft = scrubPUAText(String(page.folioDisplay));
-    // **S73 (גופן/גודל/צבע גיליון מההגדרות — נתיב DP):** page-num-font ('' = גוף
-    // הטקסט — התנהגות קודמת), page-num-size-pt (ברירת מחדל 10) ו-page-num-color
-    // (ברירת מחדל שחורה) — כמו ה-DOM. המדידה בגופן הגיליון כשרשום.
-    const folioSz = Number(settings['page-num-size-pt']) > 0 ? Number(settings['page-num-size-pt']) : 10;
+    // **שלב 6 פרוסה 1 (§8 בהוראה):** גיאומטריית הגיליון — מקור יחיד
+    // (layout/furniture-geometry). ה-DOM קורא מאותו מקור (סגנון מפורש) —
+    // אין עוד שני חישובים מקביליים של אותו מיקום בין תצוגה לייצוא.
+    // **S73:** גופן/גודל/צבע מההגדרות — page-num-font ('' = גוף הטקסט).
     const folioFam = settings['page-num-font'] || '';
     const folioMeasure = (folioFam && familyFontKeyOf(folioFam, settings))
       ? new MeasureAPI({ ...settings, 'body-font': folioFam }, 'font-metrics') : measure;
-    const fw = Math.max(1, Math.round(folioMeasure.measureTextWidth(ft, folioSz)));
-    // **S5.1 (תיקון C5):** מיקום לפי page-num-position מההגדרות — בעבר מוקשה
-    // bottom-center וכל ערך אחר הוגדר בשקט. 'outer' מודע-זוגיות כמו המקור
-    // (recto=index זוגי ⇒ שמאל; verso ⇒ ימין) — כמו folio--outer ב-CSS.
-    // **S69 (R4-M3 — סגירת קירוב):** העוגן האנכי מה-CSS החי (.folio{bottom:25px})
-    // ולא קירוב contentBox.bottom+2 שסטה מה-DOM בכ~17px. הבסיס = תחתית
-    // תיבת הגיליון − half-leading − descent (line-height: normal ≈ 1.2 —
-    // חסר הגדרה מפורשת ב-CSS); אותה נוסחה משמרת גם את top:4px/6px.
-    const FOLIO_BOTTOM_PX = 25; // styles.css: .folio{bottom:25px}
-    const folioPx = folioSz * (96 / 72);
-    const folioLineH = Math.round(folioPx * 1.2);
-    const ascEm = folioMeasure.ascentEm(), descEm = folioMeasure.descentEm();
-    const halfLead = Math.max(0, (folioLineH - (ascEm + descEm) * folioPx) / 2);
-    const pos = String((settings && settings['page-num-position']) || 'bottom-center');
-    if (pos === 'none') { out.folio = null; }
-    else {
-      const recto = (page.index % 2 === 0);
-      let fx = Math.round((tpl.width - fw) / 2);
-      let boxTop = tpl.height - FOLIO_BOTTOM_PX - folioLineH; // ראש תיבת הגיליון (כמו ה-DOM)
-      let baselineY = boxTop + halfLead + ascEm * folioPx;
-      if (pos === 'outer-left' || (pos === 'outer' && recto)) fx = 8;
-      else if (pos === 'outer-right' || (pos === 'outer' && !recto)) fx = Math.max(8, Math.round(tpl.width - fw - 8));
-      else if (pos === 'top') { boxTop = 4; baselineY = boxTop + halfLead + ascEm * folioPx; } // styles.css: .folio--top{top:4px}
-      else if (pos === 'in-header') { boxTop = 6; baselineY = boxTop + halfLead + ascEm * folioPx; } // styles.css: .folio--in-header{top:6px}
+    out.folio = folioGeoOf(page, settings, folioMeasure);
+    if (out.folio) {
       const folioKey = (folioFam && familyFontKeyOf(folioFam, settings)) || null;
       const folioColor = colorOfSetting(settings['page-num-color']);
-      out.folio = { y: boxTop, baselineY, x: fx, w: fw, sizePt: folioSz, text: ft, ...(folioKey ? { fontKey: folioKey } : {}), ...(folioColor ? { color: folioColor } : {}) };
+      if (folioKey) out.folio.fontKey = folioKey;
+      if (folioColor) out.folio.color = folioColor;
     }
   }
 
@@ -23571,8 +23649,9 @@ function projectPage(page, settings, api) {
       // **S73:** גופן הסלוט מהמודל (s.font — headers-builder מצרף את המשפחה
       // מההגדרות) ⇒ fontKey לכותב ה-PDF (משפחה רשומה ⇒ תת-גופן ייעודי);
       // צבע — s.color מהמודל (ברירת מחדל שחורה). מדידה בגופן הסלוט כשרשום.
+      // **שלב 6:** ראש אזור הכותרת — מקור יחיד (furniture-geometry.headerGeometry).
       out.header = {
-        y: Math.max(0, tpl.contentBox.top - 18),
+        y: headerGeoOf(page).y,
         slots: slots.map(s => {
           const t = scrubPUAText(String(s.text || ''));
           const sKey = familyFontKeyOf(s.font, settings);
