@@ -3,9 +3,7 @@
 
 const { PAGE_TYPES, buildPageTemplate } = require('./page-templates');
 const { markerFor } = require('../notes/markers');
-
-/** פרופילי רוחב גופן לגוף ההערה (f-note-body-font). */
-const NOTE_FONT_FACTORS = { 'David HB': 1.06, 'David': 1.04, 'Narkisim': 1.10, 'Nachlieli': 0.96, 'Alef': 1.02, 'Rubin': 1.05 };
+const { stampNote, NOTE_KINDS, NOTE_FONT_FACTORS } = require('./notes-model'); // **פרוסה 2:** חותמת + SSOT פקטורים
 
 /**
  * בניית עמודי "הערות" / "…(המשך)" בסוף כל חלק:
@@ -81,13 +79,11 @@ function buildEndnotePages(endnotes, settings, measure, lineHeightPx, hooks = {}
     ? Math.max(...enTpl.columns.map(c => c.x + c.w)) - Math.min(...enTpl.columns.map(c => c.x))
     : (settings._endnoteColWidthPx || 300);
   // רוחב הטור לריווח: 2 טורים ⇒ רוחב טור התבנית; טור אחד ⇒ רוחב מלא.
+  // **פרוסה 2:** הפקטור אינו מחושב כאן עוד — הוא חלק מהקשר המדידה של החותמת
+  // (notes-model.measureContextFor; impl B ⇒ 1 — S70/R7-M4) ונצרך שם פעם אחת.
   const colW = cols === 2
     ? (settings._endnoteColWidthPx || enTpl.columns[0].w || 300)
     : fullW;
-  // **S70 (R7-M4):** פקטור הגופן — בורית אפקטיבית רק ב-impl A (טבלה);
-  // ב-impl B (font-metrics) המטריקות מדויקות והפקטור מולד.
-  const fontFactor = (measure && measure.impl === 'font-metrics')
-    ? 1 : (NOTE_FONT_FACTORS[settings['f-note-body-font']] || 1);
 
   /**
    * גובה כותרת העמוד (`.endnote-title`: h2 בגודל 1.2em עם שולי 8px) —
@@ -140,7 +136,13 @@ function buildEndnotePages(endnotes, settings, measure, lineHeightPx, hooks = {}
         }
       }
       usedPart.add(marker);
-      const h = estimateNoteHeight(n.text, settings, measure, lineHeightPx, colW, fontFactor);
+      // **שלב 6 פרוסה 2 (§9 — הערות סיום מהמדדים המאוחדים):** המדידה היחידה של
+      // ההערה בהקשר עמודי-ההערות — חותמת מלאה (שורות/רוחבי מילים/סמן בשורה 0/
+      // פיץ') דרך notes-model, ברוחב הטור בפועל. התקציב (usedY), ה-DOM וה-PDF
+      // יצרכו את אותה חותמת — בעבר היה כאן אומדן נפרד (estimateNoteHeight) שלא
+      // כלל את רוחב הסמן בשורה הראשונה בזמן ששני הרנדרים ציירו אותו.
+      stampNote(n, settings, measure, NOTE_KINDS.ENDNOTE, { widthPx: colW });
+      const h = n.heightPx;
       // אין מקום בטור הנוכחי (והוא אינו ריק) — התקדמות לטור הבא / לעמוד הבא.
       // טור "ריק" (usedY === titleBandPx) מקבל את ההערה תמיד — התקדמות מובטחת
       // גם להערה גבוהה מהקיבולת (נותרת לבדה, לא נגנזת).
@@ -195,21 +197,13 @@ function estimateTitleHeight(settings, lineHeightPx) {
   return lineHeightPx(size) + 16;
 }
 
-/** גובה הערה בעמודי ההערות — כולל פקטור גופן ורוחב טור אפקטיבי. */
+/** גובה הערה בעמודי ההערות — **תאימות לאחור** (פרוסה 2): חותמת notes-model
+ * בהקשר endnote ומחזיר את הגובה. הבונה עצמו כבר אינו מעריך — הוא מטביע וצורך. */
 function estimateNoteHeight(text, settings, measure, lineHeightPx, colW, fontFactor = 1) {
-  const size = settings['body-font-size-pt'] * 0.8;
-  const words = String(text || '').split(/\s+/).filter(Boolean);
-  // **S6.0 (R3-C3):** רווחים בין מילים נכללים באומדן — כמו wrapNoteTokens
-  // שמצייר את ההערה (בלי זה כל הערה גובלת-שבירה נמדדה שורה פחות וחפפה
-  // את עמודתה בטור/בעמוד — 21.7% מההערות בדגימת 230).
-  const spaceW = measure(' ', size) * fontFactor;
-  let lines = 1, w = 0;
-  for (const word of words) {
-    const ww = measure(word, size) * fontFactor;
-    const addW = (w > 0 ? spaceW : 0) + ww;
-    if (w + addW > colW && w > 0) { lines++; w = ww; } else w += addW;
-  }
-  return lines * lineHeightPx(size);
+  void lineHeightPx; void fontFactor; // נותרו בחתימה לתאימות צרכנים חיצוניים
+  const probe = { text };
+  stampNote(probe, settings, measure, NOTE_KINDS.ENDNOTE, { widthPx: colW });
+  return probe.heightPx;
 }
 
 module.exports = { buildEndnotePages, estimateNoteHeight, estimateTitleHeight, NOTE_FONT_FACTORS };

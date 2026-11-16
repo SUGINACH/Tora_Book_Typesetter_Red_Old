@@ -16,11 +16,8 @@
 const { scrubPUAText } = require('./dom-renderer');
 const { MeasureAPI } = require('../typography/measure-api');
 const { folioGeometry: folioGeoOf, headerGeometry: headerGeoOf } = require('../layout/furniture-geometry'); // **שלב 6:** גיאומטריית ריהוט — מקור יחיד ל-DOM ול-PDF
-// **S5.4 (P-5):** מקורות יחידים להקרנת ההערות — פקטורי רוחב הגופן מהתקציב
-// (אותם מספרים שקבעו את גובה ההערה) וסמן אחיד מ-notes/markers (כמו ה-DOM).
-const { NOTE_FONT_FACTORS } = require('../layout/footnote-budget');
+const NM = require('../layout/notes-model'); // **שלב 6 פרוסה 2 (§9):** חותמות ההערות — המקרינים צורכים ואינם מודדים
 const { markerFor } = require('../notes/markers');
-const { SIDE_NOTE_FONT_FACTORS } = require('../layout/side-notes');
 const { lineFontSizePt, hexColorToRgb } = require('./line-font'); // **03.11(ג):** מקור יחיד — נצרך גם ע"י dom-renderer (תצוגה חיה + ייצוא); מיוצא הלאה לצרכנים קיימים
 // **S73:** גופן השערים לפי מחלקת בלוק — מקור יחיד לשני הנתיבים (DOM+PDF)
 const { buildShaarBlocks, shaarFontOf } = require('./shaar-content');
@@ -314,62 +311,85 @@ function colWidthOf(tpl) {
 }
 
 // ============ S5.4 (P-5) — הקרנת הערות-שוליים / עמודי-הערות / הערות-צד / מפרידים ============
+// **שלב 6 פרוסה 2 (§9):** המקרינים צורכים את חותמת המדידה בלבד — שורות,
+// רוחבי מילים, סמן/המשך/מונה, רווח ופיץ' — הכול מה-notes-model. אין מדידת
+// מילים, אין שבירה עצמאית ואין נוסחת גובה נפרדת: תקציב = הצבה = הקרנה.
+// חותמת חסרה/פגומה ⇒ diagnostic מפורש (out.diagnostics) — לא מדידה חלופית שקטה.
 
 /** גודל גוף הערה — 0.8× הגוף (כמו .footnotes{font-size:.8em} ו-noteHeight בתקציב). */
 function fnNoteSizePt(settings) { return settings['body-font-size-pt'] * 0.8; }
 
-/**
- * שבירת אסימוני הערה לשורות ממוקמות מילה-במילה (RTL) — אותו חוזה של placeWords
- * של ה-legacy: הסמן/(המשך) בפינה הימנית של השורה הראשונה, יישור מלא לשורות
- * שאינן אחרונות (רווחים מעל הרווח הטבעי — כמו justify של CSS), בסיס פר-שורה
- * לפי מודל תיבת השורה (half-leading + ascent).
- * @param {Array} tokens — [{text, sizePt?, wFactor?}] (wFactor — פקטור רוחב הגופן)
+/** רישום diagnostic של חותמת חסרה/פגומה (§9.8) — מקור וסיבתיות, לא החלפה שקטה. */
+function pushStampDiagnostic(out, area, page, n) {
+  if (!out.diagnostics) out.diagnostics = [];
+  out.diagnostics.push({
+    kind: 'note-stamp-missing', area,
+    page: page && page.index != null ? page.index : null,
+    note: (n && (n.noteId || n.tokenId)) || null,
+    marker: n && n.marker != null ? String(n.marker) : null
+  });
+}
+
+/** הקרנת שורות ההערה **מהחותמת** — אותו חוזה מיקום שהיה ב-wrapNoteTokens
+ * (סמן/(המשך)/מונה בפינה הימנית של השורה הראשונה, יישור מלא לשורות שאינן
+ * אחרונות, בסיס פר-שורה לפי מודל תיבת השורה) — אך הרוחבים מהחותמת שנמדדה
+ * פעם אחת, ולא מדידה חוזרת של המקרין.
+ * @param {object} n — הערה עם חותמת (noteRows/noteWords/markerW/contMarkW/
+ *   counterMarkW/spaceW/lineH מ-notes-model.stampNote)
+ * @param {object} opts — { sizePt, fontKey, color, measure, counterMark?, padPx? }
  * @returns {{lines:Array, words:Array, lineCount:number, firstTop:number, firstBaseline:number, h:number}|null}
  */
-function wrapNoteTokens(tokens, x, w, yTop, pitch, sizePt, measure, fontKey, color) {
-  const live = tokens.filter(t => t.text && String(t.text).trim());
-  if (!live.length) return null;
-  const spaceW = measure.measureTextWidth(' ', sizePt, 0);
-  const toks = live.map(t => {
-    const pt = t.sizePt || sizePt;
-    return { text: String(t.text), sizePt: pt, w: measure.measureTextWidth(String(t.text), pt, 0) * (t.wFactor || 1) };
-  });
-  // שבירה חמדנית ברוחב הנתיב — אותה ספירת שורות כמו noteHeight בתקציב
-  const rows = [];
-  let cur = [], curW = 0;
-  for (const tok of toks) {
-    const add = cur.length ? spaceW + tok.w : tok.w;
-    if (cur.length && curW + add > w) { rows.push(cur); cur = [tok]; curW = tok.w; }
-    else { cur.push(tok); curW += add; }
+function projectStampedRows(n, x, w, yTop, opts) {
+  if (!NM.stampIsValid(n)) return null; // חותמה חסרה/פגומה — הקריאה מדווחת, לא מודדת
+  const rows = n.noteRows;
+  const words = n.noteWords;
+  const lineH = n.lineH;
+  const spaceW = Number(n.spaceW) || 0;
+  const sizePt = opts.sizePt;
+  const pad = opts.padPx || 0;
+  const gx = x + pad, gw = Math.max(4, w - 2 * pad); // תיבת מידע: הטקסט בתוך הריפוד
+  const glyph = (v) => Math.max(0, (Number(v) || 0) - spaceW); // חותמת נושאת גליף+רווח
+  const isCont = n.isContinuation === true || n.mode === 'split-rest';
+  const prefix = [];
+  if (isCont && Number(n.contMarkW) > 0) prefix.push({ text: NM.CONTINUATION_MARK, w: glyph(n.contMarkW) });
+  const mkTxt = noteMarkerOf(n, { 'footnote-marker-style': null });
+  if (mkTxt && Number(n.markerW) > 0) prefix.push({ text: scrubPUAText(mkTxt), w: glyph(n.markerW) });
+  if (!isCont && n.counterMark != null && String(n.counterMark) !== '' && Number(n.counterMarkW) > 0) {
+    prefix.push({ text: scrubPUAText(String(n.counterMark)), w: glyph(n.counterMarkW) });
   }
-  if (cur.length) rows.push(cur);
-  const ascent = measure.ascentEm(), descent = measure.descentEm();
+  const ascent = opts.measure.ascentEm(), descent = opts.measure.descentEm();
   const sizePx = sizePt * (96 / 72);
-  const half = Math.max(0, (pitch - (ascent + descent) * sizePx) / 2);
+  const half = Math.max(0, (lineH - (ascent + descent) * sizePx) / 2);
   const flat = [];
   const lineRecs = rows.map((row, li) => {
     const isLast = li === rows.length - 1;
-    const sumW = row.reduce((s, t) => s + t.w, 0);
-    const gaps = Math.max(0, row.length - 1);
+    const toks = [];
+    if (li === 0) for (const p of prefix) toks.push(p);
+    for (let i = row.wFrom; i < row.wTo; i++) {
+      toks.push({ text: scrubPUAText(String(words[i])), w: row.wordW[i - row.wFrom] });
+    }
+    const live = toks.filter(t => t.text && String(t.text).trim());
+    const sumW = live.reduce((s, t) => s + t.w, 0);
+    const gaps = Math.max(0, live.length - 1);
     let gapW = spaceW;
-    if (!isLast && gaps > 0 && sumW + gaps * spaceW < w) gapW = (w - sumW) / gaps;
-    const y = yTop + li * pitch;
+    if (!isLast && gaps > 0 && sumW + gaps * spaceW < gw) gapW = (gw - sumW) / gaps;
+    const y = yTop + pad + li * lineH;
     const baselineY = y + half + ascent * sizePx;
-    const words = [];
-    let cursor = x + w; // RTL — מימין לשמאל
-    for (const t of row) {
+    const wds = [];
+    let cursor = gx + gw; // RTL — מימין לשמאל
+    for (const t of live) {
       cursor -= t.w;
-      const wd = { text: t.text, x: cursor, w: t.w, sizePt: t.sizePt, baselineY, fontKey, ...(color ? { color } : {}) };
-      words.push(wd);
+      const wd = { text: t.text, x: cursor, w: t.w, sizePt, baselineY, fontKey: opts.fontKey, ...(opts.color ? { color: opts.color } : {}) };
+      wds.push(wd);
       flat.push(wd);
       cursor -= gapW;
     }
-    return { y, h: pitch, baselineY, words };
+    return { y, h: lineH, baselineY, words: wds };
   });
   return {
     lines: lineRecs, words: flat, lineCount: rows.length, firstTop: yTop,
     firstBaseline: lineRecs.length ? lineRecs[0].baselineY : yTop,
-    h: rows.length * pitch
+    h: rows.length * lineH
   };
 }
 
@@ -383,17 +403,15 @@ function noteMarkerOf(n, settings) {
 }
 
 /**
- * **S5.4 (P-5 — הערות מרוסקות):** הקרנת מרזב הערות-השוליים של עמוד DP — נתיב
- * אחד או שניים (footnote-columns), חלוקת הערות זהה לתקציב (LPT דטרמיניסטית
- * — גובה המרזב לעולם אינו חורג מהשמור), וחוט מפריד (fn-rule) מעל המרזב
- * כמו ב-DOM. הערות מוקרנות כמילים במדידה אמיתית — החוזה שה-pdf-writer כבר
- * מצייר (fn.words) — במקום טקסט שפוזר בקידום קבוע.
+ * **S5.4 (P-5 — הערות מרוסקות) + שלב 6 פרוסה 2 (§9 — מהחותמת):** הקרנת מרזב
+ * הערות-השוליים של עמוד DP — נתיב אחד או שניים (footnote-columns), חלוקת
+ * הערות זהה לתקציב (LPT דטרמיניסטית — גובה המרזב לעולם אינו חורג מהשמור),
+ * וחוט מפריד (fn-rule) מעל המרזב כמו ב-DOM. השורות, רוחבי המילים והפיץ'
+ * **מהחותמת** (מדידה אחת ב-CP2/בפיצול) — המקרין אינו מודד ואינו שובר שוב.
  */
 function projectFootnoteGutter(page, settings, measure, out) {
   const tpl = page.template;
   const fnSize = fnNoteSizePt(settings);
-  // **S70 (R7-M4):** פקטורי הגופן הם תיקון טבלת impl A; ב-impl B מדויקות המטריקות והפקטור מולד.
-  const factor = (measure && measure.impl === 'font-metrics') ? 1 : (NOTE_FONT_FACTORS[settings['f-note-body-font']] || 1);
   const fullX = colLeftOf(tpl), fullW = colWidthOf(tpl);
   let laneW = settings._fnColWidthPx || Math.round(fullW);
   if (!(laneW > 0) || laneW > fullW) laneW = Math.round(fullW);
@@ -424,17 +442,22 @@ function projectFootnoteGutter(page, settings, measure, out) {
     let y = gutterTop;
     for (const n of laneNotes) {
       const pitch = n.lineH || Math.round(fnSize * (96 / 72) * 1.25);
-      const cont = n.isContinuation === true || n.mode === 'split-rest';
       const marker = noteMarkerOf(n, settings);
-      const tokens = [];
-      if (cont) tokens.push({ text: '(המשך)' });
-      if (marker) tokens.push({ text: scrubPUAText(marker) });
-      for (const w of String(n.text || '').replace(/\uE000/g, ' ').split(/\s+/)) {
-        const t = scrubPUAText(w);
-        if (t) tokens.push({ text: t, wFactor: factor });
-      }
-      const rec = wrapNoteTokens(tokens, laneX[li], laneW, y, pitch, fnSize, measure, 'fnbody', colorOfSetting(settings['f-note-body-color']));
-      if (rec) {
+      const rec = projectStampedRows(n, laneX[li], laneW, y, {
+        sizePt: fnSize, fontKey: 'fnbody',
+        color: colorOfSetting(settings['f-note-body-color']), measure
+      });
+      if (!rec) {
+        // **§9.8:** חותמה חסרה/פגומה — diagnostic מפורש; הטקסט נשמר ברשומת
+        // ההערה (מלאי/חשבונאות) אך אין מדידה חלופית שקטה של מילים.
+        pushStampDiagnostic(out, 'footnote-gutter', page, n);
+        out.footnotes.push({
+          y, x: laneX[li], w: laneW,
+          marker: scrubPUAText(String(n.marker || '')),
+          text: scrubPUAText(String(n.text || '').replace(/\uE000/g, ' ')),
+          words: [], baselineY: y, h: n.heightPx || 0, stampMissing: true
+        });
+      } else {
         out.footnotes.push({
           y: rec.firstTop, x: laneX[li], w: laneW,
           marker: scrubPUAText(String(n.marker || '')),
@@ -443,7 +466,7 @@ function projectFootnoteGutter(page, settings, measure, out) {
         });
         inkTop = Math.min(inkTop, rec.firstTop);
       }
-      y += (n.heightPx || pitch); // התקדמות לפי התקציב — פריסת העמוד לעולם אינה נפרצת
+      y += (n.heightPx != null ? n.heightPx : pitch); // התקדמות לפי התקציב — פריסת העמוד לעולם אינה נפרצת
     }
   });
   // חוט המפריד מעל המרזב — כמו .fn-rule ב-renderFootnoteArea (לא במצב 'none')
@@ -454,21 +477,17 @@ function projectFootnoteGutter(page, settings, measure, out) {
 }
 
 /**
- * **S5.4 (P-5 — עמודי endnotes ריקים):** הקרנת עמוד הערות-הסיום — כותרת
- * (h2, 1.2× הגוף) ואז ההערות בטורי המודל (colIdx/heightPx מ-buildEndnotePages),
- * גוף ההערה ב-0.8× עם פקטור הגופן — אותם מספרים שקבעו את גובה ההערה.
+ * **S5.4 (P-5 — עמודי endnotes ריקים) + שלב 6 פרוסה 2 (§9):** הקרנת עמוד
+ * הערות-הסיום — כותרת (h2, 1.2× הגוף) ואז ההערות בטורי המודל (colIdx/heightPx
+ * מ-buildEndnotePages). השורות, רוחבי המילים, הסמן והפיץ' **מהחותמת** שנקבעה
+ * בבונה עצמו (המדידה היחידה של ההערה בהקשר עמודי-ההערות) — המקרין אינו
+ * מודד ואינו שובר שוב. חותמה חסרה ⇒ diagnostic מפורש (§9.8).
  * השורות נכנסות ל-out.lines ⇒ מצוירות ב-PDF, נכנסות למלאי הגליפים ולתיבת הדיו.
  */
 function projectEndnotePage(page, settings, measure, out) {
   const tpl = page.template;
   const bodyPt = settings['body-font-size-pt'];
   const notePt = bodyPt * 0.8;
-  // **S71.1 (R7-M4 שארית — בדיקה כפולה):** כמו המרזב והערות-הצד — הפקטור
-  // הוא תיקון טבלת impl A; ב-impl B (ייצוא PDF) הוא מנפח את רוחבי המילים
-  // בהקרנה ⇒ שבירה מוקדמת מזו שהמודל תיקצב (estimateNoteHeight ללא פקטור)
-  // ⇒ הערות-סיום חופפות ב-PDF המיוצא.
-  const factor = (measure && measure.impl === 'font-metrics')
-    ? 1 : (NOTE_FONT_FACTORS[settings['f-note-body-font']] || 1);
   if (page.heading) {
     const sizePt = bodyPt * 1.2;
     const bandH = (page.titleBandPx && page.titleBandPx > 16) ? page.titleBandPx - 16 : (measure.lineHeightPx ? measure.lineHeightPx(sizePt) : Math.round(sizePt * (96 / 72) * 1.34));
@@ -477,7 +496,7 @@ function projectEndnotePage(page, settings, measure, out) {
   const top = tpl.contentBox.top + (page.titleBandPx || 0);
   const cols = Math.max(1, (page.columns || []).length);
   // טור-אחד (endnote-columns=1): רשימה ברוחב תיבת התוכן המלא (כמו המנוע
-  // שמחשב את גובה ההערה ברוחב המלא) — התבנית עצמה דו-טורית תמיד.
+  // שמדד את ההערה ברוחב המלא) — התבנית עצמה דו-טורית תמיד.
   const singleColMode = (page.columns || []).length === 1;
   for (let ci = 0; ci < cols; ci++) {
     const colNotes = page.columns[ci] || [];
@@ -487,16 +506,14 @@ function projectEndnotePage(page, settings, measure, out) {
       : (tpl.columns[ci] || { x: colLeftOf(tpl), w: colWidthOf(tpl) / cols });
     let y = top;
     for (const n of colNotes) {
-      const pitch = measure.lineHeightPx ? measure.lineHeightPx(notePt) : Math.round(notePt * (96 / 72) * 1.34);
-      const marker = noteMarkerOf(n, settings);
-      const tokens = [];
-      if (marker) tokens.push({ text: scrubPUAText(marker) });
-      for (const w of String(n.text || '').replace(/\uE000/g, ' ').split(/\s+/)) {
-        const t = scrubPUAText(w);
-        if (t) tokens.push({ text: t, wFactor: factor });
-      }
-      const rec = wrapNoteTokens(tokens, col.x, col.w, y, pitch, notePt, measure, 'fnbody', colorOfSetting(settings['f-note-body-color']));
-      if (rec) {
+      const pitch = n.lineH || (measure.lineHeightPx ? measure.lineHeightPx(notePt) : Math.round(notePt * (96 / 72) * 1.34));
+      const rec = projectStampedRows(n, col.x, col.w, y, {
+        sizePt: notePt, fontKey: 'fnbody',
+        color: colorOfSetting(settings['f-note-body-color']), measure
+      });
+      if (!rec) {
+        pushStampDiagnostic(out, 'endnote-page', page, n); // §9.8 — לא מדידה חלופית שקטה
+      } else {
         rec.lines.forEach((line) => {
           out.lines.push({
             x: col.x, y: line.y, w: col.w, h: pitch,
@@ -512,32 +529,54 @@ function projectEndnotePage(page, settings, measure, out) {
 }
 
 /**
- * **S5.4 (P-5 — הערות-צד חסרות):** הקרנת הערות-הצד לפי ה-placement — אותו מיקום
- * מוחלט כמו ה-aside ב-DOM (x/yTop/colWidth), גוף 0.75× (כמו
- * .side-note{font-size:.75em}) עם פקטור s-note-body-font ⇒ ‏/F6 ב-PDF.
+ * **S5.4 (P-5 — הערות-צד חסרות) + שלב 6 פרוסה 2 (§§9-10):** הקרנת הערות-הצד
+ * לפי ה-placement — אותו מיקום מוחלט כמו ה-aside ב-DOM (x/yTop/colWidth),
+ * והשורות/רוחבי המילים/הפיץ' **מהחותמת** (מדידה אחת ביצירת הפריט ב-DP) —
+ * המקרין אינו מודד ואינו שובר שוב. תיבת מידע: רקע/מסגרת מהחוזה (styleSpec +
+ * boxChrome) והטקסט בתוך הריפוד — אותה גיאומטריה שהוקצתה (§11).
  */
 function projectSideNotes(page, settings, measure, out) {
-  const sizePt = settings['body-font-size-pt'] * 0.75;
-  const fontName = settings['s-note-body-font'];
-  // **S70 (R7-M4):** בם-בו הפקטור מולד (מטריקות אמת)
-  const factor = (measure && measure.impl === 'font-metrics')
-    ? 1 : (SIDE_NOTE_FONT_FACTORS[fontName] || (fontName && fontName !== settings['body-font'] ? 1.08 : 1));
   for (const sn of page.sideNotes) {
     if (sn.yTop == null) continue; // רק המוקמות בפועל (placeSideNotes)
-    const pitch = Math.round(sizePt * (96 / 72) * 1.15);
-    const tokens = [];
-    if (sn.counterMark) tokens.push({ text: scrubPUAText(String(sn.counterMark)) });
-    for (const w of String(sn.text || '').split(/\s+/)) {
-      const t = scrubPUAText(w);
-      if (t) tokens.push({ text: t, wFactor: factor });
+    // גודל הגוף מהחותמת (פריט עוגן מורחב יכול להצהיר גודל משלו — §11)
+    const sizePt = (sn.stampCtx && Number(sn.stampCtx.sizePt) > 0) ? sn.stampCtx.sizePt : settings['body-font-size-pt'] * 0.75;
+    const isBox = sn.itemKind === 'info-box';
+    const chrome = sn.boxChrome || { pad: 0, border: 0 };
+    const boxW = (sn.boxSpec && Number(sn.boxSpec.widthPx) > 0) ? sn.boxSpec.widthPx : sn.colWidth;
+    if (isBox) {
+      // רקע ומסגרת התיבה — מהחוזה בלבד, באותו ערוץ עיטורים של ה-PDF
+      const hPt = out.height * (72 / 96);
+      const PX_TO_PT = 72 / 96;
+      const r2 = (v) => Math.round(v * 100) / 100;
+      const yTopPt = hPt - (sn.yTop + sn.heightPx) * PX_TO_PT;
+      const ops = [];
+      const bg = sn.styleSpec && sn.styleSpec.background ? hexColorToRgb(sn.styleSpec.background) : null;
+      if (bg) {
+        ops.push(`${r2(bg[0])} ${r2(bg[1])} ${r2(bg[2])} rg ${r2(sn.x * PX_TO_PT)} ${r2(yTopPt)} ${r2(boxW * PX_TO_PT)} ${r2(sn.heightPx * PX_TO_PT)} re f`);
+      }
+      if (chrome.border > 0) {
+        ops.push(`0 0 0 RG ${r2(0.75)} w ${r2(sn.x * PX_TO_PT)} ${r2(yTopPt)} ${r2(boxW * PX_TO_PT)} ${r2(sn.heightPx * PX_TO_PT)} re S`);
+      }
+      if (ops.length) {
+        if (!out.decorations) out.decorations = [];
+        out.decorations.push({
+          x: sn.x, y: sn.yTop, w: boxW, h: sn.heightPx,
+          kind: 'info-box', slot: 'margin', kindStyle: null,
+          inkType: 'rule', inkUri: null, paint: null, pdfOps: ops
+        });
+      }
     }
-    const rec = wrapNoteTokens(tokens, sn.x, sn.colWidth, sn.yTop, pitch, sizePt, measure, 'margin', colorOfSetting(settings['s-note-body-color']));
-    if (!rec) continue;
+    const rec = projectStampedRows(sn, sn.x, boxW, sn.yTop, {
+      sizePt, fontKey: 'margin',
+      color: colorOfSetting(settings['s-note-body-color']), measure,
+      padPx: isBox ? chrome.pad + chrome.border : 0
+    });
+    if (!rec) { pushStampDiagnostic(out, 'side-note', page, sn); continue; } // §9.8
     rec.lines.forEach((line) => {
       out.lines.push({
-        x: sn.x, y: line.y, w: sn.colWidth, h: pitch,
+        x: sn.x, y: line.y, w: boxW, h: sn.lineH,
         words: line.words.map(wd => ({ text: wd.text, x: wd.x, w: wd.w, sizePt: wd.sizePt, fontKey: wd.fontKey })),
-        align: 'right', kind: 'side-note', level: sn.level != null ? sn.level : null,
+        align: 'right', kind: isBox ? 'info-box' : 'side-note', level: sn.level != null ? sn.level : null,
         isLast: true, sizePt, baselineY: null,
         tokenId: sn.anchorToken != null ? sn.anchorToken : (sn.ownToken != null ? sn.ownToken : null)
       });

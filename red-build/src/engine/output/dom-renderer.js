@@ -241,6 +241,38 @@ function renderFootnoteArea(page, settings, doc) {
     rule.className = `fn-rule fn-rule--${settings['footnote-separator-rule']}`;
     area.appendChild(rule);
   }
+  // **שלב 6 פרוסה 2 (§9 — הקרנה מהחותמת):** גוף ההערה מוקרן משורות החותמת
+  // (noteRows/noteWords/lineH מ-notes-model) — תיבת-שורה מפורשת לכל שורה:
+  // פיץ' אנכי מדויק מהמודל (בעבר line-height יחידת-יחס מה-CSS סטה ~0.4px/שורה
+  // מהתקציב ⇒ הערות נחתכו/חפפו בין שורות בתצוגה בעוד ה-PDF והתקציב הסכימו),
+  // והמילים של כל שורה — ממש כפי שנמדדו. הדפדפן משלים את הזרימה האופקית
+  // בתוך תיבת השורה (white-space:nowrap — אין שבירה מחדש של הדפדפן).
+  // חותמה חסרה ⇒ data-stamp-missing + נפילת טקסט חירום (התוכן לעולם לא אובד) —
+  // לא מדידה חלופית שקטה (§9.8).
+  const mkRows = (n) => {
+    const rows = [];
+    const isCont = n.isContinuation === true || n.mode === 'split-rest';
+    for (let li = 0; li < (n.noteRows || []).length; li++) {
+      const row = n.noteRows[li];
+      const div = doc.createElement('div');
+      div.className = 'fn-row';
+      div.style.whiteSpace = 'nowrap';
+      if (Number(n.lineH) > 0) {
+        div.style.lineHeight = `${n.lineH}px`;
+        div.style.height = `${n.lineH}px`;
+      }
+      const parts = [];
+      if (li === 0) {
+        if (isCont) parts.push('(המשך)');
+        if (n.marker != null && String(n.marker) !== '') parts.push(`${n.marker}\u200F`);
+      }
+      for (let i = row.wFrom; i < row.wTo; i++) parts.push(scrubPUAText(String(n.noteWords[i])));
+      div.textContent = parts.join(' ');
+      rows.push(div);
+    }
+    return rows;
+  };
+  const hasStamp = (n) => Array.isArray(n.noteRows) && n.noteRows.length > 0 && Array.isArray(n.noteWords) && Number(n.lineH) > 0;
   // סמן אחיד (notes/markers) + סימון המשך למקטעי פיצול (S7.1.3 long-note policy)
   const mkNote = (n) => {
     const marker = n.marker || markerFor(Number.isInteger(n.docIndex) ? n.docIndex : (n.markerNum || 1), settings['footnote-marker-style']);
@@ -249,13 +281,20 @@ function renderFootnoteArea(page, settings, doc) {
     el.className = 'footnote' + (cont ? ' fn--continuation' : '') + (n.customStyle ? ' footnote--custom' : '');
     if (n.customStyle) el.dataset.style = n.customStyle;
     el.dir = 'rtl';
-    el.textContent = `${cont ? '(המשך) ' : ''}${marker}\u200F ${scrubPUAText(n.text || n)}`;
+    if (hasStamp(n)) {
+      el.style.margin = '0'; // התקציב אינו כולל שוליים — תצוגה=ייצוא=תקציב
+      for (const r of mkRows(n)) el.appendChild(r);
+    } else {
+      el.dataset.stampMissing = '1'; // diagnostic גלוי — בלי מדידה חלופית שקטה
+      el.textContent = `${cont ? '(המשך) ' : ''}${marker}\u200F ${scrubPUAText(n.text || n)}`;
+    }
     return el;
   };
   // **S70 (fn-continuous ב-DP — סגירת שארית S5.4):** גרסת inline של ההערה —
   // לזרימה רציפה: הערה הבאה פותחת באותה שורה שבה הסתיימה קודמתה (רווח-
   // כפול בין הערות — כמו המורשת). המודל כבר תיקצב במצב זה בלי הצמדת
   // תקרה פר-הערה (D-34); התצוגה משלימה את החזות בלבד — הגיאומטריה לא זזה.
+  // **פרוסה 2:** פיץ' השורה גם כאן מהחותמת (px מפורש) — אותו פיץ' של ה-PDF.
   const mkNoteInline = (n) => {
     const marker = n.marker || markerFor(Number.isInteger(n.docIndex) ? n.docIndex : (n.markerNum || 1), settings['footnote-marker-style']);
     const el = doc.createElement('span');
@@ -270,6 +309,8 @@ function renderFootnoteArea(page, settings, doc) {
     const flow = doc.createElement('div');
     flow.className = 'footnotes-flow';
     flow.dir = 'rtl';
+    const firstStamped = notes.find(hasStamp);
+    if (firstStamped) flow.style.lineHeight = `${firstStamped.lineH}px`; // פיץ' מהחותמת — תצוגה=ייצוא
     notes.forEach((n, i) => {
       if (i > 0) flow.appendChild(doc.createTextNode('\u00A0 ')); // רווח-כפול בין הערות
       flow.appendChild(mkNoteInline(n));
@@ -1431,7 +1472,29 @@ function renderPage(page, settings, doc, header) {
           el.style.left = `${Math.round(col.x)}px`;
           el.style.top = `${Math.round(y)}px`;
           el.style.width = `${Math.round(col.w)}px`;
-          el.textContent = `${n.marker || ''}\u200F ${scrubPUAText(n.text || '')}`;
+          // **שלב 6 פרוסה 2 (§9):** שורות ההערה מהחותמת — פיץ' מדויק מהמודל
+          // (בדיוק כמו הפרויקטור ל-PDF וכמו התקציב שקבע buildEndnotePages).
+          const stamped = Array.isArray(n.noteRows) && n.noteRows.length > 0 && Array.isArray(n.noteWords) && Number(n.lineH) > 0;
+          if (stamped) {
+            el.style.margin = '0'; // התקציב אינו כולל שוליים — תצוגה=ייצוא=תקציב
+            el.dataset.rows = String(n.noteRows.length);
+            for (let li = 0; li < n.noteRows.length; li++) {
+              const row = n.noteRows[li];
+              const div = doc.createElement('div');
+              div.className = 'fn-row';
+              div.style.whiteSpace = 'nowrap';
+              div.style.lineHeight = `${n.lineH}px`;
+              div.style.height = `${n.lineH}px`;
+              const parts = [];
+              if (li === 0 && n.marker != null && String(n.marker) !== '') parts.push(`${n.marker}\u200F`);
+              for (let i = row.wFrom; i < row.wTo; i++) parts.push(scrubPUAText(String(n.noteWords[i])));
+              div.textContent = parts.join(' ');
+              el.appendChild(div);
+            }
+          } else {
+            el.dataset.stampMissing = '1'; // diagnostic גלוי (§9.8)
+            el.textContent = `${n.marker || ''}\u200F ${scrubPUAText(n.text || '')}`;
+          }
           list.appendChild(el);
           y += (n.heightPx || 0);
         }
@@ -1513,10 +1576,17 @@ function renderPage(page, settings, doc, header) {
   // **S8 (REQ-ORN-01..04):** עיטורים — ציור מה־rectים בלבד (F-09 מקור יחיד)
   for (const el of renderDecorations(page, doc)) root.appendChild(el);
 
-  // הערות צד: מיקום מוחלט לפי ה‑placement (S7.1.2) — anchor לפסקה המארחת
+  // הערות צד / תיבות מידע: מיקום מוחלט לפי ה‑placement (S7.1.2) — anchor לפסקה המארחת.
+  // **שלב 6 פרוסה 2 (§§9-10):** הגוף מוקרן משורות החותמת — תיבת-שורה מפורשת
+  // לכל שורה (line-height/height = lineH מהמודל; nowrap — הדפדפן אינו שובר
+  // מחדש). בעבר ה-aside עטף טקסט חופשי עם line-height:1.15 יחסי מה-CSS —
+  // סטייה של עד ~0.4px לשורה מהתקציב שצברה על שורות רבות ⇒ חפיפות
+  // SIDE_NOTE_OVERLAP בפועל בעמוד 107 (האודיט החי). תיבת מידע: ריפוד/מסגרת/
+  // רקע מהחוזה (styleSpec+boxChrome) — אותה גיאומטריה שהוקצתה (§11).
   for (const sn of page.sideNotes || []) {
+    const isBox = sn.itemKind === 'info-box';
     const el = doc.createElement('aside');
-    el.className = 'side-note' + (sn.isCustomStyle ? ' side-note--custom' : '');
+    el.className = 'side-note' + (sn.isCustomStyle ? ' side-note--custom' : '') + (isBox ? ' info-box' : '');
     if (sn.isCustomStyle) el.dataset.style = sn.isCustomStyle;
     el.dataset.anchor = sn.anchorToken || '';
     el.dir = 'rtl';
@@ -1525,8 +1595,35 @@ function renderPage(page, settings, doc, header) {
       el.style.left = `${Math.round(sn.x)}px`;
       el.style.right = 'auto';
     }
-    if (sn.colWidth) el.style.width = `${sn.colWidth}px`;
-    el.textContent = (sn.counterMark ? `${sn.counterMark} ` : '') + scrubPUAText(sn.text);
+    const boxW = (sn.boxSpec && Number(sn.boxSpec.widthPx) > 0) ? sn.boxSpec.widthPx : sn.colWidth;
+    if (boxW) el.style.width = `${Math.round(boxW)}px`;
+    if (isBox) {
+      const chrome = sn.boxChrome || { pad: 0, border: 0 };
+      if (chrome.pad) el.style.padding = `${chrome.pad}px`;
+      if (chrome.border) el.style.border = '1px solid #000';
+      if (sn.styleSpec && sn.styleSpec.background) el.style.backgroundColor = sn.styleSpec.background;
+      if (sn.styleSpec && sn.styleSpec.fontSizePt) el.style.fontSize = `${Math.round(sn.styleSpec.fontSizePt * (96 / 72) * 100) / 100}px`;
+    }
+    const stamped = Array.isArray(sn.noteRows) && sn.noteRows.length > 0 && Array.isArray(sn.noteWords) && Number(sn.lineH) > 0;
+    if (stamped) {
+      el.dataset.rows = String(sn.noteRows.length);
+      for (let li = 0; li < sn.noteRows.length; li++) {
+        const row = sn.noteRows[li];
+        const div = doc.createElement('div');
+        div.className = 'sn-row';
+        div.style.whiteSpace = 'nowrap';
+        div.style.lineHeight = `${sn.lineH}px`;
+        div.style.height = `${sn.lineH}px`;
+        const parts = [];
+        if (li === 0 && !isBox && sn.counterMark != null && String(sn.counterMark) !== '') parts.push(String(sn.counterMark));
+        for (let i = row.wFrom; i < row.wTo; i++) parts.push(scrubPUAText(String(sn.noteWords[i])));
+        div.textContent = parts.join(' ');
+        el.appendChild(div);
+      }
+    } else {
+      el.dataset.stampMissing = '1'; // diagnostic גלוי — בלי מדידה חלופית שקטה (§9.8)
+      el.textContent = (sn.counterMark ? `${sn.counterMark} ` : '') + scrubPUAText(sn.text);
+    }
     root.appendChild(el);
   }
   return root;

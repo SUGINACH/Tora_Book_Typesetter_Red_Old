@@ -200,14 +200,38 @@ registerPageItem('footnote-gutter', {
 registerPageItem('side-note', {
   participation: PAGE_ITEM_PARTICIPATION.ANCHOR,
   slot: 'margin',
-  schema: { text: 'string', anchorToken: 'string', ownToken: 'string' },
+  schema: { text: 'string', anchorToken: 'string', ownToken: 'string', noteRows: 'Row[]', noteWords: 'string[]', lineH: 'number' },
   validate: (sn) => Boolean(sn && sn.text && sn.anchorToken),
-  measurement: 'estimateSideNoteHeight — **ממתין לאיחוד שלב 6 פרוסה 2 (מדידה ברוחב השוליים במקור אחד עם ההקרנה)**',
-  placement: 'side-notes.placeSideNotes — מפל-דחיפה עוגן-לשוליים; מקצה אנכי משותף לכל הערות השול',
-  diagnostics: ['side-note-overflow', 'no-room'],
-  authority: 'layout/side-notes',
-  projectDOM: 'dom-renderer (aside מוחלט לפי placement)',
-  projectPDF: 'geometry-projector.projectSideNotes'
+  measurement: 'notes-model.stampNote (side-note ctx) — **מדידה אחת ביצירת הפריט ב-DP (פרוסה 2, §10)**: רוחב השוליים בפועל, רוחבי מילים/סמן/רווח, פיץ׳ 1.15',
+  placement: 'side-notes.placeSideNotes — **המקצה האנכי המשותף** (פרוסה 2, §8): כל פריטי העוגן של העמוד בחישוב אחד; cascade + מרווח + מיכל + trace',
+  diagnostics: ['side-note-overflow', 'no-room', 'note-stamp-missing'],
+  authority: 'layout/side-notes + layout/notes-model',
+  projectDOM: 'dom-renderer (aside — שורות מהחותמת, line-height מפורש)',
+  projectPDF: 'geometry-projector.projectStampedRows (projectSideNotes)'
+});
+
+// **שלב 6 פרוסה 2 (§11 — הוכחת הרחבה אמיתית):** פריט מותאם חדש שאינו מ-11 הסוגים
+// שנרשמו בפרוסה 1. תיבת מידע בשוליים — עוגן לפסקה מארחת, רוחב/ריפוד/מסגרת
+// מוגדרים בסגנון, מדידה קנונית ברוחב הפנימי, וגובה התיבה כולה בחותמת —
+// מה שההקצאה מקבלת הוא מה שמוקרן. רוכב על מסלול העוגן הקיים (אין מנוע
+// מקבילי ואין ענף if/else פר-שכבה מעבר לשסע ההרחבה של החוזה).
+registerPageItem('info-box', {
+  participation: PAGE_ITEM_PARTICIPATION.ANCHOR,
+  slot: 'margin',
+  schema: {
+    text: 'string', anchorToken: 'string', ownToken: 'string',
+    itemKind: '"info-box"', boxSpec: '{ widthPx, padPx, borderPx }',
+    boxChrome: '{ pad, border }', styleSpec: '{ background?, border?, fontSizePt? }',
+    noteRows: 'Row[]', noteWords: 'string[]', lineH: 'number', heightPx: 'number (כולל מסגרת+ריפוד)'
+  },
+  validate: (b) => Boolean(b && b.text && b.anchorToken && b.itemKind === 'info-box'
+    && b.boxSpec && Number(b.boxSpec.widthPx) > 0),
+  measurement: 'notes-model.stampNote (info-box ctx — רוחב פנימי = מוגדר פחות מסגרת/ריפוד); הגובה כולל chrome',
+  placement: 'side-notes.placeSideNotes — אותו מקצה אנכי משותף (עוגן, cascade, מיכל)',
+  diagnostics: ['side-note-overflow', 'no-room', 'note-stamp-missing'],
+  authority: 'extensions/style-schema (parse/validate) + layout/notes-model + layout/side-notes',
+  projectDOM: 'dom-renderer (aside.info-box — רקע/מסגרת/ריפוד מהחוזה + שורות מהחותמת)',
+  projectPDF: 'geometry-projector.projectSideNotes (תיבה כעיטור + projectStampedRows)'
 });
 
 registerPageItem('ornament', {
@@ -253,15 +277,75 @@ registerPageItem('toc-page', {
 registerPageItem('endnote-page', {
   participation: PAGE_ITEM_PARTICIPATION.BLOCK,
   slot: 'notes-page',
-  schema: { notes: 'Note[]', part: 'number' },
+  schema: { notes: 'Note[]', part: 'number', noteRows: 'Row[] (לכל הערה)' },
   validate: (p) => Boolean(p && p.type === 'endnotes' && Array.isArray(p.notes)),
-  measurement: 'endnote-pages — **מדדי הערה מאוחדים: ממתין לפרוסה 2 (צריכת stampNoteMetrics)**',
+  measurement: 'notes-model.stampNote (endnote ctx — רוחב הטור בפועל) — **פרוסה 2: המדידה היחידה, בבונה עצמו**; התקציב/DOM/PDF צורכים אותה',
   placement: 'endnote-pages.buildEndnotePages',
-  diagnostics: ['fn-page-overflow'],
-  authority: 'layout/endnote-pages',
-  projectDOM: 'dom-renderer (עמודי הערות מהמודל)',
-  projectPDF: 'geometry-projector.projectEndnotePage'
+  diagnostics: ['fn-page-overflow', 'note-stamp-missing'],
+  authority: 'layout/endnote-pages + layout/notes-model',
+  projectDOM: 'dom-renderer (עמודי הערות — שורות מהחותמת)',
+  projectPDF: 'geometry-projector.projectEndnotePage (projectStampedRows)'
 });
+
+/**
+ * **הרישום כסמכות תפעולית (פרוסה 2, §5 בהוראה):** מעבר אימות שרץ ב-pipeline
+ * אחרי ההצבות — כל פריט שהוצב בפועל על עמוד נבדק מול ה-descriptor של סוגו
+ * (schema/validate), והערות/פריטי עוגן גם מול תקינות החותמת (stampIsValid).
+ * הרישום אינו עוד הצהרה בלבד: החוזה נצרך ואינו מקבילי לבונים — הבונים
+ * מייצרים, החוזה מאמת.
+ * @param {Array} pages — עמודי התוצר (אחרי הצבה/ריהוט)
+ * @param {object} [opts] — { validateStamps: bool = true }
+ * @returns {{checked: Object<string,number>, violations: Array<{kind,page,code,note?}>}}
+ */
+function validatePageItems(pages, opts = {}) {
+  const validateStamps = opts.validateStamps !== false;
+  const { stampIsValid } = require('./notes-model');
+  const checked = Object.create(null);
+  const violations = [];
+  const check = (kind, instance, page, extra) => {
+    const d = pageItemDescriptorOf(kind);
+    if (!d) { violations.push({ kind, page, code: 'kind-not-registered' }); return; }
+    checked[kind] = (checked[kind] || 0) + 1;
+    if (!d.validate(instance)) violations.push({ kind, page, code: 'contract-invalid', ...(extra || {}) });
+  };
+  for (const page of pages || []) {
+    const pIdx = page && page.index != null ? page.index : null;
+    if (page.folioDisplay) check('folio', page, pIdx);
+    if (page.header) check('running-header', page.header, pIdx);
+    if (page.footnotes && page.footnotes.length) {
+      check('footnote-gutter', page, pIdx);
+      if (validateStamps) {
+        for (const n of page.footnotes) {
+          if (!stampIsValid(n)) violations.push({ kind: 'footnote-gutter', page: pIdx, code: 'note-stamp-invalid', note: n.noteId || n.tokenId || null });
+        }
+      }
+    }
+    for (const sn of (page.sideNotes || [])) {
+      if (sn.yTop == null) continue; // רק המוקמות בפועל
+      const kind = sn.itemKind === 'info-box' ? 'info-box' : 'side-note';
+      check(kind, sn, pIdx, { note: sn.noteId || sn.ownToken || null });
+      if (validateStamps && !stampIsValid(sn)) {
+        violations.push({ kind, page: pIdx, code: 'note-stamp-invalid', note: sn.noteId || sn.ownToken || null });
+      }
+    }
+    for (const d of (page.decorations || [])) check('ornament', d, pIdx);
+    if (page.spanning && page.spanning.lines && page.spanning.lines.length) check('spanning-band', page.spanning, pIdx);
+    if (page.type === 'endnotes') {
+      check('endnote-page', page, pIdx);
+      if (validateStamps) {
+        for (const n of (page.notes || [])) {
+          if (!stampIsValid(n)) violations.push({ kind: 'endnote-page', page: pIdx, code: 'note-stamp-invalid', note: n.noteId || n.tokenId || null });
+        }
+      }
+    }
+    if (page.type === 'toc-general' || page.type === 'toc-detail') check('toc-page', page, pIdx);
+    if (page.type === 'shaar-main' || page.type === 'shaar-sub' || page.type === 'shaar-back' || page.type === 'custom') check('shaar-gate', page, pIdx);
+    // גוף זורם: קלות ובגבולות — הטור הראשון עם שורות מייצג את ה-block של העמוד
+    const firstCol = (page.columns || []).find(c => c && c.length);
+    if (firstCol) check('body-block', { lines: firstCol, tokenId: firstCol[0].tokenId != null ? firstCol[0].tokenId : (firstCol[0].meta && firstCol[0].meta.tokenId) }, pIdx);
+  }
+  return { checked, violations };
+}
 
 module.exports = {
   PAGE_ITEM_PARTICIPATION,
@@ -269,5 +353,6 @@ module.exports = {
   registerPageItem,
   pageItemDescriptorOf,
   registeredPageItems,
-  reservePageItemSpace
+  reservePageItemSpace,
+  validatePageItems
 };

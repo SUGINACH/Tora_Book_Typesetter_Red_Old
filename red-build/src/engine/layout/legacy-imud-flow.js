@@ -3395,6 +3395,39 @@ function legacyTypeset(rawText, settings, env) {
     p.folioDisplay = shows && p.pageNumber ? toGematria(p.pageNumber) : '';
   }
   final.forEach((p, i) => { p.index = i; });
+  // **שלב 6 פרוסה 2 (§8 בהוראה — שורש SIDE_NOTE_OVERLAP בעמ' 107):** עד כאן
+  // עגנה כל הערת-צד של נתיב המורשת לפסקתה בלבד — בלי הקצאה אנכית משותפת;
+  // שתי הערות שנפלו לאותו אזור באותו צד חפפו זו את זו (נצפה בעמ' 107:
+  // הערה חד-שורתית "בית" נכנסה בין שורות הערה ארוכה של הפסקה הקודמת). כאן
+  // מופעל על נתיב המורשת אותו עקרון המקצה של ה-DP (side-notes.placeSideNotes):
+  // מפל-דחיפה לכל צד בנפרד, בסדר המסמך, עם מרווח מינימלי, עד גבול מרזב
+  // ההערות — טהור (תזוזת מיקום בלבד, בלי מדידה חוזרת), דטרמיניסטי, ועם
+  // חותמת שינוי מפורשת על כל הערה שהוזזה (cascadeShiftPx — trace במודל).
+  {
+    const MN_GAP_PX = 2;                       // מרווח מינימלי בין הערות צד שונות (מעל סובלנות האודיט)
+    const MN_BOTTOM_LIMIT = GEO.FN_AREA_TOP - 2; // השוליים נגמרים במרזב ההערות
+    for (const p of final) {
+      if (!p.marginNotes || !p.marginNotes.length) continue;
+      for (const side of ['right', 'left']) {
+        let lastBottom = -1;
+        for (const mn of p.marginNotes) {
+          if (mn.side !== side) continue;
+          const h = (mn.lines || []).length * GEO.MN_PITCH;
+          if (lastBottom >= 0 && mn.anchorY < lastBottom + MN_GAP_PX) {
+            let target = lastBottom + MN_GAP_PX;
+            if (target + h > MN_BOTTOM_LIMIT) target = Math.max(mn.anchorY, MN_BOTTOM_LIMIT - h); // בלי לחדור למרזב; לא מעל העוגן המקורי
+            const shift = target - mn.anchorY;
+            if (shift > 0) {
+              mn.anchorY += shift;
+              for (const l of (mn.lines || [])) l.y += shift;
+              mn.cascadeShiftPx = shift; // trace: כמה ובגלל מה (מפל הערות-הצד)
+            }
+          }
+          lastBottom = Math.max(lastBottom, mn.anchorY + h);
+        }
+      }
+    }
+  }
   // **S6.2:** התאמת מספרי העמודים ברשומות אי-האיזון לסדר הסופי —
   // עמודי ה-TOC והריקים (EXT-15) מוכנסים אחרי הזרימה, ורשומות שנוצרו
   // בזמן ההצבה מתייחסות לאינדקס הזמני של מערך הזרימה. ההתאמה לפי זהות

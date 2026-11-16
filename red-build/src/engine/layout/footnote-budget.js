@@ -2,6 +2,7 @@
 'use strict';
 
 const { assignFootnoteLanes } = require('./footnote-lanes'); // **שלב 5 (חילוץ שורש מ-PR #16):** מקור-אמת יחיד לחלוקת נתיבי המרזב
+const NM = require('./notes-model'); // **שלב 6 פרוסה 2:** ליבת השבירה/החותמת האחידה + SSOT פקטורי הגופן
 
 /**
  * **מקור־הסמכות היחיד לתקציב המרזב** (תיקון P1-1): הן probe הן reservation
@@ -13,8 +14,8 @@ const { assignFootnoteLanes } = require('./footnote-lanes'); // **שלב 5 (חי
  * **בזמן ההצבה** — המודול הזה אינו מחזיק עוד מימוש תאום מת (באג S6).
  */
 
-/** פרופילי רוחב גופן לגוף ההערה (f-note-body-font). */
-const NOTE_FONT_FACTORS = { 'David HB': 1.06, 'David': 1.04, 'Narkisim': 1.10, 'Nachlieli': 0.96, 'Alef': 1.02, 'Rubin': 1.05 };
+/** פרופילי רוחב גופן לגוף ההערה (f-note-body-font) — **SSOT ב-notes-model (פרוסה 2)**; מיוצא הלאה לצרכנים הקיימים. */
+const NOTE_FONT_FACTORS = NM.NOTE_FONT_FACTORS;
 
 /** **שלב 5 (חילוץ שורש מ-PR #16 — מדדי ההערה, מקור יחיד):** גודל גוף-ההערה
  * (0.8× הגוף — כמו .footnotes{font-size:.8em} ב-DOM) ופיץ' השורה שלו (1.25 —
@@ -59,41 +60,14 @@ function noteRowsOf(note, settings, measure) {
   if (note && note.text != null) {
     _rowsStats.calls.push(`${note.tokenId || ''}#${note.noteIndex != null ? note.noteIndex : ''}#${String(note.text).slice(0, 24)}`);
   }
-  const { sizePt, lineHeightPx: lh } = noteMetrics(settings); // **שלב 5:** מקור יחיד לגודל/פיץ'
-  const words = String(note.text).replace(/\uE000/g, ' ').split(/\s+/).filter(Boolean);
-  const colW = laneWidth(settings);
-  // **S70 (R7-M4):** הפקטור מתקן את טבלת impl A בלבד; ב-impl B
-  // (font-metrics) המטריקות מדויקות והכפלה הייתה מנפחת את תקציב ההערות.
-  const factor = (measure && measure.impl === 'font-metrics')
-    ? 1 : (NOTE_FONT_FACTORS[settings['f-note-body-font']] || 1);
-  // **S6.0 (R3-C3 — אומדן ללא רווחים):** ההקרנה (wrapNoteTokens) שוברת
-  // את ההערה **עם** רוחבי רווח בין מילים — האומדן כאן סיכם מילים בלבד
-  // ⇒ כל הערה הגובלת בשבירת-שורה נמדדה שורה אחת פחות (19–21px) וההערה
-  // שאחריה חפפה אותה (32% מ-230 הערות בדגימה). נכללים גם הסמן ורווח
-  // ההמשך בשורה הראשונה — כמו שמצויר בפועל.
-  const spaceW = measure(' ', sizePt) * factor;
-  const mkTxt = note && note.marker != null ? String(note.marker) : '';
-  const mkW = mkTxt ? measure(mkTxt, sizePt) * factor + spaceW : 0;
-  // **שלב 6 פרוסה 1 (הכנת "תקציב=הצבה=הקרנה"):** כל שורה נושאת גם את רוחבי
-  // המילים שלה (wordW) — כך שהקרנת המרזב (פרוסה 2) תוכל למקם מילים מהחותמת
-  // עצמה מבלי למדוד שוב; הרוחב בפינה הימנית של השורה הראשונה כולל את הסמן.
-  const rows = [];
-  let rowW = Math.min(mkW, colW); // סמן בפינת השורה הראשונה
-  let wFrom = 0;
-  let rowWordW = [];
-  for (let i = 0; i < words.length; i++) {
-    const ww = measure(words[i], sizePt) * factor;
-    const addW = (rowW > 0 ? spaceW : 0) + ww;
-    if (rowW + addW > colW && rowW > 0) {
-      rows.push({ wFrom, wTo: i, widthPx: Math.round(rowW * 1000) / 1000, wordW: rowWordW });
-      wFrom = i; rowW = ww; rowWordW = [Math.round(ww * 1000) / 1000];
-    } else {
-      rowW += addW;
-      rowWordW.push(Math.round(ww * 1000) / 1000);
-    }
-  }
-  rows.push({ wFrom, wTo: words.length, widthPx: Math.round(rowW * 1000) / 1000, wordW: rowWordW });
-  return { rows, heightPx: rows.length * lh, linesCount: rows.length, lineH: lh, words, markerW: mkW ? Math.round(mkW * 1000) / 1000 : 0, spaceW: Math.round(spaceW * 1000) / 1000 };
+  // **שלב 6 פרוסה 2:** השבירה עצמה עברה לליבה היחידה (notes-model.wrapNoteWords)
+  // — אותה אריתמטיקה בדיוק; כאן נשארת התצפית הלא-משנה (legacy view, בלי מוטציה).
+  const probe = { text: note.text, marker: note.marker, isContinuation: note.isContinuation, mode: note.mode };
+  NM.stampNote(probe, settings, measure, NM.NOTE_KINDS.FOOTNOTE);
+  return {
+    rows: probe.noteRows, heightPx: probe.heightPx, linesCount: probe.linesCount,
+    lineH: probe.lineH, words: probe.noteWords, markerW: probe.markerW, spaceW: probe.spaceW
+  };
 }
 
 /**
@@ -105,15 +79,15 @@ function noteRowsOf(note, settings, measure) {
  * @returns {object} ה-note עצמו (שרשרת)
  */
 function stampNoteMetrics(note, settings, measure) {
-  const m = noteRowsOf(note, settings, measure);
-  note.heightPx = m.heightPx;
-  note.lineH = m.lineH;
-  note.linesCount = m.linesCount;
-  note.noteRows = m.rows;
-  note.noteWords = m.words;
-  // **שלב 6 פרוסה 1:** רוחבי הסמן/הרווח — חלק מהחותמת (להקרנה עתידית מהמדדים)
-  note.markerW = m.markerW;
-  note.spaceW = m.spaceW;
+  if (note && note.text != null) {
+    _rowsStats.calls.push(`${note.tokenId || ''}#${note.noteIndex != null ? note.noteIndex : ''}#${String(note.text).slice(0, 24)}`);
+  }
+  // **שלב 6 פרוסה 2:** ההטבעה עוברת דרך ה-SSOT של מודל ההערות (notes-model)
+  // — אותן שורות/מדדים בדיוק, ובנוסף: רוחב סימון-ההמשך בתקציב שורה 0 (§9 —
+  // בעבר ההמשכים נמדדו בלי '(המשך)' בזמן שהרנדרים ציירו אותו ⇒ תקציב<הקרנה),
+  // markerGlyphW להקרנה, ו-stampCtx לזיהוי הקשר המדידה. מי שכבר חתום בהקשר
+  // המרזב אינה נמדד שוב.
+  NM.stampNote(note, settings, measure, NM.NOTE_KINDS.FOOTNOTE);
   return note;
 }
 
