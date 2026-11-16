@@ -72,6 +72,7 @@ const { resolveAssetRef } = require('../decoration/asset-registry');
 const { ornamentInk } = require('../decoration/ornament-ink'); // **03.11:** imud: → data-URI
 const { MM_TO_PX } = require('../layout/page-templates');
 const { isCssFrame } = require('../decoration/folio'); // **S9:** מסגרות גיליון CSS (circle/square)
+const { assignFootnoteLanes } = require('../layout/footnote-lanes'); // **שלב 5:** מקור-אמת יחיד לחלוקת נתיבי המרזב
 const { lineFontSizePt, lineFontFamily, ptToPx } = require('./line-font');
 const { buildShaarBlocks, shaarFontOf } = require('./shaar-content'); // **03.11(ד)** // **03.11(ג):** מקור יחיד לגופן/גודל שורה
 
@@ -274,12 +275,12 @@ function renderFootnoteArea(page, settings, doc) {
     && tpl && Array.isArray(tpl.columns) && tpl.columns.length >= 2
     && page.fnReservedHeightPx > 0;
   if (twoLanes) {
-    const order = page.footnotes.map((n, i) => ({ i, h: n.heightPx || 0 })).sort((a, b) => b.h - a.h || a.i - b.i);
-    const totals = [0, 0];
-    const laneOf = new Map();
-    for (const s of order) { const li = totals[0] <= totals[1] ? 0 : 1; totals[li] += s.h; laneOf.set(s.i, li); }
+    // **שלב 5 (חילוץ שורש מ-#16):** חלוקת הנתיבים — מקור יחיד (footnote-lanes).
+    // שקול מתמטית ל-LPT המקומי הקודם — נעול בבדיקת שקילות; תקציב/הקרנה/תצוגה
+    // משתפים את אותה חלוקה ממקור אחד.
+    const { lanes: idxLanes } = assignFootnoteLanes(page.footnotes);
     const lanes = [[], []];
-    page.footnotes.forEach((n, i) => lanes[laneOf.get(i)].push(n));
+    for (const li of [0, 1]) lanes[li] = idxLanes[li].map(i => page.footnotes[i]);
     const row = doc.createElement('div');
     row.style.display = 'flex';
     row.style.flexDirection = 'row-reverse'; // RTL — הנתיב הראשון מימין

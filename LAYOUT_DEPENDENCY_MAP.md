@@ -106,7 +106,13 @@ core/          : pipeline ← כל השכבות (כולל shaar-pages/ornament-p
   (overflow-joined-unit עם noteRef); פריט רחב ⇒ overflow-item-own-line.
 - **wrap/DP:** lineOf אטומי עם cost/parent + אימות שוט-אחרי מול lineWidthAt
   (אינדקס שורה סופי) — wrap-width-mismatch מדווח מפורש.
-- **שלב 5 (Planner):** יקבל LineModel שלם (fragments, זהויות, מדידות, glue,
-  baseline, semantic, floatAreas) — בלי מדידה מחדש ובלי שינוי גאומטריית שורה.
-- **הגבול:** נתיב המוצר עדיין שובר דרך words[]→breakLines (מקטע ב׳ יחליף);
-  breakLines נשאר למורשת עד שלב 9; אין breaker/MeasureAPI שניים.
+- **שלב 5 פרוסה 1 (מומש):** המתכנן צורך את LineModel דרך ה-accessor הטהור
+  של הגשר (words/heightPx נגזרים); כל החלטות הקיבולת עוברות constraint-matrix
+  (SSOT: חלונות פיצול, תפרים, מחסניות yPx אמיתיות — FX-5); ליווי מכוון-הצבה
+  (FX-1); הערות בהכרעת המיקום (FX-3); מונוטוניות טורים מבנית (flowCol);
+  נתיבי מרזב/מדדי הערה מ-SSOT (footnote-lanes/noteMetrics). נמדד: המתכנן אינו
+  מודד מחדש ואינו משנה מדדי שורה (s5-unified-planner — טוהר).
+- **שלב 5 פרוסה 2 (פתוח):** FX-6 (פער בלוקים נצבר), חוזה ColumnModel/PagePlan,
+  capacity מורחב.
+- **הגבול:** נתיב המוצר עבר למנוע הקנוני (שלב 4 מקטע ב׳ — הגשר
+  pipeline-bridge); breakLines נשאר למורשת עד שלב 9; אין breaker/MeasureAPI שניים.
