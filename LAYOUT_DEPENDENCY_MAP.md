@@ -3,6 +3,8 @@
 > **עדכון שלב 4 (מקטף א׳, 16.11.2026):** נוצר מודול שורות קנוני `src/engine/line/` — breaks.js (מקור אמת להזדמנויות שבירה; משם מייבאים הקיצורים ותבנית הסמן גם לנתיב המורשת) → line-items.js (חוזה LineItem מה-DocumentModel + מדידה דרך measureItem) → kp-linebreak.breakItemSequence (הרחבת ה-KP הקיים) → line-model.js (LineModel + הקצאת glue חד-פעמית). תלות חדשה: measureDocumentModel → buildLineSequences → layoutSequence (תשתית; הצריכה בנתיב המוצר — מקטע ב׳).
 > נבנית אוטומטית מה־require-ים בפועל (סקריפט: `node tools/deps.js` או לפי הטבלה). מצב: 03.11.2026 (אחרי S9 — 66 קשתות).
 >
+> **עדכון שלב 6 פרוסה 2 (17.11.2026):** מודול חדש **`layout/notes-model.js`** — חוזה ההערות המאוחד (זהות/עוגן/מדיניות) + ליבת השבירה (wrapNoteWords) + הקשרי המדידה לכל סוג הערה (measureContextFor — SSOT לגודל/פיץ'/רוחב/פקטור) + הטבעת החותמה (stampNote — מדידה אחת לכל הערה בהקשר-יעד) + פקטורי הגופן (הועברו אליו מ-3 העתקים). תלויות חדשות: footnote-budget → notes-model (הטבעה דרך ה-SSOT); side-notes → notes-model (מקצה מהחותמות); endnote-pages → notes-model (חותמות במקום אומדן); dp-planner → notes-model (רשומות חוזה + חותמות פריטי-עוגן); geometry-projector → notes-model (הקרנה מהחותמות — wrapNoteTokens הוסר); page-items → notes-model (stampIsValid באימות החוזים). אין מעגלים: notes-model אינו תלוי באף מודול פריסה.
+>
 > **עדכון שלב 1 (15.11.2026, אודיט על main `95e829d`; ענף audit/stage1-engine-state-20261115):** המפה לעיל מתארת את שכבות ה־DP. מיפוי המסלולים האמיתי המלא (כולל המנוע המקביל) מתועד ב־`audits/ENGINE_RUNTIME_PATHS.md`. עובדות מפתח שאינן נראות במפת ה־require-ים: (1) **מנוע המורשת `legacy-imud-flow.js` (3,720 שורות) הוא ברירת המחדל החיה** — הוא מופעל מ־`core/pipeline.js:123-126` כש־`_layout-profile==='imud' && _imudRaw` (מוצב באתחול המוצר דרך `legacy-settings-map.importImudSettings`), ומכיל בתוכו טוקניזציה+שבירה גרידי+תכנון+הערות+TOC+שערים+גיליון עצמאיים — כלומר ענף `layout/legacy-imud-flow.js` הוא למעשה **מנוע שני שלם** ולא מודול בצינור; (2) `geometry-projector`/`legacy-projector` נצרכים רק מ־`output/export-api.js:135-137` (PDF בלבד — לא בנתיב התצוגה החיה); (3) ייצוא PDF מריץ `typeset` שני עם font-metrics (`export-api.js:117-122`); (4) רגיסטר החישובים הכפולים (15 עובדות, D1-D15) — `audits/ENGINE_DUPLICATION_REGISTER.md`. החוזה האחיד העתידי: `spec/03_UNIFIED_ITEM_CONTRACT.md`.
 
 ## שכבות (מלמטה למעלה)
@@ -12,10 +14,12 @@ typography/    : measure-api, kp-linebreak, protectors, dropword  (אין תלו
 notes/markers  : אין תלויות (מקור סמכות לסמנים)
 layout/ordering: אין תלויות (moveLineForward — D-49)
 layout/        : page-templates ← column-flow
-                 footnote-budget (מקור יחיד לתקציב) ← dp-planner
+                 notes-model (חוזה ההערות המאוחד — על; אין תלויות כלפי מטה)
+                 footnote-budget → notes-model (הטבעה דרך ה-SSOT) ← dp-planner
                  dp-planner ← protections-matrix ← balancing ← ordering
                  dp-planner ← retreat-loop, candidate-generator, headings-escort
-                 dp-planner ← side-notes, endnote-pages (מזומנים מהצינור)
+                 dp-planner ← side-notes → notes-model, endnote-pages → notes-model (מזומנים מהצינור)
+                 dp-planner → notes-model (רשומות חוזה + חותמות פריטי-עוגן)
                  balancing ← ordering; balancing ← dp-planner? לא — דרך ordering בלבד (מניעת מעגל)
 decoration/    : ornament-fit (מקור יחיד למידות והזמנות — F-08/F-09)
                  dividers ← ornament-fit; ornament-plan ← ornament-fit + dividers

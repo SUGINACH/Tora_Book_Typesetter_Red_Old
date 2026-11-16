@@ -13,7 +13,10 @@
  * דטרמיניזם: אין Date/Math.random; סדר האימות קבוע; הודעות קבועות.
  */
 
-const LAYOUT_MODES = ['regular', 'full-width', 'side-note', 'footnote', 'endnote', 'new-location'];
+const LAYOUT_MODES = ['regular', 'full-width', 'side-note', 'footnote', 'endnote', 'new-location', 'info-box'];
+// **שלב 6 פרוסה 2 (§11):** info-box — פריט עוגן מורחב (תיבת מידע בשוליים עם
+// רוחב/ריפוד/מסגרת מוגדרים). נכנס דרך אותו שסע הרחבה של החוזה (ה-enum) —
+// בלי מנוע מקבילי: הפריט רוכב על מסלול העוגן הקיים ונרשם ב-registry.
 const ORNAMENTS = ['pyramid', 'lance', 'shoshanta', 'scroll'];
 const COUNTER_FORMATS = ['hebrew-geresh', 'decimal'];
 const COUNTER_RESETS = ['part', 'page', 'never'];
@@ -225,6 +228,23 @@ function parseCustomStyles(json) {
       errors.push({ code: 'bad-layout-mode', path: `${where}.layoutMode`, styleId: id, message: `בסגנון «${id}»: מצב פריסה חייב להיות אחד מ ${LAYOUT_MODES.join(', ')} (קיבל ${JSON.stringify(d.layoutMode)}).` });
       ok = false;
     }
+    // **שלב 6 פרוסה 2 (§11):** מפרט תיבת המידע — רוחב (em, 3..8), ריפוד (em, 0..1.5).
+    // הסמכות על המסגרת/הרקע היא שדות ה-style הקיימים (border/background).
+    let infoBox = null;
+    if (layoutMode === 'info-box') {
+      const ib = isPlainObject(d.infoBox) ? d.infoBox : {};
+      const widthEm = ib.widthEm != null ? Number(ib.widthEm) : 4.5; // ברירת מחדל — רוחב בינוני בשוליים
+      const padEm = ib.padEm != null ? Number(ib.padEm) : 0.3;
+      if (!(widthEm >= 3 && widthEm <= 8)) {
+        errors.push({ code: 'info-box-bad-width', path: `${where}.infoBox.widthEm`, styleId: id, message: `בסגנון «${id}» (info-box): רוחב התיבה חייב להיות בין 3 ל־8em (קיבל ${JSON.stringify(ib.widthEm)}).` });
+        ok = false;
+      }
+      if (!(padEm >= 0 && padEm <= 1.5)) {
+        errors.push({ code: 'info-box-bad-pad', path: `${where}.infoBox.padEm`, styleId: id, message: `בסגנון «${id}» (info-box): הריפוד חייב להיות בין 0 ל־1.5em (קיבל ${JSON.stringify(ib.padEm)}).` });
+        ok = false;
+      }
+      infoBox = { widthEm, padEm };
+    }
     if ('style' in d) ok = validateStyle(d.style, id, errors, `${where}.style`) && ok;
     ok = validateCounter(d.counter, id, errors, `${where}.counter`) && ok;
     ok = validateOrnaments(d.linkedOrnaments, id, errors, `${where}.linkedOrnaments`) && ok;
@@ -240,7 +260,8 @@ function parseCustomStyles(json) {
         format: d.counter.format || 'decimal',
         reset: d.counter.reset || 'never'
       } : null,
-      linkedOrnaments: d.linkedOrnaments || null
+      linkedOrnaments: d.linkedOrnaments || null,
+      ...(infoBox ? { infoBox } : {})
     });
   });
   return { ok: errors.length === 0, styles, errors };

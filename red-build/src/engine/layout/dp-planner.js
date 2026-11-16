@@ -13,6 +13,7 @@ const { MARK_TAG } = require('../notes/markers'); // markerFragmentOf אינו �
 const { moveLineForward } = require('./ordering');
 const { optimalSplit } = require('./balancing'); // **EXT-8:** חלוקה גלובלית אופטימלית
 const { getFootnotesReservedHeight, noteHeight, noteMetrics, stampNoteMetrics } = require('./footnote-budget'); // **שלב 5:** noteMetrics — מקור יחיד למדדי ההערה (חילוץ מ-#16); **פרוסה 2:** stampNoteMetrics — מדידה אחת ביצירה
+const { stampNote, makeNoteRecord, NOTE_KINDS } = require('./notes-model'); // **שלב 6 פרוסה 2:** מודל ההערות המאוחד — זהות/עוגן + חותמת הערות-צד ביצירה
 const CM = require('./constraint-matrix'); // **שלב 5:** מטריצת האילוצים המאוחדת (חילוץ שורש מ-#16/#17)
 const { createTraceRecorder } = require('./decision-trace'); // **פרוסה 2 (§2.7):** תיעוד החלטות דטרמיניסטי קומפקטי
 
@@ -329,6 +330,10 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
           // עם מדידה חוזרת. החלק הראשון נכנס למרזב הזה; השאר נכנס לתור
           // pendingBarNotes עם סימון המשך (isContinuation) — טקסט חדש שמוטבע
           // פעם אחת בלבד (מדידתו הראשונה והאחרונה).
+          // **שלב 6 פרוסה 2 (§7 — זהות וטווחים):** המקור וההמשך שומרים קישור
+          // מפורש — continuationOf (noteId) + wordRange (טווח מילים במקור):
+          // מילה לא נעלמת, לא מוכפלת ולא נסדרת מחדש; ההמשך נמדד כטקסט חדש
+          // (חותמת משלו, כולל רוחב '(המשך)' בתקציב שורה 0 — §9).
           const fnLH = n.lineH || noteMetrics(settings).lineHeightPx;
           const rows = n.noteRows || [];
           const linesFit = Math.max(1, Math.floor(barMax / fnLH));
@@ -346,15 +351,30 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
           }
           const firstText = wordsArr.slice(0, cutIdx).join(' ');
           const restText = wordsArr.slice(cutIdx).join(' ');
+          const srcNoteId = n.noteId || makeNoteRecord(n, { kind: NOTE_KINDS.FOOTNOTE, numberingScope: settings['footnote-reset-policy'], splitPolicy: 'split' }).noteId;
           cur.footnotes.push({
             ...n, text: firstText, heightPx: cutRow * fnLH, lineH: fnLH, linesCount: cutRow,
             noteRows: rows.slice(0, cutRow), noteWords: wordsArr.slice(0, cutIdx),
-            mode: 'split-first', linesShown: cutRow
+            mode: 'split-first', linesShown: cutRow,
+            wordRange: { from: n.wordRange ? n.wordRange.from : 0, to: (n.wordRange ? n.wordRange.from : 0) + cutIdx }
           });
-          pendingBarNotes.push(stampNoteMetrics(
-            { ...n, text: restText, isContinuation: true, continuationOf: n.tokenId, mode: 'split-rest' },
-            settings, measureFn
-          ));
+          // ההמשך נולד כרשומת חוזה מלאה (makeNoteRecord — זהות+עוגן+מדיניות,
+          // עם fragmentIndex ל-noteId) — לא כשק חלקי של המקור.
+          const frag = makeNoteRecord(
+            { text: restText, marker: n.marker, tokenId: n.tokenId, noteIndex: n.noteIndex, part: n.part },
+            {
+              kind: NOTE_KINDS.FOOTNOTE,
+              numberingScope: settings['footnote-reset-policy'],
+              splitPolicy: 'split', continuationPolicy: 'split',
+              continuationOf: srcNoteId,
+              fragmentIndex: (n.fragmentSeq != null ? n.fragmentSeq : 0) + 1,
+              wordRange: { from: (n.wordRange ? n.wordRange.from : 0) + cutIdx, to: (n.wordRange ? n.wordRange.from : 0) + wordsArr.length }
+            }
+          );
+          frag.isContinuation = true;
+          frag.mode = 'split-rest';
+          frag.fragmentSeq = (n.fragmentSeq != null ? n.fragmentSeq : 0) + 1;
+          pendingBarNotes.push(stampNoteMetrics(frag, settings, measureFn));
           snap.clean = false; // נוצר המשך חדש — אין שחזור בטוח
           eventLog.emit('notes-budget', 'fn-split', { token: n.tokenId, marker: n.marker, barMax, firstWords: cutIdx, firstRows: cutRow }, cur.index);
           trace.emit(cur.index, 'note-split', { token: n.tokenId, marker: n.marker, firstRows: cutRow, restRows: n.linesCount - cutRow });
@@ -452,6 +472,38 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
   }
 
 
+  // **שלב 6 פרוסה 2 (§§7/10):** יצירת פריט עוגן בשוליים (הערת-צד / תיבת
+  // מידע) — רשומת מודל-ההערות המאוחד (זהות+עוגן+מדיניות) שמוטבעת בחותמת
+  // מדידה **ביצירתה** (מדידה אחת): מכאן ההקצאה האנכית, ה-DOM וה-PDF קוראים
+  // את אותה חותמת ואינם מודדים עוד. תיבת המידע נמדדת ברוחב הפנימי שלה
+  // (רוחב-מוגדר פחות מסגרת/ריפוד) וגובה התיבה כולה נכנס לחותמת — התקציב
+  // וההקצאה מקבלים את התיבה השלמה (אין הזמנה נסתרת בזמן ההצבה).
+  function pushAnchoredMarginItem(rec) {
+    const isBox = rec.itemKind === 'info-box';
+    const kind = isBox ? NOTE_KINDS.INFO_BOX : NOTE_KINDS.SIDE_NOTE;
+    const chrome = isBox && rec.boxSpec
+      ? { pad: rec.boxSpec.padPx || 0, border: rec.boxSpec.borderPx || 0 }
+      : { pad: 0, border: 0 };
+    const outerW = (isBox && rec.boxSpec && Number(rec.boxSpec.widthPx) > 0) ? rec.boxSpec.widthPx : null;
+    const record = makeNoteRecord({ ...rec, tokenId: rec.ownToken || rec.tokenId }, {
+      kind,
+      anchorId: rec.anchorToken,
+      numberingScope: isBox ? 'style' : 'document',
+      continuationPolicy: 'anchor-cascade',
+      ...(isBox ? { splitPolicy: 'atomic' } : {})
+    });
+    stampNote(record, settings, measureFn, kind, {
+      ...(outerW != null ? { widthPx: Math.max(12, outerW - 2 * (chrome.pad + chrome.border)) } : {}),
+      ...(isBox && rec.boxSpec && Number(rec.boxSpec.sizePt) > 0 ? { sizePt: Number(rec.boxSpec.sizePt) } : {})
+    });
+    if (isBox) {
+      record.boxChrome = chrome;
+      record.heightPx = Math.round((record.heightPx + 2 * (chrome.pad + chrome.border)) * 1000) / 1000; // התיבה כולה — תקציב=הצבה=הקרנה
+    }
+    cur.sideNotes.push(record);
+    return record;
+  }
+
   for (let bi = 0; bi < blocks.length; bi++) {
     const blk = blocks[bi];
     const next = blocks[bi + 1];
@@ -492,10 +544,10 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
       // S7.1.2: הערת צד נצמדת לפסקה שהיא מבארת — הבלוק הבא (host) הוא העוגן החזותי;
       // ההצבה מחפשת את שורת ה‑host וממקמת את ההערה בראשה (לא ראש עמוד עיוור).
       const host = blocks.slice(bi + 1).find(b => b.kind === 'paragraph');
-      cur.sideNotes.push({
+      pushAnchoredMarginItem({
         text: blk.lines.map(l => l.words.join(' ')).join(' ').trim(),
         anchorToken: host ? host.tokenId : blk.tokenId,
-        ownToken: blk.tokenId, isHeading: true, level: blk.level
+        ownToken: blk.tokenId, isHeading: true, level: blk.level, itemKind: 'side-note'
       });
       eventLog.emit('page-plan', 'heading-side-note', { token: blk.tokenId }, cur.index);
       continue;
@@ -509,19 +561,23 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
         flushPage(); cur = newPage(PAGE_TYPES.REGULAR);
         eventLog.emit('page-plan', 'custom-style-new-location', { style: cs.id, token: blk.tokenId }, cur.index);
       }
-      if (cs.layoutMode === 'side-note' && blk.asSideNote) {
-        // הפסקה הופכת הערת צד מעוגנת לפסקה הבאה שאחריה (המארחת) — דפוס H7
+      if ((cs.layoutMode === 'side-note' && blk.asSideNote) || (cs.layoutMode === 'info-box' && blk.asInfoBox)) {
+        // הפסקה הופכת פריט עוגן בשוליים מעוגן לפסקה הבאה שאחריה (המארחת) — דפוס H7;
+        // תיבת מידע (info-box) רוכבת על אותו מנגנון עוגן — דרך החוזה וה-registry (§11).
         // **FX-3:** הערות פנימיות של פסקת צד מחויבות כאן — הענף continue
         // מדלג על ההצבה הרגילה (התנהגות קודמת נשמרת).
         if ((blk.notes || []).length) reserveNotes(blk);
-        const host = blocks.slice(bi + 1).find(b => b.kind === 'paragraph' && !(b.customStyle && b.customStyle.layoutMode === 'side-note'));
-        cur.sideNotes.push({
+        const host = blocks.slice(bi + 1).find(b => b.kind === 'paragraph' && !(b.customStyle && (b.customStyle.layoutMode === 'side-note' || b.customStyle.layoutMode === 'info-box')));
+        pushAnchoredMarginItem({
           text: blk.lines.map(l => (l.words || []).join(' ')).join(' ').trim(),
           anchorToken: host ? host.tokenId : blk.tokenId,
           ownToken: blk.tokenId, isCustomStyle: cs.id,
-          counterMark: cs.counterMark || null
+          counterMark: cs.counterMark || null,
+          itemKind: blk.asInfoBox ? 'info-box' : 'side-note',
+          styleSpec: cs.styleSpec || null,
+          boxSpec: blk.infoBoxSpec || null
         });
-        eventLog.emit('page-plan', 'custom-style-side-note', { style: cs.id, token: blk.tokenId }, cur.index);
+        eventLog.emit('page-plan', blk.asInfoBox ? 'custom-style-info-box' : 'custom-style-side-note', { style: cs.id, token: blk.tokenId }, cur.index);
         continue;
       }
       if (cs.layoutMode === 'full-width' && blk.fullWidth) {
@@ -672,7 +728,7 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
     if (hasNotes) reserveAtMarker(blk, mIdx > 0 ? blk.lines[mIdx] : null);
     pushLines(blk.lines.slice(mIdx), { tokenId: blk.tokenId, docPart: blk.part, ...(mIdx > 0 ? {} : { firstOfBlock: true }) }, { startCol: escortLockCol });
 
-    if (blk.sideNoteText) cur.sideNotes.push({ text: blk.sideNoteText, anchorToken: blk.tokenId });
+    if (blk.sideNoteText) pushAnchoredMarginItem({ text: blk.sideNoteText, anchorToken: blk.tokenId, ownToken: blk.tokenId, itemKind: 'side-note' });
   }
 
   // **S6.0 (R3-C1 — אובדן תוכן בזנב):** פס חוצה-טורים (H3–H6) או הערת-צד

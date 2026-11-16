@@ -508,36 +508,56 @@ describe('S71.1 (בדיקה כפולה — R7-M4 שאריות) — נטרול ה
     assertEq(hB, lh * 2, `impl B: ללא פקטור ⇒ 2 שורות (קיבלנו ${hB / lh})`);
   });
 
-  it('R7-M4-3 (geometry-projector/projectEndnotePage): שבירת הערות-סיום ב-impl B ללא פקטור', () => {
+  it('R7-M4-3 (geometry-projector/projectEndnotePage + notes-model): שבירת הערות-סיון **מהחותמת** — תקציב=הקרנה בשני ה-impl', () => {
     const { projectDocument } = require('../../src/engine/output/geometry-projector');
-    // תבנית חד-טורית ברוחב 150px (colWidthOf), סמן '1' (10px, בלי wFactor),
-    // 4 מילים × 7 תווים (70px; ×1.04 ⇒ 72.8px), רווח 10px (לא מוכפל):
-    // impl A — [סמן+מ1]=92.8, +82.8=175.6>150 ⇒ שורה; כל מילה בשורה משלה ⇒ 4 שורות.
-    // impl B — [סמן+מ1]=90, +80=170>150 ⇒ שורה; [מ2+מ3]=150≤150 ⇒ שורה; [מ4] ⇒ 3 שורות.
+    const { stampNote, NOTE_KINDS } = require('../../src/engine/layout/notes-model');
+    // **שלב 6 פרוסה 2 (§9):** המקרין כבר אינו מודד/שובר — הוא מקרין את שורות
+    // החותמת. כוונת הבדיקה המקורית (R7-M4: הפקטור מנוטרל ב-impl B) נשמרת
+    // ומחמירה: החותמה נבנית פעם אחת בכל impl (שם מוחל/מנוטרל הפקטור), וההקרנה
+    // חייבת להציג **בדיוק את שורות החותמת** — אפס שבירה עצמאית של המקרין.
+    // תבנית חד-טורית ברוחב 150px, סמן '1' (10px), 4 מילים × 7 תווים (70px):
+    // impl A (פקטור David 1.04) — רוחבי מילה 72.8px ⇒ 4 שורות;
+    // impl B (font-metrics, בלי פקטור) — 70px ⇒ 3 שורות.
     const S = { ...getDefaultSettings(), 'f-note-body-font': 'David' };
     const tpl = {
       width: 200, height: 400,
       contentBox: { top: 20, bottom: 380, left: 25, right: 175 },
       columns: [{ x: 25, w: 150 }],
     };
-    const mkPage = () => ({
-      type: 'endnotes', template: JSON.parse(JSON.stringify(tpl)),
-      heading: null, titleBandPx: 0,
-      columns: [[{ marker: '1', text: 'aaaaaaa bbbbbbb ccccccc ddddddd', heightPx: 48, tokenId: 'n-s711' }]],
-      footnotes: [], sideNotes: [], decorations: [],
-    });
     const mkApi = (impl) => ({
       impl,
       measureTextWidth: (t) => t.length * 10,
       ascentEm: () => 0.8, descentEm: () => 0.2,
       lineHeightPx: (pt) => Math.round(pt * (96 / 72) * 1.34),
     });
-    const noteLineCount = (impl) => {
-      const proj = projectDocument({ pages: [mkPage()], layoutHash: 's711' }, S, mkApi(impl));
+    // פונקציית מדידה עם סימון impl — כמו measureWithImpl של ה-pipeline
+    const mkMeasure = (impl) => { const f = (t) => t.length * 10; if (impl) f.impl = impl; return f; };
+    const mkPage = (impl) => {
+      const note = { marker: '1', text: 'aaaaaaa bbbbbbb ccccccc ddddddd', heightPx: 48, tokenId: 'n-s711' };
+      stampNote(note, S, mkMeasure(impl), NOTE_KINDS.ENDNOTE, { widthPx: 150 });
+      note.heightPx = note.linesCount * 20; // כמו הבונה — הגובה מהשורות
+      return {
+        type: 'endnotes', template: JSON.parse(JSON.stringify(tpl)),
+        heading: null, titleBandPx: 0,
+        columns: [[note]],
+        footnotes: [], sideNotes: [], decorations: [],
+      };
+    };
+    const lineCountOf = (impl) => {
+      const proj = projectDocument({ pages: [mkPage(impl)], layoutHash: 's711' }, S, mkApi(impl));
       return proj.pages[0].lines.filter((l) => l.kind === 'endnote-note').length;
     };
-    assertEq(noteLineCount(undefined), 4, 'impl A: פקטור 1.04 ⇒ 4 שורות מוקרנות');
-    assertEq(noteLineCount('font-metrics'), 3, 'impl B: ללא פקטור ⇒ 3 שורות מוקרנות (כמו התקציב)');
+    const a = lineCountOf(undefined);
+    const b = lineCountOf('font-metrics');
+    // החותמה עצמה — אותו הבדל שהיה במדידה הישירה (R7-M4-2): הפקטור פועל ב-impl A בלבד
+    const probeA = stampNote({ marker: '1', text: 'aaaaaaa bbbbbbb ccccccc ddddddd' }, S, mkMeasure(undefined), NOTE_KINDS.ENDNOTE, { widthPx: 150 });
+    const probeB = stampNote({ marker: '1', text: 'aaaaaaa bbbbbbb ccccccc ddddddd' }, S, mkMeasure('font-metrics'), NOTE_KINDS.ENDNOTE, { widthPx: 150 });
+    assertEq(probeA.linesCount, 4, 'impl A: פקטור 1.04 ⇒ 4 שורות בחותמת');
+    assertEq(probeB.linesCount, 3, 'impl B: ללא פקטור ⇒ 3 שורות בחותמת');
+    // ההקרנה מהחותמת — אותן שורות בדיוק (אפס שבירה עצמאית של המקרין)
+    assertEq(a, probeA.linesCount, 'impl A: ההקרנה = שורות החותמת');
+    assertEq(b, probeB.linesCount, 'impl B: ההקרנה = שורות החותמת');
+    assert(a !== b, 'ההבדל בין ה-impl-ים נשמר בחותמה (המדידה, לא ההקרנה)');
   });
   it('R7-M4-4 (export-api/S71.1 — עקביות מדידת ההקרנה): אפס חריגות טור בייצוא בגופן אמיתי', () => {
     const { exportPdf } = require('../../src/engine/output/export-api');

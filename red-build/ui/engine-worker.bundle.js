@@ -1,6 +1,6 @@
 // ui/engine-worker.bundle.js — **נוצר אוטומטית** ע"י tools/build-worker-bundle.js (אין לערוך ידנית)
 // חבילת ה־Worker (המנוע המלא — אין לטעון בחוט ה־UI)
-// מודולים: 85 · בלי חותמות זמן (דטרמיניזם)
+// מודולים: 87 · בלי חותמות זמן (דטרמיניזם)
 'use strict';
 
 var __crypto = (function () {
@@ -310,6 +310,7 @@ var __paths = {
   "src/engine/core/pipeline.js|../layout/dp-planner": "src/engine/layout/dp-planner.js",
   "src/engine/core/pipeline.js|../layout/page-templates": "src/engine/layout/page-templates.js",
   "src/engine/core/pipeline.js|../layout/footnote-budget": "src/engine/layout/footnote-budget.js",
+  "src/engine/core/pipeline.js|../layout/notes-model": "src/engine/layout/notes-model.js",
   "src/engine/core/pipeline.js|../layout/plan-model": "src/engine/layout/plan-model.js",
   "src/engine/core/pipeline.js|../layout/decision-trace": "src/engine/layout/decision-trace.js",
   "src/engine/core/pipeline.js|../decoration/folio": "src/engine/decoration/folio.js",
@@ -337,6 +338,7 @@ var __paths = {
   "src/engine/core/pipeline.js|../decoration/folio": "src/engine/decoration/folio.js",
   "src/engine/core/pipeline.js|../decoration/headers-builder": "src/engine/decoration/headers-builder.js",
   "src/engine/core/pipeline.js|../decoration/toc-builder": "src/engine/decoration/toc-builder.js",
+  "src/engine/core/pipeline.js|../layout/page-items": "src/engine/layout/page-items.js",
   "src/engine/parser/block-tokenizer.js|./dfa-lexer": "src/engine/parser/dfa-lexer.js",
   "src/engine/parser/block-tokenizer.js|./bracket-scanner": "src/engine/parser/bracket-scanner.js",
   "src/engine/model/document-model.js|../parser/dfa-lexer": "src/engine/parser/dfa-lexer.js",
@@ -382,6 +384,7 @@ var __paths = {
   "src/engine/layout/dp-planner.js|./ordering": "src/engine/layout/ordering.js",
   "src/engine/layout/dp-planner.js|./balancing": "src/engine/layout/balancing.js",
   "src/engine/layout/dp-planner.js|./footnote-budget": "src/engine/layout/footnote-budget.js",
+  "src/engine/layout/dp-planner.js|./notes-model": "src/engine/layout/notes-model.js",
   "src/engine/layout/dp-planner.js|./constraint-matrix": "src/engine/layout/constraint-matrix.js",
   "src/engine/layout/dp-planner.js|./decision-trace": "src/engine/layout/decision-trace.js",
   "src/engine/layout/protections-matrix.js|./balancing": "src/engine/layout/balancing.js",
@@ -395,6 +398,7 @@ var __paths = {
   "src/engine/typography/protectors.js|../line/breaks": "src/engine/line/breaks.js",
   "src/engine/layout/ordering.js|./column-flow": "src/engine/layout/column-flow.js",
   "src/engine/layout/footnote-budget.js|./footnote-lanes": "src/engine/layout/footnote-lanes.js",
+  "src/engine/layout/footnote-budget.js|./notes-model": "src/engine/layout/notes-model.js",
   "src/engine/layout/plan-model.js|./column-flow": "src/engine/layout/column-flow.js",
   "src/engine/layout/plan-model.js|./constraint-matrix": "src/engine/layout/constraint-matrix.js",
   "src/engine/audit/editing-recommendations.js|../core/pipeline": "src/engine/core/pipeline.js",
@@ -413,11 +417,15 @@ var __paths = {
   "src/engine/decoration/shaar-pages.js|./theme-sets": "src/engine/decoration/theme-sets.js",
   "src/engine/decoration/custom-pages.js|../layout/page-templates": "src/engine/layout/page-templates.js",
   "src/engine/decoration/toc-builder.js|../layout/page-templates": "src/engine/layout/page-templates.js",
+  "src/engine/layout/side-notes.js|./notes-model": "src/engine/layout/notes-model.js",
+  "src/engine/layout/side-notes.js|./notes-model": "src/engine/layout/notes-model.js",
   "src/engine/decoration/ornament-plan.js|./ornament-fit": "src/engine/decoration/ornament-fit.js",
   "src/engine/decoration/ornament-plan.js|./dividers": "src/engine/decoration/dividers.js",
   "src/engine/decoration/dividers.js|./ornament-fit": "src/engine/decoration/ornament-fit.js",
   "src/engine/layout/endnote-pages.js|./page-templates": "src/engine/layout/page-templates.js",
   "src/engine/layout/endnote-pages.js|../notes/markers": "src/engine/notes/markers.js",
+  "src/engine/layout/endnote-pages.js|./notes-model": "src/engine/layout/notes-model.js",
+  "src/engine/layout/page-items.js|./notes-model": "src/engine/layout/notes-model.js",
   "src/ui/worker-protocol.js|../audit/report-schema": "src/audit/report-schema.js",
   "src/audit/report-schema.js|../engine/layout/dp-planner": "src/engine/layout/dp-planner.js",
   "src/audit/report-schema.js|../engine/layout/legacy-imud-flow": "src/engine/layout/legacy-imud-flow.js",
@@ -464,9 +472,8 @@ var __paths = {
   "src/engine/output/geometry-projector.js|./dom-renderer": "src/engine/output/dom-renderer.js",
   "src/engine/output/geometry-projector.js|../typography/measure-api": "src/engine/typography/measure-api.js",
   "src/engine/output/geometry-projector.js|../layout/furniture-geometry": "src/engine/layout/furniture-geometry.js",
-  "src/engine/output/geometry-projector.js|../layout/footnote-budget": "src/engine/layout/footnote-budget.js",
+  "src/engine/output/geometry-projector.js|../layout/notes-model": "src/engine/layout/notes-model.js",
   "src/engine/output/geometry-projector.js|../notes/markers": "src/engine/notes/markers.js",
-  "src/engine/output/geometry-projector.js|../layout/side-notes": "src/engine/layout/side-notes.js",
   "src/engine/output/geometry-projector.js|./line-font": "src/engine/output/line-font.js",
   "src/engine/output/geometry-projector.js|./shaar-content": "src/engine/output/shaar-content.js",
   "src/engine/output/geometry-projector.js|../decoration/ornament-ink": "src/engine/decoration/ornament-ink.js",
@@ -685,6 +692,7 @@ const { buildPageTemplate, PAGE_TYPES } = require('../layout/page-templates');
 // **שלב 5 פרוסה 2 (§§2.3/2.5/2.7 בביקורת):** מדדי הערה חד-פעמיים (חותמת CP2),
 // חוזי ColumnModel/PagePlan + validation + immutability, ורשם ה-trace.
 const { stampNoteMetrics } = require('../layout/footnote-budget');
+const { makeNoteRecord, NOTE_KINDS, stampIsValid } = require('../layout/notes-model'); // **שלב 6 פרוסה 2:** מודל ההערות המאוחד — זהות/עוגן + תקינות חותמות
 const { finalizePagePlans } = require('../layout/plan-model');
 const { createTraceRecorder } = require('../layout/decision-trace');
 const { assignNumbers } = require('../decoration/folio');
@@ -880,6 +888,12 @@ function typeset(rawText, settingsIn, env = {}) {
   {
     const enTpl = buildPageTemplate(PAGE_TYPES.ENDNOTES, settings, true);
     settings._endnoteColWidthPx = Math.round(enTpl.columns[0].w);
+    // **פרוסה 2 (§9 — הקשר מדידה אחיד לעמודי ההערות):** רוחב הרשימה במצב
+    // טור-אחד (רוחב תיבת התוכן המלא של PT-07) — אותה נוסחה כמו בבונה
+    // עמודי-ההערות; מקור אחד, שני צרכנים.
+    settings._endnoteFullWidthPx = Math.round(enTpl.columns.length
+      ? Math.max(...enTpl.columns.map(c => c.x + c.w)) - Math.min(...enTpl.columns.map(c => c.x))
+      : (settings._endnoteColWidthPx || 300));
   }
 
   const blocks = [];
@@ -1105,7 +1119,22 @@ function typeset(rawText, settingsIn, env = {}) {
         // **פרוסה 2 (§2.3 — מדידה אחת לכל פריט):** הערה נולדת עם חותמת מדדים
         // מלאה (גובה/פיץ'/שורות מעוטפות) — מדידתה הראשונה והאחרונה; מכאן
         // התקציב, ההצבה, הפיצול וההקרנה קוראים את החותמת ואינם מודדים שוב.
-        notes.push(stampNoteMetrics({ text: String(noteRaw).replace(/\uE000/g, ' '), marker, tokenId: t.id, noteIndex: p.noteIndex, part: currentPart || 1 }, settings, measureWithImpl));
+        // **שלב 6 פרוסה 2 (§7):** הרשומה נולדת בזהות מודל-ההערות המאוחד
+        // (noteId/sourceId/anchorId + מדיניות מספור/פיצול). במצב endnotes אין
+        // מרזב — החותמה נדחית לבונה עמודי ההערות (הקשר היעד האמיתי); שם
+        // היא מדידתה היחידה (בעבר נמדדה פעמיים: פעם ברוחב המרזב שאינו קיים
+        // במצב זה, ופעם באומדן עמודי-ההערות).
+        const noteRec = makeNoteRecord(
+          { text: String(noteRaw).replace(/\uE000/g, ' '), marker, tokenId: t.id, noteIndex: p.noteIndex, part: currentPart || 1 },
+          {
+            kind: notesMode === 'endnotes' ? NOTE_KINDS.ENDNOTE : NOTE_KINDS.FOOTNOTE,
+            numberingScope: resetPolicy,
+            splitPolicy: settings['long-footnote-policy'] || null,
+            continuationPolicy: settings['long-footnote-policy'] || null
+          }
+        );
+        if (notesMode !== 'endnotes') stampNoteMetrics(noteRec, settings, measureWithImpl);
+        notes.push(noteRec);
         bodyMarkers.push(marker);
       }
     }
@@ -1158,6 +1187,23 @@ function typeset(rawText, settingsIn, env = {}) {
       blk.fullWidth = blk.customStyle.layoutMode === 'full-width';
       blk.forcePageBreakBefore = blk.customStyle.layoutMode === 'new-location';
       blk.asSideNote = blk.customStyle.layoutMode === 'side-note';
+      // **שלב 6 פרוסה 2 (§11 — פריט הרחבה):** תיבת מידע בשוליים — אותו דפוס
+      // דגלים (D-09) כמו side-note; הגאומטריה המוגדרת של התיבה (רוחב/ריפוד/
+      // מסגרת) נגזרת כאן פעם אחת וזורמת לחוזה (registry) ולמקצה העוגן.
+      blk.asInfoBox = blk.customStyle.layoutMode === 'info-box';
+      if (blk.asInfoBox) {
+        const ib = blk.customStyle.infoBox || {};
+        const bodyPx = (Number(settings['body-font-size-pt']) || 14) * (96 / 72);
+        const maxW = settings._sideNoteColWidthPx || 84;
+        const stylePt = blk.customStyle.styleSpec && Number(blk.customStyle.styleSpec.fontSizePt) > 0
+          ? Number(blk.customStyle.styleSpec.fontSizePt) : null;
+        blk.infoBoxSpec = {
+          widthPx: Math.max(24, Math.min(Math.round((Number(ib.widthEm) || 4.5) * bodyPx), maxW)),
+          padPx: Math.max(0, Math.round((Number(ib.padEm) || 0.3) * bodyPx)),
+          borderPx: (blk.customStyle.styleSpec && blk.customStyle.styleSpec.border) ? 1 : 0,
+          ...(stylePt ? { sizePt: stylePt } : {}) // גודל הגוף של התיבה מהסגנון — אותו מדד החותמת
+        };
+      }
     }
     const fwRes = applyDropWord(blk, settings, api);
     if (fwRes.applied) fwCount++;
@@ -1322,9 +1368,11 @@ function typeset(rawText, settingsIn, env = {}) {
   const cp4BodyBefore = bodyGeometryHash(pages);
 
   // S7.1.2: הערות צד — עיגון לפסקה, cascade, מיכל 20px, מעבר לעמוד הבא
+  // **שלב 6 פרוסה 2 (§8):** המקצה האנכי המשותף מהחותמות + trace של החלטות
+  // (רשם שלב 5 — אותו רשם של ה-Planner; ספירות תמיד זמינות).
   const { placeSideNotes, verifyH7Conversion } = require('../layout/side-notes');
   for (const pg of pages) pg.isRecto = pg.index % 2 === 0;
-  const sideNotePlacement = placeSideNotes(pages, settings, measureWithImpl, { ledger, eventLog });
+  const sideNotePlacement = placeSideNotes(pages, settings, measureWithImpl, { ledger, eventLog, trace: plannerTrace });
 
   // **S8 — פאס העיטורים (L5):** כל העיטורים overlay-rects על העמודים;
   // אסור לגעת בשורות (invariant T1 — מוכח מיד לאחר מכן ב‑bodyGeometryHash).
@@ -1340,7 +1388,7 @@ function typeset(rawText, settingsIn, env = {}) {
     for (const b of blocks) {
       if (b.kind !== 'paragraph' || !b.notes || !b.notes.length) continue;
       for (const n of b.notes) {
-        endnoteBlocks.push({ tokenId: b.tokenId, noteIndex: n.noteIndex, text: n.text, part: b.part || 1, marker: n.marker, fromInline: true, lines: [] });
+        endnoteBlocks.push({ tokenId: b.tokenId, noteIndex: n.noteIndex, text: n.text, part: b.part || 1, marker: n.marker, fromInline: true, noteId: n.noteId || null, lines: [] });
       }
     }
   }
@@ -1812,6 +1860,21 @@ function typeset(rawText, settingsIn, env = {}) {
   });
   eventLog.emit('page-plan', 'contracts-finalized', { ...planContracts, trace: plannerTrace.stats() });
 
+  // **שלב 6 פרוסה 2 (§5 — הרישום כסמכות תפעולית):** מעבר אימות החוזים —
+  // כל פריט שהוצב בפועל נבדק מול ה-descriptor של סוגו ב-registry, והערות
+  // גם מול תקינות החותמת. הפרות נרשמות ל-ledger (page-item-contract) —
+  // הרישום מאמת את מה שהבונים מייצרים; הוא אינו מקבילי להם.
+  const { validatePageItems } = require('../layout/page-items');
+  const pageItemValidation = validatePageItems(pages);
+  for (const v of pageItemValidation.violations) {
+    const rec = ledger.create('page-item-contract', `${v.kind}:${v.code}:${v.page != null ? 'p' + v.page : 'x'}`, v.page, v, 'page-plan');
+    ledger.transition(rec.issue_id, 'persists', 'page-plan', `placed item violates its registry contract: ${v.kind}/${v.code}`);
+  }
+  eventLog.emit('page-plan', 'page-items-validated', {
+    checked: pageItemValidation.checked,
+    violations: pageItemValidation.violations.length
+  });
+
   return {
     metadata, tokens, pages, ledger, events: eventLog,
     toc, numbers,
@@ -1835,6 +1898,7 @@ function typeset(rawText, settingsIn, env = {}) {
     recommendations,                // **S11:** המלצות עריכה עם הוכחות (או null אם כובו)
     // **פרוסה 2:** חוזי התכנון + ה-trace
     planContracts,
+    pageItemValidation,               // **שלב 6 פרוסה 2:** אימות החוזים מול ה-registry
     plannerTrace: plannerTrace.enabled ? plannerTrace.toJSON() : plannerTrace.stats()
   };
 }
@@ -8350,6 +8414,7 @@ const { MARK_TAG } = require('../notes/markers'); // markerFragmentOf אינו �
 const { moveLineForward } = require('./ordering');
 const { optimalSplit } = require('./balancing'); // **EXT-8:** חלוקה גלובלית אופטימלית
 const { getFootnotesReservedHeight, noteHeight, noteMetrics, stampNoteMetrics } = require('./footnote-budget'); // **שלב 5:** noteMetrics — מקור יחיד למדדי ההערה (חילוץ מ-#16); **פרוסה 2:** stampNoteMetrics — מדידה אחת ביצירה
+const { stampNote, makeNoteRecord, NOTE_KINDS } = require('./notes-model'); // **שלב 6 פרוסה 2:** מודל ההערות המאוחד — זהות/עוגן + חותמת הערות-צד ביצירה
 const CM = require('./constraint-matrix'); // **שלב 5:** מטריצת האילוצים המאוחדת (חילוץ שורש מ-#16/#17)
 const { createTraceRecorder } = require('./decision-trace'); // **פרוסה 2 (§2.7):** תיעוד החלטות דטרמיניסטי קומפקטי
 
@@ -8666,6 +8731,10 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
           // עם מדידה חוזרת. החלק הראשון נכנס למרזב הזה; השאר נכנס לתור
           // pendingBarNotes עם סימון המשך (isContinuation) — טקסט חדש שמוטבע
           // פעם אחת בלבד (מדידתו הראשונה והאחרונה).
+          // **שלב 6 פרוסה 2 (§7 — זהות וטווחים):** המקור וההמשך שומרים קישור
+          // מפורש — continuationOf (noteId) + wordRange (טווח מילים במקור):
+          // מילה לא נעלמת, לא מוכפלת ולא נסדרת מחדש; ההמשך נמדד כטקסט חדש
+          // (חותמת משלו, כולל רוחב '(המשך)' בתקציב שורה 0 — §9).
           const fnLH = n.lineH || noteMetrics(settings).lineHeightPx;
           const rows = n.noteRows || [];
           const linesFit = Math.max(1, Math.floor(barMax / fnLH));
@@ -8683,15 +8752,30 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
           }
           const firstText = wordsArr.slice(0, cutIdx).join(' ');
           const restText = wordsArr.slice(cutIdx).join(' ');
+          const srcNoteId = n.noteId || makeNoteRecord(n, { kind: NOTE_KINDS.FOOTNOTE, numberingScope: settings['footnote-reset-policy'], splitPolicy: 'split' }).noteId;
           cur.footnotes.push({
             ...n, text: firstText, heightPx: cutRow * fnLH, lineH: fnLH, linesCount: cutRow,
             noteRows: rows.slice(0, cutRow), noteWords: wordsArr.slice(0, cutIdx),
-            mode: 'split-first', linesShown: cutRow
+            mode: 'split-first', linesShown: cutRow,
+            wordRange: { from: n.wordRange ? n.wordRange.from : 0, to: (n.wordRange ? n.wordRange.from : 0) + cutIdx }
           });
-          pendingBarNotes.push(stampNoteMetrics(
-            { ...n, text: restText, isContinuation: true, continuationOf: n.tokenId, mode: 'split-rest' },
-            settings, measureFn
-          ));
+          // ההמשך נולד כרשומת חוזה מלאה (makeNoteRecord — זהות+עוגן+מדיניות,
+          // עם fragmentIndex ל-noteId) — לא כשק חלקי של המקור.
+          const frag = makeNoteRecord(
+            { text: restText, marker: n.marker, tokenId: n.tokenId, noteIndex: n.noteIndex, part: n.part },
+            {
+              kind: NOTE_KINDS.FOOTNOTE,
+              numberingScope: settings['footnote-reset-policy'],
+              splitPolicy: 'split', continuationPolicy: 'split',
+              continuationOf: srcNoteId,
+              fragmentIndex: (n.fragmentSeq != null ? n.fragmentSeq : 0) + 1,
+              wordRange: { from: (n.wordRange ? n.wordRange.from : 0) + cutIdx, to: (n.wordRange ? n.wordRange.from : 0) + wordsArr.length }
+            }
+          );
+          frag.isContinuation = true;
+          frag.mode = 'split-rest';
+          frag.fragmentSeq = (n.fragmentSeq != null ? n.fragmentSeq : 0) + 1;
+          pendingBarNotes.push(stampNoteMetrics(frag, settings, measureFn));
           snap.clean = false; // נוצר המשך חדש — אין שחזור בטוח
           eventLog.emit('notes-budget', 'fn-split', { token: n.tokenId, marker: n.marker, barMax, firstWords: cutIdx, firstRows: cutRow }, cur.index);
           trace.emit(cur.index, 'note-split', { token: n.tokenId, marker: n.marker, firstRows: cutRow, restRows: n.linesCount - cutRow });
@@ -8789,6 +8873,38 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
   }
 
 
+  // **שלב 6 פרוסה 2 (§§7/10):** יצירת פריט עוגן בשוליים (הערת-צד / תיבת
+  // מידע) — רשומת מודל-ההערות המאוחד (זהות+עוגן+מדיניות) שמוטבעת בחותמת
+  // מדידה **ביצירתה** (מדידה אחת): מכאן ההקצאה האנכית, ה-DOM וה-PDF קוראים
+  // את אותה חותמת ואינם מודדים עוד. תיבת המידע נמדדת ברוחב הפנימי שלה
+  // (רוחב-מוגדר פחות מסגרת/ריפוד) וגובה התיבה כולה נכנס לחותמת — התקציב
+  // וההקצאה מקבלים את התיבה השלמה (אין הזמנה נסתרת בזמן ההצבה).
+  function pushAnchoredMarginItem(rec) {
+    const isBox = rec.itemKind === 'info-box';
+    const kind = isBox ? NOTE_KINDS.INFO_BOX : NOTE_KINDS.SIDE_NOTE;
+    const chrome = isBox && rec.boxSpec
+      ? { pad: rec.boxSpec.padPx || 0, border: rec.boxSpec.borderPx || 0 }
+      : { pad: 0, border: 0 };
+    const outerW = (isBox && rec.boxSpec && Number(rec.boxSpec.widthPx) > 0) ? rec.boxSpec.widthPx : null;
+    const record = makeNoteRecord({ ...rec, tokenId: rec.ownToken || rec.tokenId }, {
+      kind,
+      anchorId: rec.anchorToken,
+      numberingScope: isBox ? 'style' : 'document',
+      continuationPolicy: 'anchor-cascade',
+      ...(isBox ? { splitPolicy: 'atomic' } : {})
+    });
+    stampNote(record, settings, measureFn, kind, {
+      ...(outerW != null ? { widthPx: Math.max(12, outerW - 2 * (chrome.pad + chrome.border)) } : {}),
+      ...(isBox && rec.boxSpec && Number(rec.boxSpec.sizePt) > 0 ? { sizePt: Number(rec.boxSpec.sizePt) } : {})
+    });
+    if (isBox) {
+      record.boxChrome = chrome;
+      record.heightPx = Math.round((record.heightPx + 2 * (chrome.pad + chrome.border)) * 1000) / 1000; // התיבה כולה — תקציב=הצבה=הקרנה
+    }
+    cur.sideNotes.push(record);
+    return record;
+  }
+
   for (let bi = 0; bi < blocks.length; bi++) {
     const blk = blocks[bi];
     const next = blocks[bi + 1];
@@ -8829,10 +8945,10 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
       // S7.1.2: הערת צד נצמדת לפסקה שהיא מבארת — הבלוק הבא (host) הוא העוגן החזותי;
       // ההצבה מחפשת את שורת ה‑host וממקמת את ההערה בראשה (לא ראש עמוד עיוור).
       const host = blocks.slice(bi + 1).find(b => b.kind === 'paragraph');
-      cur.sideNotes.push({
+      pushAnchoredMarginItem({
         text: blk.lines.map(l => l.words.join(' ')).join(' ').trim(),
         anchorToken: host ? host.tokenId : blk.tokenId,
-        ownToken: blk.tokenId, isHeading: true, level: blk.level
+        ownToken: blk.tokenId, isHeading: true, level: blk.level, itemKind: 'side-note'
       });
       eventLog.emit('page-plan', 'heading-side-note', { token: blk.tokenId }, cur.index);
       continue;
@@ -8846,19 +8962,23 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
         flushPage(); cur = newPage(PAGE_TYPES.REGULAR);
         eventLog.emit('page-plan', 'custom-style-new-location', { style: cs.id, token: blk.tokenId }, cur.index);
       }
-      if (cs.layoutMode === 'side-note' && blk.asSideNote) {
-        // הפסקה הופכת הערת צד מעוגנת לפסקה הבאה שאחריה (המארחת) — דפוס H7
+      if ((cs.layoutMode === 'side-note' && blk.asSideNote) || (cs.layoutMode === 'info-box' && blk.asInfoBox)) {
+        // הפסקה הופכת פריט עוגן בשוליים מעוגן לפסקה הבאה שאחריה (המארחת) — דפוס H7;
+        // תיבת מידע (info-box) רוכבת על אותו מנגנון עוגן — דרך החוזה וה-registry (§11).
         // **FX-3:** הערות פנימיות של פסקת צד מחויבות כאן — הענף continue
         // מדלג על ההצבה הרגילה (התנהגות קודמת נשמרת).
         if ((blk.notes || []).length) reserveNotes(blk);
-        const host = blocks.slice(bi + 1).find(b => b.kind === 'paragraph' && !(b.customStyle && b.customStyle.layoutMode === 'side-note'));
-        cur.sideNotes.push({
+        const host = blocks.slice(bi + 1).find(b => b.kind === 'paragraph' && !(b.customStyle && (b.customStyle.layoutMode === 'side-note' || b.customStyle.layoutMode === 'info-box')));
+        pushAnchoredMarginItem({
           text: blk.lines.map(l => (l.words || []).join(' ')).join(' ').trim(),
           anchorToken: host ? host.tokenId : blk.tokenId,
           ownToken: blk.tokenId, isCustomStyle: cs.id,
-          counterMark: cs.counterMark || null
+          counterMark: cs.counterMark || null,
+          itemKind: blk.asInfoBox ? 'info-box' : 'side-note',
+          styleSpec: cs.styleSpec || null,
+          boxSpec: blk.infoBoxSpec || null
         });
-        eventLog.emit('page-plan', 'custom-style-side-note', { style: cs.id, token: blk.tokenId }, cur.index);
+        eventLog.emit('page-plan', blk.asInfoBox ? 'custom-style-info-box' : 'custom-style-side-note', { style: cs.id, token: blk.tokenId }, cur.index);
         continue;
       }
       if (cs.layoutMode === 'full-width' && blk.fullWidth) {
@@ -9009,7 +9129,7 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
     if (hasNotes) reserveAtMarker(blk, mIdx > 0 ? blk.lines[mIdx] : null);
     pushLines(blk.lines.slice(mIdx), { tokenId: blk.tokenId, docPart: blk.part, ...(mIdx > 0 ? {} : { firstOfBlock: true }) }, { startCol: escortLockCol });
 
-    if (blk.sideNoteText) cur.sideNotes.push({ text: blk.sideNoteText, anchorToken: blk.tokenId });
+    if (blk.sideNoteText) pushAnchoredMarginItem({ text: blk.sideNoteText, anchorToken: blk.tokenId, ownToken: blk.tokenId, itemKind: 'side-note' });
   }
 
   // **S6.0 (R3-C1 — אובדן תוכן בזנב):** פס חוצה-טורים (H3–H6) או הערת-צד
@@ -10811,6 +10931,7 @@ __modules["src/engine/layout/footnote-budget.js"] = function (require, module, e
 'use strict';
 
 const { assignFootnoteLanes } = require('./footnote-lanes'); // **שלב 5 (חילוץ שורש מ-PR #16):** מקור-אמת יחיד לחלוקת נתיבי המרזב
+const NM = require('./notes-model'); // **שלב 6 פרוסה 2:** ליבת השבירה/החותמת האחידה + SSOT פקטורי הגופן
 
 /**
  * **מקור־הסמכות היחיד לתקציב המרזב** (תיקון P1-1): הן probe הן reservation
@@ -10822,8 +10943,8 @@ const { assignFootnoteLanes } = require('./footnote-lanes'); // **שלב 5 (חי
  * **בזמן ההצבה** — המודול הזה אינו מחזיק עוד מימוש תאום מת (באג S6).
  */
 
-/** פרופילי רוחב גופן לגוף ההערה (f-note-body-font). */
-const NOTE_FONT_FACTORS = { 'David HB': 1.06, 'David': 1.04, 'Narkisim': 1.10, 'Nachlieli': 0.96, 'Alef': 1.02, 'Rubin': 1.05 };
+/** פרופילי רוחב גופן לגוף ההערה (f-note-body-font) — **SSOT ב-notes-model (פרוסה 2)**; מיוצא הלאה לצרכנים הקיימים. */
+const NOTE_FONT_FACTORS = NM.NOTE_FONT_FACTORS;
 
 /** **שלב 5 (חילוץ שורש מ-PR #16 — מדדי ההערה, מקור יחיד):** גודל גוף-ההערה
  * (0.8× הגוף — כמו .footnotes{font-size:.8em} ב-DOM) ופיץ' השורה שלו (1.25 —
@@ -10868,41 +10989,14 @@ function noteRowsOf(note, settings, measure) {
   if (note && note.text != null) {
     _rowsStats.calls.push(`${note.tokenId || ''}#${note.noteIndex != null ? note.noteIndex : ''}#${String(note.text).slice(0, 24)}`);
   }
-  const { sizePt, lineHeightPx: lh } = noteMetrics(settings); // **שלב 5:** מקור יחיד לגודל/פיץ'
-  const words = String(note.text).replace(/\uE000/g, ' ').split(/\s+/).filter(Boolean);
-  const colW = laneWidth(settings);
-  // **S70 (R7-M4):** הפקטור מתקן את טבלת impl A בלבד; ב-impl B
-  // (font-metrics) המטריקות מדויקות והכפלה הייתה מנפחת את תקציב ההערות.
-  const factor = (measure && measure.impl === 'font-metrics')
-    ? 1 : (NOTE_FONT_FACTORS[settings['f-note-body-font']] || 1);
-  // **S6.0 (R3-C3 — אומדן ללא רווחים):** ההקרנה (wrapNoteTokens) שוברת
-  // את ההערה **עם** רוחבי רווח בין מילים — האומדן כאן סיכם מילים בלבד
-  // ⇒ כל הערה הגובלת בשבירת-שורה נמדדה שורה אחת פחות (19–21px) וההערה
-  // שאחריה חפפה אותה (32% מ-230 הערות בדגימה). נכללים גם הסמן ורווח
-  // ההמשך בשורה הראשונה — כמו שמצויר בפועל.
-  const spaceW = measure(' ', sizePt) * factor;
-  const mkTxt = note && note.marker != null ? String(note.marker) : '';
-  const mkW = mkTxt ? measure(mkTxt, sizePt) * factor + spaceW : 0;
-  // **שלב 6 פרוסה 1 (הכנת "תקציב=הצבה=הקרנה"):** כל שורה נושאת גם את רוחבי
-  // המילים שלה (wordW) — כך שהקרנת המרזב (פרוסה 2) תוכל למקם מילים מהחותמת
-  // עצמה מבלי למדוד שוב; הרוחב בפינה הימנית של השורה הראשונה כולל את הסמן.
-  const rows = [];
-  let rowW = Math.min(mkW, colW); // סמן בפינת השורה הראשונה
-  let wFrom = 0;
-  let rowWordW = [];
-  for (let i = 0; i < words.length; i++) {
-    const ww = measure(words[i], sizePt) * factor;
-    const addW = (rowW > 0 ? spaceW : 0) + ww;
-    if (rowW + addW > colW && rowW > 0) {
-      rows.push({ wFrom, wTo: i, widthPx: Math.round(rowW * 1000) / 1000, wordW: rowWordW });
-      wFrom = i; rowW = ww; rowWordW = [Math.round(ww * 1000) / 1000];
-    } else {
-      rowW += addW;
-      rowWordW.push(Math.round(ww * 1000) / 1000);
-    }
-  }
-  rows.push({ wFrom, wTo: words.length, widthPx: Math.round(rowW * 1000) / 1000, wordW: rowWordW });
-  return { rows, heightPx: rows.length * lh, linesCount: rows.length, lineH: lh, words, markerW: mkW ? Math.round(mkW * 1000) / 1000 : 0, spaceW: Math.round(spaceW * 1000) / 1000 };
+  // **שלב 6 פרוסה 2:** השבירה עצמה עברה לליבה היחידה (notes-model.wrapNoteWords)
+  // — אותה אריתמטיקה בדיוק; כאן נשארת התצפית הלא-משנה (legacy view, בלי מוטציה).
+  const probe = { text: note.text, marker: note.marker, isContinuation: note.isContinuation, mode: note.mode };
+  NM.stampNote(probe, settings, measure, NM.NOTE_KINDS.FOOTNOTE);
+  return {
+    rows: probe.noteRows, heightPx: probe.heightPx, linesCount: probe.linesCount,
+    lineH: probe.lineH, words: probe.noteWords, markerW: probe.markerW, spaceW: probe.spaceW
+  };
 }
 
 /**
@@ -10914,15 +11008,15 @@ function noteRowsOf(note, settings, measure) {
  * @returns {object} ה-note עצמו (שרשרת)
  */
 function stampNoteMetrics(note, settings, measure) {
-  const m = noteRowsOf(note, settings, measure);
-  note.heightPx = m.heightPx;
-  note.lineH = m.lineH;
-  note.linesCount = m.linesCount;
-  note.noteRows = m.rows;
-  note.noteWords = m.words;
-  // **שלב 6 פרוסה 1:** רוחבי הסמן/הרווח — חלק מהחותמת (להקרנה עתידית מהמדדים)
-  note.markerW = m.markerW;
-  note.spaceW = m.spaceW;
+  if (note && note.text != null) {
+    _rowsStats.calls.push(`${note.tokenId || ''}#${note.noteIndex != null ? note.noteIndex : ''}#${String(note.text).slice(0, 24)}`);
+  }
+  // **שלב 6 פרוסה 2:** ההטבעה עוברת דרך ה-SSOT של מודל ההערות (notes-model)
+  // — אותן שורות/מדדים בדיוק, ובנוסף: רוחב סימון-ההמשך בתקציב שורה 0 (§9 —
+  // בעבר ההמשכים נמדדו בלי '(המשך)' בזמן שהרנדרים ציירו אותו ⇒ תקציב<הקרנה),
+  // markerGlyphW להקרנה, ו-stampCtx לזיהוי הקשר המדידה. מי שכבר חתום בהקשר
+  // המרזב אינה נמדד שוב.
+  NM.stampNote(note, settings, measure, NM.NOTE_KINDS.FOOTNOTE);
   return note;
 }
 
@@ -11001,6 +11095,302 @@ function assignFootnoteLanes(notes, heightOf) {
 }
 
 module.exports = { assignFootnoteLanes };
+
+};
+__modules["src/engine/layout/notes-model.js"] = function (require, module, exports) {
+// src/engine/layout/notes-model.js — שלב 6 פרוסה 2: מודל הערות מאוחד (חוזה מקור/עוגן + מדידה קנונית)
+'use strict';
+
+/**
+ * **חוזה ההערות האחיד (הוראת שלב 6 §§7-10):** כל סוגי ההערות — שוליים (מרזב),
+ * צד (שוליים חיצוניים), סיום (עמודי הערות), המשכים מפיצול והערות מועברות — חולקים
+ * אותו מודל מקור/עוגן ואותה חותמת מדידה. העיקרון:
+ *
+ *   מקור תוכן אחד → עוגן אחד → מדידה אחת (לפי הקשר יעד) → תקציב/הצבה/הקרנה
+ *   מאותה חותמת → PagePlan → מקרינים טהורים.
+ *
+ * **זהות ושרשור (§7):** לכל הערה יש `noteId` יציב (kind|sourceId|noteIndex),
+ * `sourceId` (הטוקן שבבעלותו טקסט ההערה), `anchorId` (עוגן הגוף), ומדיניות
+ * מספור/פיצול/המשך. המשך מפיצול הוא רשומה משלו עם `continuationOf` = noteId
+ * המקור ו-`wordRange` — טווח המילים המדויק שלו במקור: מילה לא נעלמת, לא מוכפלת
+ * ולא נסדרת מחדש.
+ *
+ * **מדידה קנונית (§§9-10):** החותמת (`noteRows/noteWords/markerW/markerGlyphW/
+ * contMarkW/spaceW/lineH/heightPx/linesCount/stampCtx`) נוצרת פעם אחת לכל
+ * (הערה, הקשר יעד) — ההקשר קובא את הרוחב, הגודל, הפיץ' והפקטור. מרגע ההטבעה
+ * התקציב, ההצבה ושני המקרינים קוראים את החותמת ואינם מודדים שוב. המקרינים
+ * שאוחזים הערה בלי חותמת מפיקים diagnostic מפורש — ולא מדידה חלופית שקטה.
+ *
+ * דטרמיניזם: פונקציות טהורות של (טקסט, הגדרות, מדידה); אין תאריך/אקראיות.
+ */
+
+/**
+ * **פרופילי רוחב הגופן (SSOT של מודל ההערות):** עד כאן הועתקה הטבלה בשלושה
+ * אתרים (footnote-budget, endnote-pages, side-notes). כעת היא חיה כאן —
+ * והמודולים ההם מייצאים אותה הלאה לצרכנים הקיימים (בלי שבירת חוזה).
+ * הפקטור מתקן את טבלת impl A בלבד; ב-impl B (font-metrics — ייצוא PDF)
+ * המטריקות מדויקות והכפלה מנפחת (S70/R7-M4) — measureContextFor מכבה אותו שם.
+ */
+const NOTE_FONT_FACTORS = { 'David HB': 1.06, 'David': 1.04, 'Narkisim': 1.10, 'Nachlieli': 0.96, 'Alef': 1.02, 'Rubin': 1.05 };
+const SIDE_NOTE_FONT_FACTORS = { 'David HB': 1.06, 'David': 1.04, 'Narkisim': 1.10, 'Nachlieli': 0.96, 'Alef': 1.02, 'Rubin': 1.05 };
+
+/** סוגי ההערות במודל המאוחד. */
+const NOTE_KINDS = Object.freeze({
+  FOOTNOTE: 'footnote',   // מרזב תחתון (עמוד)
+  SIDE_NOTE: 'side-note', // שוליים חיצוניים, עוגן פסקה מארחת
+  ENDNOTE: 'endnote',     // עמודי הערות-סיום
+  INFO_BOX: 'info-box'    // פריט עוגן מורחב (תיבת מידע) — שלב 6 פרוסה 2, דרך registry
+});
+
+/** סימון ההמשך של פיצול — טקסט קבוע (מקור יחיד למחרוזת). */
+const CONTINUATION_MARK = '(המשך)';
+
+/** ניקוי תווי ה-PUA הפנימיים מטקסט הערה — **אותו טקסט שהמקרינים מציירים**
+ * (E000 רווח אטומי ⇒ רווח אמת; E101/E102 ⇒ מוסרים). החותמת מודדת את מה
+ * שמצויר — אחרת תקציב≠הקרנה (§9). */
+function scrubNoteText(s) {
+  return String(s == null ? '' : s)
+    .replace(/\uE000/g, ' ')
+    .replace(/[\uE101\uE102]/g, '');
+}
+
+// ─── הקשרי מדידה — מקור יחיד לגודל/פיץ'/רוחב/פקטור לכל סוג הערה (§10) ───
+
+/**
+ * הקשר המדידה של סוג הערה: { sizePt, lineH, widthPx, fontName, factor }.
+ * @param {string} kind — אחד מ-NOTE_KINDS
+ * @param {object} settings
+ * @param {object} [opts] — { widthPx } (עקיפת רוחב לפריט עוגן מורחב), { sizePt }
+ * @param {Function} [measure] — פונקציית המדידה (לזיהוי impl לצורך הפקטור)
+ */
+function measureContextFor(kind, settings, opts = {}, measure = null) {
+  const bodyPt = Number(settings['body-font-size-pt']) || 14;
+  const implB = measure && measure.impl === 'font-metrics';
+  if (kind === NOTE_KINDS.FOOTNOTE) {
+    // היסטורי (noteMetrics, שלב 5): 0.8× הגוף, פיץ' 1.25 — כמו המרזב בשני הרנדרים.
+    const sizePt = bodyPt * 0.8;
+    return {
+      kind, sizePt,
+      lineH: Math.round(sizePt * (96 / 72) * 1.25),
+      widthPx: settings._fnColWidthPx || 200,
+      fontName: settings['f-note-body-font'],
+      factor: implB ? 1 : (NOTE_FONT_FACTORS[settings['f-note-body-font']] || 1)
+    };
+  }
+  if (kind === NOTE_KINDS.SIDE_NOTE || kind === NOTE_KINDS.INFO_BOX) {
+    // היסטורי (estimateSideNoteHeight): 0.75× הגוף, פיץ' 1.15 — כמו .side-note.
+    const sizePt = Number(opts.sizePt) > 0 ? Number(opts.sizePt) : bodyPt * 0.75;
+    const fontName = opts.fontName || settings['s-note-body-font'];
+    const fallbackW = Math.max(60, Math.round(settings._outerMarginPx || 120) - 12);
+    return {
+      kind, sizePt,
+      lineH: Math.round(sizePt * (96 / 72) * 1.15),
+      widthPx: Number(opts.widthPx) > 0 ? Math.round(Number(opts.widthPx)) : (settings._sideNoteColWidthPx || fallbackW),
+      fontName,
+      factor: implB ? 1 : (SIDE_NOTE_FONT_FACTORS[fontName] || (fontName && fontName !== settings['body-font'] ? 1.08 : 1))
+    };
+  }
+  if (kind === NOTE_KINDS.ENDNOTE) {
+    // היסטורי (endnote-pages/estimateNoteHeight): 0.8× הגוף, פיץ' לפי body-line-height
+    // (בדיוק api.lineHeightPx) — ללא עיגול, כמו שהיה בתקציב עמודי ההערות.
+    const sizePt = bodyPt * 0.8;
+    return {
+      kind, sizePt,
+      lineH: sizePt * (96 / 72) * (Number(settings['body-line-height']) || 1.4),
+      widthPx: Number(opts.widthPx) > 0 ? Math.round(Number(opts.widthPx)) : (settings._endnoteColWidthPx || 300),
+      fontName: settings['f-note-body-font'],
+      factor: implB ? 1 : (NOTE_FONT_FACTORS[settings['f-note-body-font']] || 1)
+    };
+  }
+  throw new TypeError('notes-model: unknown note kind: ' + kind);
+}
+
+// ─── ליבת השבירה — מימוש אחד לכל ההקשרים (§9: אין wrap עצמאי במקרינים) ───
+
+/**
+ * עטיפה חמדנית של מילי הערה ברוחב ההקשר, עם קידומת (סמן +/(המשך)) בשורה
+ * הראשונה — **אותה אריתמטיקה שקבעה את תקציב המרזב מאז שלב 5** (R3-C3):
+ * row0 נפתח ברוחב הקידומת; כל מילה מוסיפה רווח+רוחב; מעבר לרוחב ⇒ שורה.
+ * @param {string[]} words — המילים (לאחר ניקוי PUA)
+ * @param {object} ctx — הקשר ({ sizePt, widthPx, factor } מ-measureContextFor)
+ * @param {Function} measure — פונקציית מדידה (טקסט, גודל) ⇒ רוחב
+ * @param {number} prefixW — רוחב הקידומות של שורה 0 (סמן/המשך, כולל רווח)
+ * @param {number} spaceW — רוחב הרווח בהקשר (כבר מחושב — מודדים פעם אחת)
+ * @returns {{rows:Array}} שורות {wFrom,wTo,widthPx,wordW[]}
+ */
+function wrapNoteWords(words, ctx, measure, prefixW, spaceW) {
+  const r3 = (v) => Math.round(v * 1000) / 1000;
+  const rows = [];
+  let rowW = Math.min(prefixW, ctx.widthPx); // קידומת בפינת השורה הראשונה
+  let wFrom = 0;
+  let rowWordW = [];
+  for (let i = 0; i < words.length; i++) {
+    const ww = measure(words[i], ctx.sizePt) * ctx.factor;
+    const addW = (rowW > 0 ? spaceW : 0) + ww;
+    if (rowW + addW > ctx.widthPx && rowW > 0) {
+      rows.push({ wFrom, wTo: i, widthPx: r3(rowW), wordW: rowWordW });
+      wFrom = i; rowW = ww; rowWordW = [r3(ww)];
+    } else {
+      rowW += addW;
+      rowWordW.push(r3(ww));
+    }
+  }
+  rows.push({ wFrom, wTo: words.length, widthPx: r3(rowW), wordW: rowWordW });
+  return { rows };
+}
+
+// ─── חשבונאות מדידה (דפוס api.cacheStats / _rowsStats): הוכחת "פעם אחת" ───
+const _stampStats = { calls: [] };
+function __resetStampStats() { _stampStats.calls.length = 0; }
+function __stampStats() {
+  const perKey = Object.create(null);
+  for (const k of _stampStats.calls) perKey[k] = (perKey[k] || 0) + 1;
+  return { total: _stampStats.calls.length, keys: _stampStats.calls.slice(), perKey };
+}
+
+/**
+ * **הטבעת חותמת המדידה (§§9-10):** המדידה הראשונה והאחרונה של ההערה בהקשר
+ * היעד שלה. מוטציה באתר על אובייקט ההערה (המקור בידי ה-pipeline/המתכנן).
+ * הערה שכבר חתומה **באותו הקשר** אינה נמדדת שוב (מחזיר כפי שהיא).
+ * @param {object} note — { text, marker?, isContinuation?/mode?, counterMark? }
+ * @param {object} settings
+ * @param {Function} measure
+ * @param {string} kind — NOTE_KINDS.*
+ * @param {object} [opts] — עקיפות הקשר ({ widthPx, sizePt, fontName }) לפריטים מורחבים
+ * @returns {object} ה-note עצמו (שרשרת)
+ */
+function stampNote(note, settings, measure, kind, opts = {}) {
+  const ctx = measureContextFor(kind, settings, opts, measure);
+  if (note.stampCtx && note.stampCtx.kind === ctx.kind
+    && note.stampCtx.widthPx === ctx.widthPx && note.stampCtx.sizePt === ctx.sizePt) {
+    return note; // כבר נמדדה בדיוק בהקשר הזה — לא מודדים שוב
+  }
+  _stampStats.calls.push(`${ctx.kind}:${note.noteId || note.tokenId || ''}#${note.noteIndex != null ? note.noteIndex : ''}`);
+  const text = scrubNoteText(note.text);
+  const words = text.split(/\s+/).filter(Boolean);
+  const spaceW = measure(' ', ctx.sizePt) * ctx.factor;
+  const mkTxt = note.marker != null && String(note.marker) !== '' ? String(note.marker) : '';
+  const mkGlyphW = mkTxt ? measure(mkTxt, ctx.sizePt) * ctx.factor : 0;
+  const markerW = mkTxt ? mkGlyphW + spaceW : 0;
+  const isCont = note.isContinuation === true || note.mode === 'split-rest';
+  const contMarkW = isCont ? measure(CONTINUATION_MARK, ctx.sizePt) * ctx.factor + spaceW : 0;
+  // **תיקון פרוסה 2 (§9):** הקידומות של שורה 0 — הסמן **וגם סימון ההמשך** —
+  // נכנסות לתקציב השורה. בעבר ההמשכים נמדדו בלי '(המשך)' בזמן ששני הרנדרים
+  // ציירו אותו ⇒ השורה הראשונה של כל המשך הייתה צרה בכ~30px מהמצויר.
+  // הערות-צד עם counterMark — אותו תיקון (הסמן מוצג ולא תוקצב).
+  const cmTxt = (!isCont && note.counterMark != null && String(note.counterMark) !== '') ? String(note.counterMark) : '';
+  const cmGlyphW = cmTxt ? measure(cmTxt, ctx.sizePt) * ctx.factor : 0;
+  const counterMarkW = cmTxt ? cmGlyphW + spaceW : 0;
+  const prefixW = contMarkW + markerW + counterMarkW;
+  const { rows } = wrapNoteWords(words, ctx, measure, prefixW, spaceW);
+  note.noteRows = rows;
+  note.noteWords = words;
+  note.heightPx = Math.round(rows.length * ctx.lineH * 1000) / 1000;
+  note.linesCount = rows.length;
+  note.lineH = ctx.lineH;
+  note.markerW = markerW ? Math.round(markerW * 1000) / 1000 : 0;
+  note.markerGlyphW = mkGlyphW ? Math.round(mkGlyphW * 1000) / 1000 : 0;
+  note.contMarkW = contMarkW ? Math.round(contMarkW * 1000) / 1000 : 0;
+  note.counterMarkW = counterMarkW ? Math.round(counterMarkW * 1000) / 1000 : 0;
+  note.spaceW = Math.round(spaceW * 1000) / 1000;
+  note.stampCtx = { kind: ctx.kind, sizePt: ctx.sizePt, widthPx: ctx.widthPx, lineH: ctx.lineH, factor: ctx.factor };
+  return note;
+}
+
+/** בדיקת תקינות חותמת (למקרינים ולאימות): שורות+מילים+פיץ' עקביים. */
+function stampIsValid(note) {
+  if (!note || !Array.isArray(note.noteRows) || note.noteRows.length === 0) return false;
+  if (!Array.isArray(note.noteWords)) return false;
+  if (!(Number(note.lineH) > 0) || !(Number(note.heightPx) > 0)) return false;
+  if (note.noteRows.length !== Number(note.linesCount)) return false;
+  for (const row of note.noteRows) {
+    if (!(row.wTo >= row.wFrom) || !Array.isArray(row.wordW)) return false;
+    if (row.wordW.length !== row.wTo - row.wFrom) return false;
+  }
+  return true;
+}
+
+// ─── חוזה הרשומה: זהות, עוגן, מדיניות (§7) ───
+
+/**
+ * יצירת רשומת הערה מנורמלת — זהות אחת לכל סוגי ההערות. לא מודדת (המדידה
+ * ב-stampNote, פעם אחת בהקשר היעד).
+ * @param {object} raw — { text, marker?, tokenId, noteIndex?, part? }
+ * @param {object} ctxArgs — { kind, sourceId?, anchorId?, numberingScope?, splitPolicy?,
+ *   continuationPolicy?, continuationOf?, wordRange? }
+ */
+function makeNoteRecord(raw, ctxArgs) {
+  const kind = ctxArgs.kind;
+  if (!Object.values(NOTE_KINDS).includes(kind)) {
+    throw new TypeError('notes-model: makeNoteRecord kind must be one of ' + Object.values(NOTE_KINDS).join('|'));
+  }
+  const sourceId = raw.tokenId != null ? String(raw.tokenId) : (ctxArgs.sourceId != null ? String(ctxArgs.sourceId) : '');
+  const noteIndex = raw.noteIndex != null ? raw.noteIndex : 0;
+  const rec = {
+    ...raw,
+    kind,
+    noteId: `${kind}|${sourceId}|${noteIndex}${ctxArgs.fragmentIndex != null ? '|f' + ctxArgs.fragmentIndex : ''}`,
+    sourceId,
+    anchorId: ctxArgs.anchorId != null ? String(ctxArgs.anchorId) : sourceId,
+    numberingScope: ctxArgs.numberingScope || null,
+    splitPolicy: ctxArgs.splitPolicy || null,
+    continuationPolicy: ctxArgs.continuationPolicy || null,
+    ...(ctxArgs.continuationOf != null ? { continuationOf: ctxArgs.continuationOf } : {}),
+    ...(ctxArgs.wordRange ? { wordRange: { from: ctxArgs.wordRange.from, to: ctxArgs.wordRange.to } } : {})
+  };
+  return rec;
+}
+
+/** אימות חוזה רשומת הערה (צרכן: page-items + בדיקות). מחזיר רשימת הפרות. */
+function validateNoteRecord(rec) {
+  const errs = [];
+  if (!rec || typeof rec !== 'object') return [{ code: 'note-not-object' }];
+  if (!rec.noteId || typeof rec.noteId !== 'string') errs.push({ code: 'note-id-missing' });
+  if (!rec.kind || !Object.values(NOTE_KINDS).includes(rec.kind)) errs.push({ code: 'note-kind-invalid', kind: rec.kind });
+  if (rec.sourceId == null || rec.sourceId === '') errs.push({ code: 'note-source-missing' });
+  if (rec.anchorId == null || rec.anchorId === '') errs.push({ code: 'note-anchor-missing' });
+  if (rec.text == null || String(rec.text).trim() === '') errs.push({ code: 'note-text-empty' });
+  // **§7:** כל המשך — פיצול או העברה — חייב קישור למקור וטווח מילים מדויק:
+  // מילה לא נעלמת, לא מוכפלת ולא נסדרת מחדש.
+  const isCont = rec.isContinuation === true || rec.mode === 'split-rest' || rec.continuationOf != null;
+  if (isCont) {
+    if (rec.continuationOf == null) errs.push({ code: 'note-continuation-without-source' });
+    if (rec.wordRange == null) errs.push({ code: 'note-continuation-without-range' });
+  }
+  if (rec.wordRange != null) {
+    const wr = rec.wordRange;
+    if (!(wr.from >= 0) || !(wr.to >= wr.from)) errs.push({ code: 'note-word-range-invalid' });
+  }
+  return errs;
+}
+
+/** קישור עוגן-להערה: מפה anchorId ⇒ רשימת noteId (לאימות שאין עוגן יתום). */
+function anchorLinksOf(records) {
+  const byAnchor = new Map();
+  for (const r of records || []) {
+    if (!r || !r.noteId) continue;
+    if (!byAnchor.has(r.anchorId)) byAnchor.set(r.anchorId, []);
+    byAnchor.get(r.anchorId).push(r.noteId);
+  }
+  return byAnchor;
+}
+
+module.exports = {
+  NOTE_KINDS,
+  CONTINUATION_MARK,
+  NOTE_FONT_FACTORS,
+  SIDE_NOTE_FONT_FACTORS,
+  scrubNoteText,
+  measureContextFor,
+  wrapNoteWords,
+  stampNote,
+  stampIsValid,
+  makeNoteRecord,
+  validateNoteRecord,
+  anchorLinksOf,
+  __resetStampStats,
+  __stampStats
+};
 
 };
 __modules["src/engine/layout/decision-trace.js"] = function (require, module, exports) {
@@ -15429,6 +15819,39 @@ function legacyTypeset(rawText, settings, env) {
     p.folioDisplay = shows && p.pageNumber ? toGematria(p.pageNumber) : '';
   }
   final.forEach((p, i) => { p.index = i; });
+  // **שלב 6 פרוסה 2 (§8 בהוראה — שורש SIDE_NOTE_OVERLAP בעמ' 107):** עד כאן
+  // עגנה כל הערת-צד של נתיב המורשת לפסקתה בלבד — בלי הקצאה אנכית משותפת;
+  // שתי הערות שנפלו לאותו אזור באותו צד חפפו זו את זו (נצפה בעמ' 107:
+  // הערה חד-שורתית "בית" נכנסה בין שורות הערה ארוכה של הפסקה הקודמת). כאן
+  // מופעל על נתיב המורשת אותו עקרון המקצה של ה-DP (side-notes.placeSideNotes):
+  // מפל-דחיפה לכל צד בנפרד, בסדר המסמך, עם מרווח מינימלי, עד גבול מרזב
+  // ההערות — טהור (תזוזת מיקום בלבד, בלי מדידה חוזרת), דטרמיניסטי, ועם
+  // חותמת שינוי מפורשת על כל הערה שהוזזה (cascadeShiftPx — trace במודל).
+  {
+    const MN_GAP_PX = 2;                       // מרווח מינימלי בין הערות צד שונות (מעל סובלנות האודיט)
+    const MN_BOTTOM_LIMIT = GEO.FN_AREA_TOP - 2; // השוליים נגמרים במרזב ההערות
+    for (const p of final) {
+      if (!p.marginNotes || !p.marginNotes.length) continue;
+      for (const side of ['right', 'left']) {
+        let lastBottom = -1;
+        for (const mn of p.marginNotes) {
+          if (mn.side !== side) continue;
+          const h = (mn.lines || []).length * GEO.MN_PITCH;
+          if (lastBottom >= 0 && mn.anchorY < lastBottom + MN_GAP_PX) {
+            let target = lastBottom + MN_GAP_PX;
+            if (target + h > MN_BOTTOM_LIMIT) target = Math.max(mn.anchorY, MN_BOTTOM_LIMIT - h); // בלי לחדור למרזב; לא מעל העוגן המקורי
+            const shift = target - mn.anchorY;
+            if (shift > 0) {
+              mn.anchorY += shift;
+              for (const l of (mn.lines || [])) l.y += shift;
+              mn.cascadeShiftPx = shift; // trace: כמה ובגלל מה (מפל הערות-הצד)
+            }
+          }
+          lastBottom = Math.max(lastBottom, mn.anchorY + h);
+        }
+      }
+    }
+  }
   // **S6.2:** התאמת מספרי העמודים ברשומות אי-האיזון לסדר הסופי —
   // עמודי ה-TOC והריקים (EXT-15) מוכנסים אחרי הזרימה, ורשומות שנוצרו
   // בזמן ההצבה מתייחסות לאינדקס הזמני של מערך הזרימה. ההתאמה לפי זהות
@@ -16164,7 +16587,10 @@ __modules["src/engine/extensions/style-schema.js"] = function (require, module, 
  * דטרמיניזם: אין Date/Math.random; סדר האימות קבוע; הודעות קבועות.
  */
 
-const LAYOUT_MODES = ['regular', 'full-width', 'side-note', 'footnote', 'endnote', 'new-location'];
+const LAYOUT_MODES = ['regular', 'full-width', 'side-note', 'footnote', 'endnote', 'new-location', 'info-box'];
+// **שלב 6 פרוסה 2 (§11):** info-box — פריט עוגן מורחב (תיבת מידע בשוליים עם
+// רוחב/ריפוד/מסגרת מוגדרים). נכנס דרך אותו שסע הרחבה של החוזה (ה-enum) —
+// בלי מנוע מקבילי: הפריט רוכב על מסלול העוגן הקיים ונרשם ב-registry.
 const ORNAMENTS = ['pyramid', 'lance', 'shoshanta', 'scroll'];
 const COUNTER_FORMATS = ['hebrew-geresh', 'decimal'];
 const COUNTER_RESETS = ['part', 'page', 'never'];
@@ -16376,6 +16802,23 @@ function parseCustomStyles(json) {
       errors.push({ code: 'bad-layout-mode', path: `${where}.layoutMode`, styleId: id, message: `בסגנון «${id}»: מצב פריסה חייב להיות אחד מ ${LAYOUT_MODES.join(', ')} (קיבל ${JSON.stringify(d.layoutMode)}).` });
       ok = false;
     }
+    // **שלב 6 פרוסה 2 (§11):** מפרט תיבת המידע — רוחב (em, 3..8), ריפוד (em, 0..1.5).
+    // הסמכות על המסגרת/הרקע היא שדות ה-style הקיימים (border/background).
+    let infoBox = null;
+    if (layoutMode === 'info-box') {
+      const ib = isPlainObject(d.infoBox) ? d.infoBox : {};
+      const widthEm = ib.widthEm != null ? Number(ib.widthEm) : 4.5; // ברירת מחדל — רוחב בינוני בשוליים
+      const padEm = ib.padEm != null ? Number(ib.padEm) : 0.3;
+      if (!(widthEm >= 3 && widthEm <= 8)) {
+        errors.push({ code: 'info-box-bad-width', path: `${where}.infoBox.widthEm`, styleId: id, message: `בסגנון «${id}» (info-box): רוחב התיבה חייב להיות בין 3 ל־8em (קיבל ${JSON.stringify(ib.widthEm)}).` });
+        ok = false;
+      }
+      if (!(padEm >= 0 && padEm <= 1.5)) {
+        errors.push({ code: 'info-box-bad-pad', path: `${where}.infoBox.padEm`, styleId: id, message: `בסגנון «${id}» (info-box): הריפוד חייב להיות בין 0 ל־1.5em (קיבל ${JSON.stringify(ib.padEm)}).` });
+        ok = false;
+      }
+      infoBox = { widthEm, padEm };
+    }
     if ('style' in d) ok = validateStyle(d.style, id, errors, `${where}.style`) && ok;
     ok = validateCounter(d.counter, id, errors, `${where}.counter`) && ok;
     ok = validateOrnaments(d.linkedOrnaments, id, errors, `${where}.linkedOrnaments`) && ok;
@@ -16391,7 +16834,8 @@ function parseCustomStyles(json) {
         format: d.counter.format || 'decimal',
         reset: d.counter.reset || 'never'
       } : null,
-      linkedOrnaments: d.linkedOrnaments || null
+      linkedOrnaments: d.linkedOrnaments || null,
+      ...(infoBox ? { infoBox } : {})
     });
   });
   return { ok: errors.length === 0, styles, errors };
@@ -17520,46 +17964,46 @@ module.exports = {
 };
 __modules["src/engine/layout/side-notes.js"] = function (require, module, exports) {
 // src/engine/layout/side-notes.js — H7 side-notes / marginalia full contract (REQ-FN-05/06, S7.1.2)
+// **שלב 6 פרוסה 2 (§8 בהוראה): הקצאה אנכית משותפת מהחותמות + trace דטרמיניסטי.**
 'use strict';
 
 /**
- * הערות צד (H7): עיגון לטוקן־אנקור, מיקום **בראש הפסקה המארחת** (לא בראש העמוד),
- * cascade דחיפה כלפי מטה, אצוות של H7 רצופים, נשארות מועברות לעמוד הבא
- * (pagePendingNotes), margin חיצוני לפי recto/verso, מיכל 20px.
+ * הערות צד (H7) ופריטי עוגן מורחבים (תיבות מידע — דרך registry):
+ *  - עיגון לטוקן-אנקור, מיקום **בראש הפסקה המארחת** (לא בראש העמוד);
+ *  - **מקצה אנכי אחד לכל הפריטים בשוליים של העמוד** (§8): כולם משתתפים באותו
+ *    חישוב, לפי העוגנים וסדר הקריאה; מפל-דחיפה מונע חפיפה; מרווח מינימלי
+ *    STACK_GAP_PX; גבולות העמוד במיכל CONTAINMENT_PX; המשך-עמוד לפי מדיניות
+ *    מפורשת (no-room ⇒ דחייה מתועדת; זנב ⇒ עמוד נושא, BRZ-15);
+ *  - **הגובה מהחותמת בלבד** (notes-model.stampNote — מדידה אחת, §10): ההקצאה
+ *    והמקרינים (DOM ו-PDF) צורכים את אותן שורות/גובה — אין אומדן עצמאי
+ *    ואין הזזה לאחר ההחלטה;
+ *  - **trace של החלטות מהותיות** (hooks.trace — רשם שלב 5): עוגן, דחיפה,
+ *    דחייה, זנב — דטרמיניסטי וקומפקטי.
  */
+
+const { stampNote, stampIsValid, NOTE_KINDS } = require('./notes-model');
 
 const CONTAINMENT_PX = 20; // חריגה מזערית מעבר למיכל — לא נחשב overlap אמיתי (ספרד קטלוג D3)
 const STACK_GAP_PX = 8;    // מרווח בין הערות צד סמוכות בשוליים
 
-/** פרופילי רוחב גופן להערות צד (s-note-body-font). */
-const SIDE_NOTE_FONT_FACTORS = { 'David HB': 1.06, 'David': 1.04, 'Narkisim': 1.10, 'Nachlieli': 0.96, 'Alef': 1.02, 'Rubin': 1.05 };
+/** פרופילי רוחב גופן להערות צד (s-note-body-font) — SSOT ב-notes-model (פרוסה 2). */
+const SIDE_NOTE_FONT_FACTORS = require('./notes-model').SIDE_NOTE_FONT_FACTORS;
 
+/**
+ * אומדן גובה הערת-צד (תאימות לאחור; צרכנים קיימים — בדיקות S69):
+ * כעת חותמת מדידה מלאה דרך notes-model ומחזירה את הגובה — **אותן שורות
+ * בדיוק שההקצאה והמקרינים יצרכו** (בעבר: אומדן נפרד שיכול היה לסטות
+ * מההקרנה בפועל ⇒ SIDE_NOTE_OVERLAP בעמוד 107).
+ */
 function estimateSideNoteHeight(text, settings, measureFn) {
-  const size = settings['body-font-size-pt'] * 0.75; // הערות צד קטנות
-  const lh = Math.round(size * (96 / 72) * 1.15);
-  const words = String(text || '').split(/\s+/).filter(Boolean);
-  const colW = settings._sideNoteColWidthPx || Math.max(60, Math.round(settings._outerMarginPx || 120) - 12);
-  const fontName = settings['s-note-body-font'];
-  // **S71.1 (R7-M4 שארית — בדיקה כפולה):** הפקטור מתקן את טבלת impl A בלבד;
-  // ב-impl B (font-metrics — נתיב ייצוא PDF) המטריקות מדויקות והכפלה מנפחת
-  // את אומדן גובה הערת-הצד ⇒ דחיפות cascade/מעבר-עמוד מוטות מול התצוגה.
-  const factor = (measureFn && measureFn.impl === 'font-metrics')
-    ? 1 : (SIDE_NOTE_FONT_FACTORS[fontName] || (fontName && fontName !== settings['body-font'] ? 1.08 : 1));
-  // **S6.0 (R3-C3):** רווחים בין מילים נכללים — כמו ההקרנה בפועל.
-  const spaceW = (measureFn ? measureFn(' ', size) : size * 0.6) * factor;
-  let lines = 1, w = 0;
-  for (const word of words) {
-    const ww = (measureFn ? measureFn(word, size) : word.length * size * 0.6) * factor;
-    const addW = (w > 0 ? spaceW : 0) + ww;
-    if (w + addW > colW && w > 0) { lines++; w = ww; } else w += addW;
-  }
-  return lines * lh;
+  const probe = { text };
+  stampNote(probe, settings, measureFn || ((t, s) => String(t).length * 0.55 * (s || 12) * (96 / 72)), NOTE_KINDS.SIDE_NOTE);
+  return probe.heightPx;
 }
 
 /** מיקום Y של שורה בטור: גובה מצטבר מראש התוכן.
  * **S6.0 (R3-M1):** מיושר למודל המרנדרים — מתחיל מתחת לפס החוצה-טורים
- * (spanning) וכולל את מקדם ה-AQ (aqStretch) — בעבר סכם גבהים גולמיים
- * מראש תיבת התוכן ⇒ עוגן שגוי בעד ~145px בעמודים עם פס/מתיחה.
+ * (spanning) וכולל את מקדם ה-AQ (aqStretch).
  * **FX-6 (פרוסה 2):** כולל גם את פערי הבלוקים (gapBeforePx) — אותה
  * סמנטיקה כמו הקרנת הטור ב-PDF והרינדור ב-DOM (עוגן מדויק). */
 function lineYTop(page, colIdx, lineIdx) {
@@ -17584,17 +18028,26 @@ function findAnchorLine(page, anchorToken) {
   return null;
 }
 
+/** רוחב העמודה בשוליים עבור פריט — מההקשר של החותמת (או ברירת המחדל). */
+function marginColWidth(settings, sn) {
+  // תיבת מידע: הרוחב החיצוני המוגדר שלה (stampCtx מכיל את הרוחב הפנימי)
+  if (sn && sn.boxSpec && Number(sn.boxSpec.widthPx) > 0) return sn.boxSpec.widthPx;
+  return (sn && sn.stampCtx && sn.stampCtx.widthPx) || settings._sideNoteColWidthPx || 60;
+}
+
 /**
- * מיקום הערות צד על עמודי התוצר.
+ * מיקום הערות הצד על עמודי התוצר — **המקצה האנכי המשותף** (§8).
  * @param {Array} pages - עמודי התוצר (עם columns + sideNotes)
  * @param {object} settings
- * @param {(text:string,sizePt:number)=>number} [measureFn]
- * @param {object} [hooks] — {ledger, eventLog} לרישום הזזות/דחיות
- * @returns {{placed:Array, deferred:Array}}
+ * @param {(text:string,sizePt:number)=>number} [measureFn] — רק להטבעת-חותמות מגניבה
+ *   (פריט שלא נחתם ביצירתו; במסלול המוצר כולם חתומים — המדידה היחידה שלהם)
+ * @param {object} [hooks] — {ledger, eventLog, trace} לרישום הזזות/דחיות/trace
+ * @returns {{placed:Array, deferred:Array, overflow:Array}}
  */
 function placeSideNotes(pages, settings, measureFn, hooks = {}) {
   const ledger = hooks.ledger || null;
   const eventLog = hooks.eventLog || null;
+  const trace = hooks.trace || null;
   const placed = [];
   const deferred = [];
   const pending = []; // pagePendingNotes — נשארות מועברות לעמוד הבא
@@ -17604,26 +18057,45 @@ function placeSideNotes(pages, settings, measureFn, hooks = {}) {
     // recto: שוליים חיצוניים בצד שמאל (RTL); verso: בצד ימין
     const outerX = page.isRecto !== false
       ? page.template.margins.side * 0.15
-      : page.template.width - page.template.margins.side * 0.15 - (settings._sideNoteColWidthPx || 60);
-    const cap = page.template.contentBox.height;
+      : page.template.width - page.template.margins.side * 0.15 - marginColWidth(settings, null);
     const queue = [...pending.splice(0), ...(page.sideNotes || [])];
     page.sideNotes = []; // ייבנה מחדש לפי מה שבאמת מוקם בעמוד זה
     let lastBottom = -1;
 
     for (let i = 0; i < queue.length; i++) {
       const sn = queue[i];
-      const h = sn.heightPx || estimateSideNoteHeight(sn.text, settings, measureFn);
+      // **מדידה אחת (§10):** הגובה מהחותמת. פריט לא-חתום (מסלול חריג) מוטבע
+      // כאן פעם אחת — ומרגע זה ההקצאה, ה-DOM וה-PDF קוראים את אותה חותמת.
+      if (!stampIsValid(sn)) {
+        stampNote(sn, settings, measureFn, NOTE_KINDS.SIDE_NOTE, {
+          widthPx: sn.boxSpec && sn.boxSpec.widthPx ? sn.boxSpec.widthPx : undefined
+        });
+      }
+      const h = sn.heightPx;
       // **מיקום בראש הפסקה המארחת** (S7.1.2): עוגן לשורה הראשונה של האנקור בעמוד
       const anchor = findAnchorLine(page, sn.anchorToken);
-      let yTop = anchor
+      const anchorY = anchor
         ? lineYTop(page, anchor.colIdx, anchor.lineIdx)
         : page.template.contentBox.top; // אנקור לא בעמוד זה ⇒ ראש תוכן
-      // push-down cascade: אין לחפוף את ההערה הקודמת
+      let yTop = anchorY;
+      // push-down cascade: אין לחפוף את ההערה הקודמת (מרווח מינימלי לפי מדיניות)
       if (lastBottom >= 0 && yTop < lastBottom + STACK_GAP_PX) yTop = lastBottom + STACK_GAP_PX;
-      // מיכל 20px: אין חריגה מסוף אזור התוכן
+      if (trace) trace.emit(page.index, 'side-note-allocated', {
+        note: sn.noteId || sn.ownToken || sn.anchorToken,
+        anchorY: Math.round(anchorY * 10) / 10,
+        yTop: Math.round(yTop * 10) / 10,
+        pushedDown: Math.round((yTop - anchorY) * 10) / 10,
+        heightPx: h
+      });
+      // מיכל 20px: אין חריגה מסוף אזור התוכן — אחרת דחייה מפורשת (diagnostic)
       if (yTop + h > page.template.contentBox.bottom + CONTAINMENT_PX) {
         deferred.push({ ...sn, reason: 'no-room', page: page.index });
         pending.push({ ...sn, deferredFrom: page.index });
+        if (trace) trace.emit(page.index, 'side-note-deferred', {
+          note: sn.noteId || sn.ownToken || sn.anchorToken,
+          reason: 'no-room', wouldEndAt: Math.round((yTop + h) * 10) / 10,
+          limit: page.template.contentBox.bottom + CONTAINMENT_PX
+        });
         continue;
       }
       const rec = {
@@ -17631,16 +18103,15 @@ function placeSideNotes(pages, settings, measureFn, hooks = {}) {
         x: outerX, yTop,
         heightPx: h,
         batchGroup: sn.batchId || (anchor ? `${sn.anchorToken}` : `p${page.index}i${i}`),
-        colWidth: settings._sideNoteColWidthPx || 60
+        colWidth: marginColWidth(settings, sn)
       };
       placed.push(rec);
       page.sideNotes.push(rec); // מה שמוקם בפועל בעמוד זה (נרנדר)
       lastBottom = yTop + h;
-      void cap;
     }
   }
 
-  // **BRZ-15 — לא גניזה:** הערות שנותרו בתור אחרי העמוד האחרון — מוספים עמוד נוסף
+  // **BRZ-15 — לא גניזה:** הערות שנותרו בתור אחרי העמוד האחרון — מוסיפים עמוד נוסף
   // שנושא אותן (אירוע מתועד; אינו מזיז עמודי גוף קיימים — הצפה בזנב).
   if (pending.length && pages.length) {
     const last = pages[pages.length - 1];
@@ -17656,7 +18127,8 @@ function placeSideNotes(pages, settings, measureFn, hooks = {}) {
     pages.push(tail);
     let yTop = tail.template.contentBox.top;
     for (const sn of pending.splice(0)) {
-      const h = sn.heightPx || estimateSideNoteHeight(sn.text, settings, measureFn);
+      if (!stampIsValid(sn)) stampNote(sn, settings, measureFn, NOTE_KINDS.SIDE_NOTE);
+      const h = sn.heightPx;
       if (yTop + h > tail.template.contentBox.bottom + CONTAINMENT_PX) {
         // פתולוגי: הערה גבוהה מעמוד — נרשם כממצא, לא נגנז (מוקם בחריגת מיכל מתועדת)
         overflowEvents.push({ anchor: sn.anchorToken, heightPx: h, reason: 'taller-than-page' });
@@ -17665,9 +18137,12 @@ function placeSideNotes(pages, settings, measureFn, hooks = {}) {
           ledger.transition(rec.issue_id, 'persists', 'decorations', 'note taller than a page — placed with documented containment breach');
         }
       }
-      const rec = { ...sn, page: tail.index, x: tail.isRecto !== false ? tail.template.margins.side * 0.15 : tail.template.width - tail.template.margins.side * 0.15 - (settings._sideNoteColWidthPx || 60), yTop, heightPx: h, colWidth: settings._sideNoteColWidthPx || 60 };
+      const rec = { ...sn, page: tail.index, x: tail.isRecto !== false ? tail.template.margins.side * 0.15 : tail.template.width - tail.template.margins.side * 0.15 - marginColWidth(settings, sn), yTop, heightPx: h, colWidth: marginColWidth(settings, sn) };
       placed.push(rec);
       tail.sideNotes.push(rec);
+      if (trace) trace.emit(tail.index, 'side-note-tail-placed', {
+        note: sn.noteId || sn.ownToken || sn.anchorToken, yTop: Math.round(yTop * 10) / 10, heightPx: h
+      });
       yTop += h + STACK_GAP_PX;
     }
     if (eventLog) eventLog.emit('decorations', 'side-notes-tail-page', { page: tail.index, count: tail.sideNotes.length }, tail.index);
@@ -18219,9 +18694,7 @@ __modules["src/engine/layout/endnote-pages.js"] = function (require, module, exp
 
 const { PAGE_TYPES, buildPageTemplate } = require('./page-templates');
 const { markerFor } = require('../notes/markers');
-
-/** פרופילי רוחב גופן לגוף ההערה (f-note-body-font). */
-const NOTE_FONT_FACTORS = { 'David HB': 1.06, 'David': 1.04, 'Narkisim': 1.10, 'Nachlieli': 0.96, 'Alef': 1.02, 'Rubin': 1.05 };
+const { stampNote, NOTE_KINDS, NOTE_FONT_FACTORS } = require('./notes-model'); // **פרוסה 2:** חותמת + SSOT פקטורים
 
 /**
  * בניית עמודי "הערות" / "…(המשך)" בסוף כל חלק:
@@ -18297,13 +18770,11 @@ function buildEndnotePages(endnotes, settings, measure, lineHeightPx, hooks = {}
     ? Math.max(...enTpl.columns.map(c => c.x + c.w)) - Math.min(...enTpl.columns.map(c => c.x))
     : (settings._endnoteColWidthPx || 300);
   // רוחב הטור לריווח: 2 טורים ⇒ רוחב טור התבנית; טור אחד ⇒ רוחב מלא.
+  // **פרוסה 2:** הפקטור אינו מחושב כאן עוד — הוא חלק מהקשר המדידה של החותמת
+  // (notes-model.measureContextFor; impl B ⇒ 1 — S70/R7-M4) ונצרך שם פעם אחת.
   const colW = cols === 2
     ? (settings._endnoteColWidthPx || enTpl.columns[0].w || 300)
     : fullW;
-  // **S70 (R7-M4):** פקטור הגופן — בורית אפקטיבית רק ב-impl A (טבלה);
-  // ב-impl B (font-metrics) המטריקות מדויקות והפקטור מולד.
-  const fontFactor = (measure && measure.impl === 'font-metrics')
-    ? 1 : (NOTE_FONT_FACTORS[settings['f-note-body-font']] || 1);
 
   /**
    * גובה כותרת העמוד (`.endnote-title`: h2 בגודל 1.2em עם שולי 8px) —
@@ -18356,7 +18827,13 @@ function buildEndnotePages(endnotes, settings, measure, lineHeightPx, hooks = {}
         }
       }
       usedPart.add(marker);
-      const h = estimateNoteHeight(n.text, settings, measure, lineHeightPx, colW, fontFactor);
+      // **שלב 6 פרוסה 2 (§9 — הערות סיום מהמדדים המאוחדים):** המדידה היחידה של
+      // ההערה בהקשר עמודי-ההערות — חותמת מלאה (שורות/רוחבי מילים/סמן בשורה 0/
+      // פיץ') דרך notes-model, ברוחב הטור בפועל. התקציב (usedY), ה-DOM וה-PDF
+      // יצרכו את אותה חותמת — בעבר היה כאן אומדן נפרד (estimateNoteHeight) שלא
+      // כלל את רוחב הסמן בשורה הראשונה בזמן ששני הרנדרים ציירו אותו.
+      stampNote(n, settings, measure, NOTE_KINDS.ENDNOTE, { widthPx: colW });
+      const h = n.heightPx;
       // אין מקום בטור הנוכחי (והוא אינו ריק) — התקדמות לטור הבא / לעמוד הבא.
       // טור "ריק" (usedY === titleBandPx) מקבל את ההערה תמיד — התקדמות מובטחת
       // גם להערה גבוהה מהקיבולת (נותרת לבדה, לא נגנזת).
@@ -18411,21 +18888,13 @@ function estimateTitleHeight(settings, lineHeightPx) {
   return lineHeightPx(size) + 16;
 }
 
-/** גובה הערה בעמודי ההערות — כולל פקטור גופן ורוחב טור אפקטיבי. */
+/** גובה הערה בעמודי ההערות — **תאימות לאחור** (פרוסה 2): חותמת notes-model
+ * בהקשר endnote ומחזיר את הגובה. הבונה עצמו כבר אינו מעריך — הוא מטביע וצורך. */
 function estimateNoteHeight(text, settings, measure, lineHeightPx, colW, fontFactor = 1) {
-  const size = settings['body-font-size-pt'] * 0.8;
-  const words = String(text || '').split(/\s+/).filter(Boolean);
-  // **S6.0 (R3-C3):** רווחים בין מילים נכללים באומדן — כמו wrapNoteTokens
-  // שמצייר את ההערה (בלי זה כל הערה גובלת-שבירה נמדדה שורה פחות וחפפה
-  // את עמודתה בטור/בעמוד — 21.7% מההערות בדגימת 230).
-  const spaceW = measure(' ', size) * fontFactor;
-  let lines = 1, w = 0;
-  for (const word of words) {
-    const ww = measure(word, size) * fontFactor;
-    const addW = (w > 0 ? spaceW : 0) + ww;
-    if (w + addW > colW && w > 0) { lines++; w = ww; } else w += addW;
-  }
-  return lines * lineHeightPx(size);
+  void lineHeightPx; void fontFactor; // נותרו בחתימה לתאימות צרכנים חיצוניים
+  const probe = { text };
+  stampNote(probe, settings, measure, NOTE_KINDS.ENDNOTE, { widthPx: colW });
+  return probe.heightPx;
 }
 
 module.exports = { buildEndnotePages, estimateNoteHeight, estimateTitleHeight, NOTE_FONT_FACTORS };
@@ -18525,6 +18994,367 @@ function auditNumbering(pages, numbers, settings, measure, io = {}) {
 }
 
 module.exports = { auditNumbering, FOLIO_BUDGET_PCT };
+
+};
+__modules["src/engine/layout/page-items.js"] = function (require, module, exports) {
+// src/engine/layout/page-items.js — חוזה Page Item + רישום סוגי פריטי עמוד (שלב 6 פרוסה 1)
+'use strict';
+
+/**
+ * **מעמד (תוכנית §6.1 + הוראת שלב 6 §§6/10):** חוזה אחיד עבור כל פריטי העמוד —
+ * כותרות עליונות/תחתונות, מספרי עמוד, קווי הפרדה, עיטורים, שערים, תוכן
+ * עניינים, עמודי הערות, עמודים מותאמים, פריטי רקע ופריטים מיוחדים.
+ *
+ * **חמשת אופני ההשתתפות** (ההבחנה בשדות החוזה, לא במנועים נפרדים — הוראת §6):
+ *  - `flow`     — פריט שזורם בגוף העמוד (פסקה, כותרת, תמונה inline).
+ *  - `block`    — פריט בלוק (תמונת בלוק/ממורכזת, פס חוצה-טורים).
+ *  - `anchor`   — פריט עוגן (הערת-צד: ממוקם בשוליים בעיגון לפסקה מארחת).
+ *  - `furniture` — ריהוט קבוע של העמוד (כותרת עליונה, גיליון, חוט הפרדה).
+ *  - `reserved` — פריט שמזמין שטח גיאומטרי מראש (עיטור שמקצר גוף, מפריד
+ *                 טורים בעל תפוסה, אזור הערות) — דרך מודל הקיבולת של שלב 5
+ *                 (page.reservations).
+ *
+ * **עקרונות:**
+ *  - הרישום מכריז; המימושים הקיימים (הבונים) נשארים בעלי הסמכות — ה-descriptor
+ *    מצביע עליהם באמצעות שדה `authority` (לא מנוע מקבילי). כל סוג חדש שנרשם
+ *    חייב לענות על כל החריצים — כולל הקרנת DOM/PDF — בלי תנאים מפוזרים.
+ *  - פריט ריהוט/שמור שמזמין מקום חייב להצהיר `reservation` — וההזמנה מתבצעת
+ *    לפני הצבת הטקסט, דרך page.reservations של ה-Planner (שלב 5 — מנגנון אחיד).
+ *  - הוספה/הסרה של פריט ריהוט אינה משנה תוכן או זהות פריטים — constraints
+ *    ו-geometry בלבד (הוראת §8).
+ */
+
+const { registerPageItem: _noop } = { registerPageItem: null }; // (מונע שימוש שוגה — ה-API להלן)
+
+/** אופני ההשתפות ברמת העמוד (הבחנת החוזה — הוראת שלב 6 §6). */
+const PAGE_ITEM_PARTICIPATION = Object.freeze({
+  FLOW: 'flow',
+  BLOCK: 'block',
+  ANCHOR: 'anchor',
+  FURNITURE: 'furniture',
+  RESERVED: 'reserved'
+});
+
+/** חריצי חוזה מותרים ברישום סוג פריט עמוד. */
+const PAGE_ITEM_SLOTS = Object.freeze([
+  'schema',            // סכמת ההצהרה (שדות חובה/אופציונליים)
+  'validate',          // ולידציה (פונקציה טהורה על instance)
+  'participation',     // אחד מ-PAGE_ITEM_PARTICIPATION
+  'slot',              // אזור העמוד (header/footer/margin/body/band/divider)
+  'reservation',       // { px | (page)=>px, scope:'all-columns'|'last-column', reason } — ל-reserved
+  'resourceDeps',      // תלויות נכסים (ל-AssetResolver)
+  'measurement',       // מקור המדידה (מזהה/פונקציה) — "מדידה אחת"
+  'placement',         // מקור ההחלטה (מזהה הבונה/המנגנון) — סמכות קיימת
+  'diagnostics',       // קטלוג אבחון שהסוג מפיק
+  'authority',         // המודול/הבונה המחזיק במימוש (תיעוד הסמכות — לא מנוע מקבילי)
+  'projectDOM',        // מזהה הקרנת DOM (מימוש קיים/חוזה)
+  'projectPDF'         // מזיה הקרנת PDF
+]);
+
+const entries = new Map();
+
+/**
+ * רישום סוג פריט עמוד. חד-פעמי ומחמיר (כמו model/registry): רישום כפול =
+ * שגיאה; חריץ לא מוכר = שגיאה; participation חסר = שגיאה.
+ * @returns {function} unregister
+ */
+function registerPageItem(kind, descriptor) {
+  if (typeof kind !== 'string' || !kind.trim()) {
+    throw new TypeError('page-items: kind must be a non-empty string');
+  }
+  const normalized = kind.trim();
+  if (!descriptor || typeof descriptor !== 'object') {
+    throw new TypeError('page-items: descriptor must be an object');
+  }
+  for (const slot of Object.keys(descriptor)) {
+    if (!PAGE_ITEM_SLOTS.includes(slot)) {
+      throw new TypeError(`page-items: unknown slot "${slot}" (allowed: ${PAGE_ITEM_SLOTS.join(', ')})`);
+    }
+  }
+  if (!Object.values(PAGE_ITEM_PARTICIPATION).includes(descriptor.participation)) {
+    throw new TypeError(`page-items: descriptor.participation must be one of ${Object.values(PAGE_ITEM_PARTICIPATION).join('|')} — got: ${descriptor.participation}`);
+  }
+  if (descriptor.participation === PAGE_ITEM_PARTICIPATION.RESERVED && !descriptor.reservation) {
+    throw new TypeError('page-items: reserved item must declare reservation (px + scope) — space is invited before text placement');
+  }
+  if (typeof descriptor.validate !== 'function') {
+    throw new TypeError('page-items: descriptor.validate (function) is required');
+  }
+  if (entries.has(normalized)) {
+    throw new Error('page-items: page item kind already registered: ' + normalized);
+  }
+  entries.set(normalized, Object.freeze({ kind: normalized, ...descriptor }));
+  return () => entries.delete(normalized);
+}
+
+function pageItemDescriptorOf(kind) { return entries.get(String(kind)) || null; }
+function registeredPageItems() { return Array.from(entries.values()); }
+
+/**
+ * הזמנת שטח גיאומטרי לפריט reserved, דרך מודל הקיבולת האחיד של שלב 5
+ * (page.reservations) — **לפני** הצבת הטקסט. טהורה: מוטציה מבוקרת בלבד
+ * בשדה ה-reservations של העמוד.
+ * @param {object} page — עמוד DP (עם reservations[])
+ * @param {string} kind — סוג פריט רשום (reserved)
+ * @param {object} [ctx] — הקשר לחישוב px דינמי (למשל גובה שורה)
+ */
+function reservePageItemSpace(page, kind, ctx = {}) {
+  const d = pageItemDescriptorOf(kind);
+  if (!d || d.participation !== PAGE_ITEM_PARTICIPATION.RESERVED) {
+    throw new TypeError('page-items: reservePageItemSpace accepts only registered reserved items — got: ' + kind);
+  }
+  const px = typeof d.reservation.px === 'function' ? d.reservation.px(page, ctx) : Number(d.reservation.px);
+  if (!(px > 0)) return { kind, px: 0, applied: false };
+  if (!Array.isArray(page.reservations)) page.reservations = [];
+  page.reservations.push({ kind, scope: d.reservation.scope || 'all-columns', px, reason: d.reservation.reason || kind });
+  return { kind, px, applied: true };
+}
+
+// ─── הצהרת הסוגים הקיימים (הבונים הקיימים נשארים הסמכות — תיעוד החוזה) ───
+// כל רישום מצהיר: השתתפות, אזור, מקור מדידה, סמכות ההחלטה והקרנות.
+// אלו הם הסוגים שלב 6 פרוסה 2 יהגר אל מימוש מלא דרך החוזה; בפרוסה זו הם
+// ההצהרה הקנונית שמפורשת את המפה (ומאומתת בבדיקות חיוב/שלילה).
+
+registerPageItem('body-block', {
+  participation: PAGE_ITEM_PARTICIPATION.FLOW,
+  slot: 'body',
+  schema: { lines: 'LineModel[]', tokenId: 'string' },
+  validate: (b) => Boolean(b && Array.isArray(b.lines) && b.tokenId != null),
+  measurement: 'measureDocumentModel (single boundary, שלב 3-4)',
+  placement: 'dp-planner.planPages (המתכנן היחיד, שלב 5)',
+  diagnostics: ['line-engine', 'page-plan-invalid'],
+  authority: 'line/pipeline-bridge + layout/dp-planner',
+  projectDOM: 'dom-renderer.renderLine',
+  projectPDF: 'geometry-projector.projectLine'
+});
+
+registerPageItem('spanning-band', {
+  participation: PAGE_ITEM_PARTICIPATION.BLOCK,
+  slot: 'band',
+  schema: { lines: 'LineModel[]', heightPx: 'number' },
+  validate: (b) => Boolean(b && Array.isArray(b.lines) && (b.heightPx || 0) > 0),
+  measurement: 'נמדד ברוחב מלא בזמן השבירה (layoutModelBlock)',
+  placement: 'dp-planner — הפס מקצר את כל הטורים (colCapacityOf)',
+  reservation: { px: (page) => (page && page.spanning ? page.spanning.heightPx : 0), scope: 'all-columns', reason: 'cross-column band (FWD-1)' },
+  diagnostics: ['containment'],
+  authority: 'layout/dp-planner + layout/column-flow',
+  projectDOM: 'dom-renderer.renderSpanningBand',
+  projectPDF: 'geometry-projector (band lines)'
+});
+
+registerPageItem('running-header', {
+  participation: PAGE_ITEM_PARTICIPATION.FURNITURE,
+  slot: 'header',
+  schema: { slots: '{right,center,left}' },
+  validate: (h) => Boolean(h && h.slots),
+  measurement: 'headers-builder מודד סלוטים ב-9pt (D-81)',
+  placement: 'furniture-geometry.headerGeometry — מקור יחיד ל-DOM ול-PDF (שלב 6)',
+  diagnostics: [],
+  authority: 'decoration/headers-builder + layout/furniture-geometry',
+  projectDOM: 'dom-renderer.renderHeader',
+  projectPDF: 'geometry-projector (header slots)'
+});
+
+registerPageItem('folio', {
+  participation: PAGE_ITEM_PARTICIPATION.FURNITURE,
+  slot: 'footer',
+  schema: { folioDisplay: 'string', pageNumber: 'number' },
+  validate: (p) => Boolean(p && p.folioDisplay != null),
+  measurement: 'מדידת הגיליון בגופן/גודל מההגדרות (folioGeometry)',
+  placement: 'furniture-geometry.folioGeometry — מקור יחיד ל-DOM ול-PDF (שלב 6)',
+  diagnostics: ['pn-overflow'],
+  authority: 'decoration/folio + layout/furniture-geometry',
+  projectDOM: 'dom-renderer.renderFolio',
+  projectPDF: 'geometry-projector (folio)'
+});
+
+registerPageItem('column-divider', {
+  participation: PAGE_ITEM_PARTICIPATION.RESERVED,
+  slot: 'divider',
+  schema: { style: 'thin|dashed|double|none' },
+  validate: (s) => Boolean(s && s['column-divider-style']),
+  reservation: { px: 0, scope: 'all-columns', reason: 'overlay — geometry-neutral (כלל V4: אורך בלבד, ללא תפוסה)' },
+  measurement: 'אין תפוסה — overlay',
+  placement: 'גובה Math.min(טורים)−8 (ornament-fit.columnDividerHeightPx — F-09)',
+  diagnostics: [],
+  authority: 'decoration/ornament-fit',
+  projectDOM: 'dom-renderer.renderColumnDivider',
+  projectPDF: 'geometry-projector.projectColumnDivider'
+});
+
+registerPageItem('footnote-gutter', {
+  participation: PAGE_ITEM_PARTICIPATION.RESERVED,
+  slot: 'notes-area',
+  schema: { footnotes: 'Note[]' },
+  validate: (p) => Boolean(p && Array.isArray(p.footnotes)),
+  reservation: { px: (page) => (page && page.fnReservedHeightPx) || 0, scope: 'all-columns', reason: 'footnote area budget (F-17, R3-C2)' },
+  measurement: 'stampNoteMetrics (CP2 — מדידה אחת; שלב 5 פרוסה 2)',
+  placement: 'dp-planner.reserveNotes — תקציב בהכרעת ההצבה (FX-3)',
+  diagnostics: ['fn-split', 'fn-moved-whole', 'fn-tail-overflow', 'fn-degenerate'],
+  authority: 'layout/footnote-budget + dp-planner',
+  projectDOM: 'dom-renderer.renderFootnoteArea',
+  projectPDF: 'geometry-projector.projectFootnoteGutter'
+});
+
+registerPageItem('side-note', {
+  participation: PAGE_ITEM_PARTICIPATION.ANCHOR,
+  slot: 'margin',
+  schema: { text: 'string', anchorToken: 'string', ownToken: 'string', noteRows: 'Row[]', noteWords: 'string[]', lineH: 'number' },
+  validate: (sn) => Boolean(sn && sn.text && sn.anchorToken),
+  measurement: 'notes-model.stampNote (side-note ctx) — **מדידה אחת ביצירת הפריט ב-DP (פרוסה 2, §10)**: רוחב השוליים בפועל, רוחבי מילים/סמן/רווח, פיץ׳ 1.15',
+  placement: 'side-notes.placeSideNotes — **המקצה האנכי המשותף** (פרוסה 2, §8): כל פריטי העוגן של העמוד בחישוב אחד; cascade + מרווח + מיכל + trace',
+  diagnostics: ['side-note-overflow', 'no-room', 'note-stamp-missing'],
+  authority: 'layout/side-notes + layout/notes-model',
+  projectDOM: 'dom-renderer (aside — שורות מהחותמת, line-height מפורש)',
+  projectPDF: 'geometry-projector.projectStampedRows (projectSideNotes)'
+});
+
+// **שלב 6 פרוסה 2 (§11 — הוכחת הרחבה אמיתית):** פריט מותאם חדש שאינו מ-11 הסוגים
+// שנרשמו בפרוסה 1. תיבת מידע בשוליים — עוגן לפסקה מארחת, רוחב/ריפוד/מסגרת
+// מוגדרים בסגנון, מדידה קנונית ברוחב הפנימי, וגובה התיבה כולה בחותמת —
+// מה שההקצאה מקבלת הוא מה שמוקרן. רוכב על מסלול העוגן הקיים (אין מנוע
+// מקבילי ואין ענף if/else פר-שכבה מעבר לשסע ההרחבה של החוזה).
+registerPageItem('info-box', {
+  participation: PAGE_ITEM_PARTICIPATION.ANCHOR,
+  slot: 'margin',
+  schema: {
+    text: 'string', anchorToken: 'string', ownToken: 'string',
+    itemKind: '"info-box"', boxSpec: '{ widthPx, padPx, borderPx }',
+    boxChrome: '{ pad, border }', styleSpec: '{ background?, border?, fontSizePt? }',
+    noteRows: 'Row[]', noteWords: 'string[]', lineH: 'number', heightPx: 'number (כולל מסגרת+ריפוד)'
+  },
+  validate: (b) => Boolean(b && b.text && b.anchorToken && b.itemKind === 'info-box'
+    && b.boxSpec && Number(b.boxSpec.widthPx) > 0),
+  measurement: 'notes-model.stampNote (info-box ctx — רוחב פנימי = מוגדר פחות מסגרת/ריפוד); הגובה כולל chrome',
+  placement: 'side-notes.placeSideNotes — אותו מקצה אנכי משותף (עוגן, cascade, מיכל)',
+  diagnostics: ['side-note-overflow', 'no-room', 'note-stamp-missing'],
+  authority: 'extensions/style-schema (parse/validate) + layout/notes-model + layout/side-notes',
+  projectDOM: 'dom-renderer (aside.info-box — רקע/מסגרת/ריפוד מהחוזה + שורות מהחותמת)',
+  projectPDF: 'geometry-projector.projectSideNotes (תיבה כעיטור + projectStampedRows)'
+});
+
+registerPageItem('ornament', {
+  participation: PAGE_ITEM_PARTICIPATION.RESERVED,
+  slot: 'variable',
+  schema: { kindStyle: 'string', x: 'number', y: 'number', w: 'number', h: 'number' },
+  validate: (d) => Boolean(d && d.kindStyle && Number.isFinite(d.x)),
+  reservation: { px: 0, scope: 'all-columns', reason: 'overlay-rects מהפאס (F-09); הזמנת גובה חיה בתוך גבהי השורות (F-08) — לא נספרת פעמיים' },
+  measurement: 'ornament-fit — מדדי התאמה בגודל סופי',
+  placement: 'ornament-plan — פאס עיטורים ניטרלי-גיאומטריה (T1 מוכח)',
+  diagnostics: ['ornament-overflow', 'ornament-overlap', 'ornament-asymmetry'],
+  authority: 'decoration/ornament-plan + ornament-ink',
+  projectDOM: 'dom-renderer.renderDecorations',
+  projectPDF: 'geometry-projector (decorations pdfOps)'
+});
+
+registerPageItem('shaar-gate', {
+  participation: PAGE_ITEM_PARTICIPATION.BLOCK,
+  slot: 'gate-page',
+  schema: { boxes: 'ShaarBox[]', theme: 'string|null' },
+  validate: (p) => Boolean(p && (p.isShaar || p.type === 'custom')),
+  measurement: 'shaar-content — תיבות שער במדידה חיה',
+  placement: 'shaar-pages.insertShaarPages — עמודים מבניים מוכנסים; **עיצובי השערים המקוריים פעילים אוטומטית (נעול ברגרסיה)**',
+  diagnostics: ['settings-verification'],
+  authority: 'decoration/shaar-pages + theme-sets',
+  projectDOM: 'dom-renderer.renderPageBackgroundAndShaar',
+  projectPDF: 'geometry-projector (shaar boxes)'
+});
+
+registerPageItem('toc-page', {
+  participation: PAGE_ITEM_PARTICIPATION.BLOCK,
+  slot: 'toc-page',
+  schema: { rows: 'TocRow[]' },
+  validate: (p) => Boolean(p && (p.type === 'toc-general' || p.type === 'toc-detail')),
+  measurement: 'toc-builder — שורות במדידה חיה',
+  placement: 'toc-builder.buildTocPages + insertTocPages — עמודים מבניים',
+  diagnostics: ['toc-hanging'],
+  authority: 'decoration/toc-builder',
+  projectDOM: 'dom-renderer.renderTocPageContent',
+  projectPDF: 'geometry-projector (toc rows)'
+});
+
+registerPageItem('endnote-page', {
+  participation: PAGE_ITEM_PARTICIPATION.BLOCK,
+  slot: 'notes-page',
+  schema: { notes: 'Note[]', part: 'number', noteRows: 'Row[] (לכל הערה)' },
+  validate: (p) => Boolean(p && p.type === 'endnotes' && Array.isArray(p.notes)),
+  measurement: 'notes-model.stampNote (endnote ctx — רוחב הטור בפועל) — **פרוסה 2: המדידה היחידה, בבונה עצמו**; התקציב/DOM/PDF צורכים אותה',
+  placement: 'endnote-pages.buildEndnotePages',
+  diagnostics: ['fn-page-overflow', 'note-stamp-missing'],
+  authority: 'layout/endnote-pages + layout/notes-model',
+  projectDOM: 'dom-renderer (עמודי הערות — שורות מהחותמת)',
+  projectPDF: 'geometry-projector.projectEndnotePage (projectStampedRows)'
+});
+
+/**
+ * **הרישום כסמכות תפעולית (פרוסה 2, §5 בהוראה):** מעבר אימות שרץ ב-pipeline
+ * אחרי ההצבות — כל פריט שהוצב בפועל על עמוד נבדק מול ה-descriptor של סוגו
+ * (schema/validate), והערות/פריטי עוגן גם מול תקינות החותמת (stampIsValid).
+ * הרישום אינו עוד הצהרה בלבד: החוזה נצרך ואינו מקבילי לבונים — הבונים
+ * מייצרים, החוזה מאמת.
+ * @param {Array} pages — עמודי התוצר (אחרי הצבה/ריהוט)
+ * @param {object} [opts] — { validateStamps: bool = true }
+ * @returns {{checked: Object<string,number>, violations: Array<{kind,page,code,note?}>}}
+ */
+function validatePageItems(pages, opts = {}) {
+  const validateStamps = opts.validateStamps !== false;
+  const { stampIsValid } = require('./notes-model');
+  const checked = Object.create(null);
+  const violations = [];
+  const check = (kind, instance, page, extra) => {
+    const d = pageItemDescriptorOf(kind);
+    if (!d) { violations.push({ kind, page, code: 'kind-not-registered' }); return; }
+    checked[kind] = (checked[kind] || 0) + 1;
+    if (!d.validate(instance)) violations.push({ kind, page, code: 'contract-invalid', ...(extra || {}) });
+  };
+  for (const page of pages || []) {
+    const pIdx = page && page.index != null ? page.index : null;
+    if (page.folioDisplay) check('folio', page, pIdx);
+    if (page.header) check('running-header', page.header, pIdx);
+    if (page.footnotes && page.footnotes.length) {
+      check('footnote-gutter', page, pIdx);
+      if (validateStamps) {
+        for (const n of page.footnotes) {
+          if (!stampIsValid(n)) violations.push({ kind: 'footnote-gutter', page: pIdx, code: 'note-stamp-invalid', note: n.noteId || n.tokenId || null });
+        }
+      }
+    }
+    for (const sn of (page.sideNotes || [])) {
+      if (sn.yTop == null) continue; // רק המוקמות בפועל
+      const kind = sn.itemKind === 'info-box' ? 'info-box' : 'side-note';
+      check(kind, sn, pIdx, { note: sn.noteId || sn.ownToken || null });
+      if (validateStamps && !stampIsValid(sn)) {
+        violations.push({ kind, page: pIdx, code: 'note-stamp-invalid', note: sn.noteId || sn.ownToken || null });
+      }
+    }
+    for (const d of (page.decorations || [])) check('ornament', d, pIdx);
+    if (page.spanning && page.spanning.lines && page.spanning.lines.length) check('spanning-band', page.spanning, pIdx);
+    if (page.type === 'endnotes') {
+      check('endnote-page', page, pIdx);
+      if (validateStamps) {
+        for (const n of (page.notes || [])) {
+          if (!stampIsValid(n)) violations.push({ kind: 'endnote-page', page: pIdx, code: 'note-stamp-invalid', note: n.noteId || n.tokenId || null });
+        }
+      }
+    }
+    if (page.type === 'toc-general' || page.type === 'toc-detail') check('toc-page', page, pIdx);
+    if (page.type === 'shaar-main' || page.type === 'shaar-sub' || page.type === 'shaar-back' || page.type === 'custom') check('shaar-gate', page, pIdx);
+    // גוף זורם: קלות ובגבולות — הטור הראשון עם שורות מייצג את ה-block של העמוד
+    const firstCol = (page.columns || []).find(c => c && c.length);
+    if (firstCol) check('body-block', { lines: firstCol, tokenId: firstCol[0].tokenId != null ? firstCol[0].tokenId : (firstCol[0].meta && firstCol[0].meta.tokenId) }, pIdx);
+  }
+  return { checked, violations };
+}
+
+module.exports = {
+  PAGE_ITEM_PARTICIPATION,
+  PAGE_ITEM_SLOTS,
+  registerPageItem,
+  pageItemDescriptorOf,
+  registeredPageItems,
+  reservePageItemSpace,
+  validatePageItems
+};
 
 };
 __modules["src/ui/worker-protocol.js"] = function (require, module, exports) {
@@ -20605,6 +21435,38 @@ function renderFootnoteArea(page, settings, doc) {
     rule.className = `fn-rule fn-rule--${settings['footnote-separator-rule']}`;
     area.appendChild(rule);
   }
+  // **שלב 6 פרוסה 2 (§9 — הקרנה מהחותמת):** גוף ההערה מוקרן משורות החותמת
+  // (noteRows/noteWords/lineH מ-notes-model) — תיבת-שורה מפורשת לכל שורה:
+  // פיץ' אנכי מדויק מהמודל (בעבר line-height יחידת-יחס מה-CSS סטה ~0.4px/שורה
+  // מהתקציב ⇒ הערות נחתכו/חפפו בין שורות בתצוגה בעוד ה-PDF והתקציב הסכימו),
+  // והמילים של כל שורה — ממש כפי שנמדדו. הדפדפן משלים את הזרימה האופקית
+  // בתוך תיבת השורה (white-space:nowrap — אין שבירה מחדש של הדפדפן).
+  // חותמה חסרה ⇒ data-stamp-missing + נפילת טקסט חירום (התוכן לעולם לא אובד) —
+  // לא מדידה חלופית שקטה (§9.8).
+  const mkRows = (n) => {
+    const rows = [];
+    const isCont = n.isContinuation === true || n.mode === 'split-rest';
+    for (let li = 0; li < (n.noteRows || []).length; li++) {
+      const row = n.noteRows[li];
+      const div = doc.createElement('div');
+      div.className = 'fn-row';
+      div.style.whiteSpace = 'nowrap';
+      if (Number(n.lineH) > 0) {
+        div.style.lineHeight = `${n.lineH}px`;
+        div.style.height = `${n.lineH}px`;
+      }
+      const parts = [];
+      if (li === 0) {
+        if (isCont) parts.push('(המשך)');
+        if (n.marker != null && String(n.marker) !== '') parts.push(`${n.marker}\u200F`);
+      }
+      for (let i = row.wFrom; i < row.wTo; i++) parts.push(scrubPUAText(String(n.noteWords[i])));
+      div.textContent = parts.join(' ');
+      rows.push(div);
+    }
+    return rows;
+  };
+  const hasStamp = (n) => Array.isArray(n.noteRows) && n.noteRows.length > 0 && Array.isArray(n.noteWords) && Number(n.lineH) > 0;
   // סמן אחיד (notes/markers) + סימון המשך למקטעי פיצול (S7.1.3 long-note policy)
   const mkNote = (n) => {
     const marker = n.marker || markerFor(Number.isInteger(n.docIndex) ? n.docIndex : (n.markerNum || 1), settings['footnote-marker-style']);
@@ -20613,13 +21475,20 @@ function renderFootnoteArea(page, settings, doc) {
     el.className = 'footnote' + (cont ? ' fn--continuation' : '') + (n.customStyle ? ' footnote--custom' : '');
     if (n.customStyle) el.dataset.style = n.customStyle;
     el.dir = 'rtl';
-    el.textContent = `${cont ? '(המשך) ' : ''}${marker}\u200F ${scrubPUAText(n.text || n)}`;
+    if (hasStamp(n)) {
+      el.style.margin = '0'; // התקציב אינו כולל שוליים — תצוגה=ייצוא=תקציב
+      for (const r of mkRows(n)) el.appendChild(r);
+    } else {
+      el.dataset.stampMissing = '1'; // diagnostic גלוי — בלי מדידה חלופית שקטה
+      el.textContent = `${cont ? '(המשך) ' : ''}${marker}\u200F ${scrubPUAText(n.text || n)}`;
+    }
     return el;
   };
   // **S70 (fn-continuous ב-DP — סגירת שארית S5.4):** גרסת inline של ההערה —
   // לזרימה רציפה: הערה הבאה פותחת באותה שורה שבה הסתיימה קודמתה (רווח-
   // כפול בין הערות — כמו המורשת). המודל כבר תיקצב במצב זה בלי הצמדת
   // תקרה פר-הערה (D-34); התצוגה משלימה את החזות בלבד — הגיאומטריה לא זזה.
+  // **פרוסה 2:** פיץ' השורה גם כאן מהחותמת (px מפורש) — אותו פיץ' של ה-PDF.
   const mkNoteInline = (n) => {
     const marker = n.marker || markerFor(Number.isInteger(n.docIndex) ? n.docIndex : (n.markerNum || 1), settings['footnote-marker-style']);
     const el = doc.createElement('span');
@@ -20634,6 +21503,8 @@ function renderFootnoteArea(page, settings, doc) {
     const flow = doc.createElement('div');
     flow.className = 'footnotes-flow';
     flow.dir = 'rtl';
+    const firstStamped = notes.find(hasStamp);
+    if (firstStamped) flow.style.lineHeight = `${firstStamped.lineH}px`; // פיץ' מהחותמת — תצוגה=ייצוא
     notes.forEach((n, i) => {
       if (i > 0) flow.appendChild(doc.createTextNode('\u00A0 ')); // רווח-כפול בין הערות
       flow.appendChild(mkNoteInline(n));
@@ -21795,7 +22666,29 @@ function renderPage(page, settings, doc, header) {
           el.style.left = `${Math.round(col.x)}px`;
           el.style.top = `${Math.round(y)}px`;
           el.style.width = `${Math.round(col.w)}px`;
-          el.textContent = `${n.marker || ''}\u200F ${scrubPUAText(n.text || '')}`;
+          // **שלב 6 פרוסה 2 (§9):** שורות ההערה מהחותמת — פיץ' מדויק מהמודל
+          // (בדיוק כמו הפרויקטור ל-PDF וכמו התקציב שקבע buildEndnotePages).
+          const stamped = Array.isArray(n.noteRows) && n.noteRows.length > 0 && Array.isArray(n.noteWords) && Number(n.lineH) > 0;
+          if (stamped) {
+            el.style.margin = '0'; // התקציב אינו כולל שוליים — תצוגה=ייצוא=תקציב
+            el.dataset.rows = String(n.noteRows.length);
+            for (let li = 0; li < n.noteRows.length; li++) {
+              const row = n.noteRows[li];
+              const div = doc.createElement('div');
+              div.className = 'fn-row';
+              div.style.whiteSpace = 'nowrap';
+              div.style.lineHeight = `${n.lineH}px`;
+              div.style.height = `${n.lineH}px`;
+              const parts = [];
+              if (li === 0 && n.marker != null && String(n.marker) !== '') parts.push(`${n.marker}\u200F`);
+              for (let i = row.wFrom; i < row.wTo; i++) parts.push(scrubPUAText(String(n.noteWords[i])));
+              div.textContent = parts.join(' ');
+              el.appendChild(div);
+            }
+          } else {
+            el.dataset.stampMissing = '1'; // diagnostic גלוי (§9.8)
+            el.textContent = `${n.marker || ''}\u200F ${scrubPUAText(n.text || '')}`;
+          }
           list.appendChild(el);
           y += (n.heightPx || 0);
         }
@@ -21877,10 +22770,17 @@ function renderPage(page, settings, doc, header) {
   // **S8 (REQ-ORN-01..04):** עיטורים — ציור מה־rectים בלבד (F-09 מקור יחיד)
   for (const el of renderDecorations(page, doc)) root.appendChild(el);
 
-  // הערות צד: מיקום מוחלט לפי ה‑placement (S7.1.2) — anchor לפסקה המארחת
+  // הערות צד / תיבות מידע: מיקום מוחלט לפי ה‑placement (S7.1.2) — anchor לפסקה המארחת.
+  // **שלב 6 פרוסה 2 (§§9-10):** הגוף מוקרן משורות החותמת — תיבת-שורה מפורשת
+  // לכל שורה (line-height/height = lineH מהמודל; nowrap — הדפדפן אינו שובר
+  // מחדש). בעבר ה-aside עטף טקסט חופשי עם line-height:1.15 יחסי מה-CSS —
+  // סטייה של עד ~0.4px לשורה מהתקציב שצברה על שורות רבות ⇒ חפיפות
+  // SIDE_NOTE_OVERLAP בפועל בעמוד 107 (האודיט החי). תיבת מידע: ריפוד/מסגרת/
+  // רקע מהחוזה (styleSpec+boxChrome) — אותה גיאומטריה שהוקצתה (§11).
   for (const sn of page.sideNotes || []) {
+    const isBox = sn.itemKind === 'info-box';
     const el = doc.createElement('aside');
-    el.className = 'side-note' + (sn.isCustomStyle ? ' side-note--custom' : '');
+    el.className = 'side-note' + (sn.isCustomStyle ? ' side-note--custom' : '') + (isBox ? ' info-box' : '');
     if (sn.isCustomStyle) el.dataset.style = sn.isCustomStyle;
     el.dataset.anchor = sn.anchorToken || '';
     el.dir = 'rtl';
@@ -21889,8 +22789,35 @@ function renderPage(page, settings, doc, header) {
       el.style.left = `${Math.round(sn.x)}px`;
       el.style.right = 'auto';
     }
-    if (sn.colWidth) el.style.width = `${sn.colWidth}px`;
-    el.textContent = (sn.counterMark ? `${sn.counterMark} ` : '') + scrubPUAText(sn.text);
+    const boxW = (sn.boxSpec && Number(sn.boxSpec.widthPx) > 0) ? sn.boxSpec.widthPx : sn.colWidth;
+    if (boxW) el.style.width = `${Math.round(boxW)}px`;
+    if (isBox) {
+      const chrome = sn.boxChrome || { pad: 0, border: 0 };
+      if (chrome.pad) el.style.padding = `${chrome.pad}px`;
+      if (chrome.border) el.style.border = '1px solid #000';
+      if (sn.styleSpec && sn.styleSpec.background) el.style.backgroundColor = sn.styleSpec.background;
+      if (sn.styleSpec && sn.styleSpec.fontSizePt) el.style.fontSize = `${Math.round(sn.styleSpec.fontSizePt * (96 / 72) * 100) / 100}px`;
+    }
+    const stamped = Array.isArray(sn.noteRows) && sn.noteRows.length > 0 && Array.isArray(sn.noteWords) && Number(sn.lineH) > 0;
+    if (stamped) {
+      el.dataset.rows = String(sn.noteRows.length);
+      for (let li = 0; li < sn.noteRows.length; li++) {
+        const row = sn.noteRows[li];
+        const div = doc.createElement('div');
+        div.className = 'sn-row';
+        div.style.whiteSpace = 'nowrap';
+        div.style.lineHeight = `${sn.lineH}px`;
+        div.style.height = `${sn.lineH}px`;
+        const parts = [];
+        if (li === 0 && !isBox && sn.counterMark != null && String(sn.counterMark) !== '') parts.push(String(sn.counterMark));
+        for (let i = row.wFrom; i < row.wTo; i++) parts.push(scrubPUAText(String(sn.noteWords[i])));
+        div.textContent = parts.join(' ');
+        el.appendChild(div);
+      }
+    } else {
+      el.dataset.stampMissing = '1'; // diagnostic גלוי — בלי מדידה חלופית שקטה (§9.8)
+      el.textContent = (sn.counterMark ? `${sn.counterMark} ` : '') + scrubPUAText(sn.text);
+    }
     root.appendChild(el);
   }
   return root;
@@ -23410,11 +24337,8 @@ __modules["src/engine/output/geometry-projector.js"] = function (require, module
 const { scrubPUAText } = require('./dom-renderer');
 const { MeasureAPI } = require('../typography/measure-api');
 const { folioGeometry: folioGeoOf, headerGeometry: headerGeoOf } = require('../layout/furniture-geometry'); // **שלב 6:** גיאומטריית ריהוט — מקור יחיד ל-DOM ול-PDF
-// **S5.4 (P-5):** מקורות יחידים להקרנת ההערות — פקטורי רוחב הגופן מהתקציב
-// (אותם מספרים שקבעו את גובה ההערה) וסמן אחיד מ-notes/markers (כמו ה-DOM).
-const { NOTE_FONT_FACTORS } = require('../layout/footnote-budget');
+const NM = require('../layout/notes-model'); // **שלב 6 פרוסה 2 (§9):** חותמות ההערות — המקרינים צורכים ואינם מודדים
 const { markerFor } = require('../notes/markers');
-const { SIDE_NOTE_FONT_FACTORS } = require('../layout/side-notes');
 const { lineFontSizePt, hexColorToRgb } = require('./line-font'); // **03.11(ג):** מקור יחיד — נצרך גם ע"י dom-renderer (תצוגה חיה + ייצוא); מיוצא הלאה לצרכנים קיימים
 // **S73:** גופן השערים לפי מחלקת בלוק — מקור יחיד לשני הנתיבים (DOM+PDF)
 const { buildShaarBlocks, shaarFontOf } = require('./shaar-content');
@@ -23708,62 +24632,85 @@ function colWidthOf(tpl) {
 }
 
 // ============ S5.4 (P-5) — הקרנת הערות-שוליים / עמודי-הערות / הערות-צד / מפרידים ============
+// **שלב 6 פרוסה 2 (§9):** המקרינים צורכים את חותמת המדידה בלבד — שורות,
+// רוחבי מילים, סמן/המשך/מונה, רווח ופיץ' — הכול מה-notes-model. אין מדידת
+// מילים, אין שבירה עצמאית ואין נוסחת גובה נפרדת: תקציב = הצבה = הקרנה.
+// חותמת חסרה/פגומה ⇒ diagnostic מפורש (out.diagnostics) — לא מדידה חלופית שקטה.
 
 /** גודל גוף הערה — 0.8× הגוף (כמו .footnotes{font-size:.8em} ו-noteHeight בתקציב). */
 function fnNoteSizePt(settings) { return settings['body-font-size-pt'] * 0.8; }
 
-/**
- * שבירת אסימוני הערה לשורות ממוקמות מילה-במילה (RTL) — אותו חוזה של placeWords
- * של ה-legacy: הסמן/(המשך) בפינה הימנית של השורה הראשונה, יישור מלא לשורות
- * שאינן אחרונות (רווחים מעל הרווח הטבעי — כמו justify של CSS), בסיס פר-שורה
- * לפי מודל תיבת השורה (half-leading + ascent).
- * @param {Array} tokens — [{text, sizePt?, wFactor?}] (wFactor — פקטור רוחב הגופן)
+/** רישום diagnostic של חותמת חסרה/פגומה (§9.8) — מקור וסיבתיות, לא החלפה שקטה. */
+function pushStampDiagnostic(out, area, page, n) {
+  if (!out.diagnostics) out.diagnostics = [];
+  out.diagnostics.push({
+    kind: 'note-stamp-missing', area,
+    page: page && page.index != null ? page.index : null,
+    note: (n && (n.noteId || n.tokenId)) || null,
+    marker: n && n.marker != null ? String(n.marker) : null
+  });
+}
+
+/** הקרנת שורות ההערה **מהחותמת** — אותו חוזה מיקום שהיה ב-wrapNoteTokens
+ * (סמן/(המשך)/מונה בפינה הימנית של השורה הראשונה, יישור מלא לשורות שאינן
+ * אחרונות, בסיס פר-שורה לפי מודל תיבת השורה) — אך הרוחבים מהחותמת שנמדדה
+ * פעם אחת, ולא מדידה חוזרת של המקרין.
+ * @param {object} n — הערה עם חותמת (noteRows/noteWords/markerW/contMarkW/
+ *   counterMarkW/spaceW/lineH מ-notes-model.stampNote)
+ * @param {object} opts — { sizePt, fontKey, color, measure, counterMark?, padPx? }
  * @returns {{lines:Array, words:Array, lineCount:number, firstTop:number, firstBaseline:number, h:number}|null}
  */
-function wrapNoteTokens(tokens, x, w, yTop, pitch, sizePt, measure, fontKey, color) {
-  const live = tokens.filter(t => t.text && String(t.text).trim());
-  if (!live.length) return null;
-  const spaceW = measure.measureTextWidth(' ', sizePt, 0);
-  const toks = live.map(t => {
-    const pt = t.sizePt || sizePt;
-    return { text: String(t.text), sizePt: pt, w: measure.measureTextWidth(String(t.text), pt, 0) * (t.wFactor || 1) };
-  });
-  // שבירה חמדנית ברוחב הנתיב — אותה ספירת שורות כמו noteHeight בתקציב
-  const rows = [];
-  let cur = [], curW = 0;
-  for (const tok of toks) {
-    const add = cur.length ? spaceW + tok.w : tok.w;
-    if (cur.length && curW + add > w) { rows.push(cur); cur = [tok]; curW = tok.w; }
-    else { cur.push(tok); curW += add; }
+function projectStampedRows(n, x, w, yTop, opts) {
+  if (!NM.stampIsValid(n)) return null; // חותמה חסרה/פגומה — הקריאה מדווחת, לא מודדת
+  const rows = n.noteRows;
+  const words = n.noteWords;
+  const lineH = n.lineH;
+  const spaceW = Number(n.spaceW) || 0;
+  const sizePt = opts.sizePt;
+  const pad = opts.padPx || 0;
+  const gx = x + pad, gw = Math.max(4, w - 2 * pad); // תיבת מידע: הטקסט בתוך הריפוד
+  const glyph = (v) => Math.max(0, (Number(v) || 0) - spaceW); // חותמת נושאת גליף+רווח
+  const isCont = n.isContinuation === true || n.mode === 'split-rest';
+  const prefix = [];
+  if (isCont && Number(n.contMarkW) > 0) prefix.push({ text: NM.CONTINUATION_MARK, w: glyph(n.contMarkW) });
+  const mkTxt = noteMarkerOf(n, { 'footnote-marker-style': null });
+  if (mkTxt && Number(n.markerW) > 0) prefix.push({ text: scrubPUAText(mkTxt), w: glyph(n.markerW) });
+  if (!isCont && n.counterMark != null && String(n.counterMark) !== '' && Number(n.counterMarkW) > 0) {
+    prefix.push({ text: scrubPUAText(String(n.counterMark)), w: glyph(n.counterMarkW) });
   }
-  if (cur.length) rows.push(cur);
-  const ascent = measure.ascentEm(), descent = measure.descentEm();
+  const ascent = opts.measure.ascentEm(), descent = opts.measure.descentEm();
   const sizePx = sizePt * (96 / 72);
-  const half = Math.max(0, (pitch - (ascent + descent) * sizePx) / 2);
+  const half = Math.max(0, (lineH - (ascent + descent) * sizePx) / 2);
   const flat = [];
   const lineRecs = rows.map((row, li) => {
     const isLast = li === rows.length - 1;
-    const sumW = row.reduce((s, t) => s + t.w, 0);
-    const gaps = Math.max(0, row.length - 1);
+    const toks = [];
+    if (li === 0) for (const p of prefix) toks.push(p);
+    for (let i = row.wFrom; i < row.wTo; i++) {
+      toks.push({ text: scrubPUAText(String(words[i])), w: row.wordW[i - row.wFrom] });
+    }
+    const live = toks.filter(t => t.text && String(t.text).trim());
+    const sumW = live.reduce((s, t) => s + t.w, 0);
+    const gaps = Math.max(0, live.length - 1);
     let gapW = spaceW;
-    if (!isLast && gaps > 0 && sumW + gaps * spaceW < w) gapW = (w - sumW) / gaps;
-    const y = yTop + li * pitch;
+    if (!isLast && gaps > 0 && sumW + gaps * spaceW < gw) gapW = (gw - sumW) / gaps;
+    const y = yTop + pad + li * lineH;
     const baselineY = y + half + ascent * sizePx;
-    const words = [];
-    let cursor = x + w; // RTL — מימין לשמאל
-    for (const t of row) {
+    const wds = [];
+    let cursor = gx + gw; // RTL — מימין לשמאל
+    for (const t of live) {
       cursor -= t.w;
-      const wd = { text: t.text, x: cursor, w: t.w, sizePt: t.sizePt, baselineY, fontKey, ...(color ? { color } : {}) };
-      words.push(wd);
+      const wd = { text: t.text, x: cursor, w: t.w, sizePt, baselineY, fontKey: opts.fontKey, ...(opts.color ? { color: opts.color } : {}) };
+      wds.push(wd);
       flat.push(wd);
       cursor -= gapW;
     }
-    return { y, h: pitch, baselineY, words };
+    return { y, h: lineH, baselineY, words: wds };
   });
   return {
     lines: lineRecs, words: flat, lineCount: rows.length, firstTop: yTop,
     firstBaseline: lineRecs.length ? lineRecs[0].baselineY : yTop,
-    h: rows.length * pitch
+    h: rows.length * lineH
   };
 }
 
@@ -23777,17 +24724,15 @@ function noteMarkerOf(n, settings) {
 }
 
 /**
- * **S5.4 (P-5 — הערות מרוסקות):** הקרנת מרזב הערות-השוליים של עמוד DP — נתיב
- * אחד או שניים (footnote-columns), חלוקת הערות זהה לתקציב (LPT דטרמיניסטית
- * — גובה המרזב לעולם אינו חורג מהשמור), וחוט מפריד (fn-rule) מעל המרזב
- * כמו ב-DOM. הערות מוקרנות כמילים במדידה אמיתית — החוזה שה-pdf-writer כבר
- * מצייר (fn.words) — במקום טקסט שפוזר בקידום קבוע.
+ * **S5.4 (P-5 — הערות מרוסקות) + שלב 6 פרוסה 2 (§9 — מהחותמת):** הקרנת מרזב
+ * הערות-השוליים של עמוד DP — נתיב אחד או שניים (footnote-columns), חלוקת
+ * הערות זהה לתקציב (LPT דטרמיניסטית — גובה המרזב לעולם אינו חורג מהשמור),
+ * וחוט מפריד (fn-rule) מעל המרזב כמו ב-DOM. השורות, רוחבי המילים והפיץ'
+ * **מהחותמת** (מדידה אחת ב-CP2/בפיצול) — המקרין אינו מודד ואינו שובר שוב.
  */
 function projectFootnoteGutter(page, settings, measure, out) {
   const tpl = page.template;
   const fnSize = fnNoteSizePt(settings);
-  // **S70 (R7-M4):** פקטורי הגופן הם תיקון טבלת impl A; ב-impl B מדויקות המטריקות והפקטור מולד.
-  const factor = (measure && measure.impl === 'font-metrics') ? 1 : (NOTE_FONT_FACTORS[settings['f-note-body-font']] || 1);
   const fullX = colLeftOf(tpl), fullW = colWidthOf(tpl);
   let laneW = settings._fnColWidthPx || Math.round(fullW);
   if (!(laneW > 0) || laneW > fullW) laneW = Math.round(fullW);
@@ -23818,17 +24763,22 @@ function projectFootnoteGutter(page, settings, measure, out) {
     let y = gutterTop;
     for (const n of laneNotes) {
       const pitch = n.lineH || Math.round(fnSize * (96 / 72) * 1.25);
-      const cont = n.isContinuation === true || n.mode === 'split-rest';
       const marker = noteMarkerOf(n, settings);
-      const tokens = [];
-      if (cont) tokens.push({ text: '(המשך)' });
-      if (marker) tokens.push({ text: scrubPUAText(marker) });
-      for (const w of String(n.text || '').replace(/\uE000/g, ' ').split(/\s+/)) {
-        const t = scrubPUAText(w);
-        if (t) tokens.push({ text: t, wFactor: factor });
-      }
-      const rec = wrapNoteTokens(tokens, laneX[li], laneW, y, pitch, fnSize, measure, 'fnbody', colorOfSetting(settings['f-note-body-color']));
-      if (rec) {
+      const rec = projectStampedRows(n, laneX[li], laneW, y, {
+        sizePt: fnSize, fontKey: 'fnbody',
+        color: colorOfSetting(settings['f-note-body-color']), measure
+      });
+      if (!rec) {
+        // **§9.8:** חותמה חסרה/פגומה — diagnostic מפורש; הטקסט נשמר ברשומת
+        // ההערה (מלאי/חשבונאות) אך אין מדידה חלופית שקטה של מילים.
+        pushStampDiagnostic(out, 'footnote-gutter', page, n);
+        out.footnotes.push({
+          y, x: laneX[li], w: laneW,
+          marker: scrubPUAText(String(n.marker || '')),
+          text: scrubPUAText(String(n.text || '').replace(/\uE000/g, ' ')),
+          words: [], baselineY: y, h: n.heightPx || 0, stampMissing: true
+        });
+      } else {
         out.footnotes.push({
           y: rec.firstTop, x: laneX[li], w: laneW,
           marker: scrubPUAText(String(n.marker || '')),
@@ -23837,7 +24787,7 @@ function projectFootnoteGutter(page, settings, measure, out) {
         });
         inkTop = Math.min(inkTop, rec.firstTop);
       }
-      y += (n.heightPx || pitch); // התקדמות לפי התקציב — פריסת העמוד לעולם אינה נפרצת
+      y += (n.heightPx != null ? n.heightPx : pitch); // התקדמות לפי התקציב — פריסת העמוד לעולם אינה נפרצת
     }
   });
   // חוט המפריד מעל המרזב — כמו .fn-rule ב-renderFootnoteArea (לא במצב 'none')
@@ -23848,21 +24798,17 @@ function projectFootnoteGutter(page, settings, measure, out) {
 }
 
 /**
- * **S5.4 (P-5 — עמודי endnotes ריקים):** הקרנת עמוד הערות-הסיום — כותרת
- * (h2, 1.2× הגוף) ואז ההערות בטורי המודל (colIdx/heightPx מ-buildEndnotePages),
- * גוף ההערה ב-0.8× עם פקטור הגופן — אותם מספרים שקבעו את גובה ההערה.
+ * **S5.4 (P-5 — עמודי endnotes ריקים) + שלב 6 פרוסה 2 (§9):** הקרנת עמוד
+ * הערות-הסיום — כותרת (h2, 1.2× הגוף) ואז ההערות בטורי המודל (colIdx/heightPx
+ * מ-buildEndnotePages). השורות, רוחבי המילים, הסמן והפיץ' **מהחותמת** שנקבעה
+ * בבונה עצמו (המדידה היחידה של ההערה בהקשר עמודי-ההערות) — המקרין אינו
+ * מודד ואינו שובר שוב. חותמה חסרה ⇒ diagnostic מפורש (§9.8).
  * השורות נכנסות ל-out.lines ⇒ מצוירות ב-PDF, נכנסות למלאי הגליפים ולתיבת הדיו.
  */
 function projectEndnotePage(page, settings, measure, out) {
   const tpl = page.template;
   const bodyPt = settings['body-font-size-pt'];
   const notePt = bodyPt * 0.8;
-  // **S71.1 (R7-M4 שארית — בדיקה כפולה):** כמו המרזב והערות-הצד — הפקטור
-  // הוא תיקון טבלת impl A; ב-impl B (ייצוא PDF) הוא מנפח את רוחבי המילים
-  // בהקרנה ⇒ שבירה מוקדמת מזו שהמודל תיקצב (estimateNoteHeight ללא פקטור)
-  // ⇒ הערות-סיום חופפות ב-PDF המיוצא.
-  const factor = (measure && measure.impl === 'font-metrics')
-    ? 1 : (NOTE_FONT_FACTORS[settings['f-note-body-font']] || 1);
   if (page.heading) {
     const sizePt = bodyPt * 1.2;
     const bandH = (page.titleBandPx && page.titleBandPx > 16) ? page.titleBandPx - 16 : (measure.lineHeightPx ? measure.lineHeightPx(sizePt) : Math.round(sizePt * (96 / 72) * 1.34));
@@ -23871,7 +24817,7 @@ function projectEndnotePage(page, settings, measure, out) {
   const top = tpl.contentBox.top + (page.titleBandPx || 0);
   const cols = Math.max(1, (page.columns || []).length);
   // טור-אחד (endnote-columns=1): רשימה ברוחב תיבת התוכן המלא (כמו המנוע
-  // שמחשב את גובה ההערה ברוחב המלא) — התבנית עצמה דו-טורית תמיד.
+  // שמדד את ההערה ברוחב המלא) — התבנית עצמה דו-טורית תמיד.
   const singleColMode = (page.columns || []).length === 1;
   for (let ci = 0; ci < cols; ci++) {
     const colNotes = page.columns[ci] || [];
@@ -23881,16 +24827,14 @@ function projectEndnotePage(page, settings, measure, out) {
       : (tpl.columns[ci] || { x: colLeftOf(tpl), w: colWidthOf(tpl) / cols });
     let y = top;
     for (const n of colNotes) {
-      const pitch = measure.lineHeightPx ? measure.lineHeightPx(notePt) : Math.round(notePt * (96 / 72) * 1.34);
-      const marker = noteMarkerOf(n, settings);
-      const tokens = [];
-      if (marker) tokens.push({ text: scrubPUAText(marker) });
-      for (const w of String(n.text || '').replace(/\uE000/g, ' ').split(/\s+/)) {
-        const t = scrubPUAText(w);
-        if (t) tokens.push({ text: t, wFactor: factor });
-      }
-      const rec = wrapNoteTokens(tokens, col.x, col.w, y, pitch, notePt, measure, 'fnbody', colorOfSetting(settings['f-note-body-color']));
-      if (rec) {
+      const pitch = n.lineH || (measure.lineHeightPx ? measure.lineHeightPx(notePt) : Math.round(notePt * (96 / 72) * 1.34));
+      const rec = projectStampedRows(n, col.x, col.w, y, {
+        sizePt: notePt, fontKey: 'fnbody',
+        color: colorOfSetting(settings['f-note-body-color']), measure
+      });
+      if (!rec) {
+        pushStampDiagnostic(out, 'endnote-page', page, n); // §9.8 — לא מדידה חלופית שקטה
+      } else {
         rec.lines.forEach((line) => {
           out.lines.push({
             x: col.x, y: line.y, w: col.w, h: pitch,
@@ -23906,32 +24850,54 @@ function projectEndnotePage(page, settings, measure, out) {
 }
 
 /**
- * **S5.4 (P-5 — הערות-צד חסרות):** הקרנת הערות-הצד לפי ה-placement — אותו מיקום
- * מוחלט כמו ה-aside ב-DOM (x/yTop/colWidth), גוף 0.75× (כמו
- * .side-note{font-size:.75em}) עם פקטור s-note-body-font ⇒ ‏/F6 ב-PDF.
+ * **S5.4 (P-5 — הערות-צד חסרות) + שלב 6 פרוסה 2 (§§9-10):** הקרנת הערות-הצד
+ * לפי ה-placement — אותו מיקום מוחלט כמו ה-aside ב-DOM (x/yTop/colWidth),
+ * והשורות/רוחבי המילים/הפיץ' **מהחותמת** (מדידה אחת ביצירת הפריט ב-DP) —
+ * המקרין אינו מודד ואינו שובר שוב. תיבת מידע: רקע/מסגרת מהחוזה (styleSpec +
+ * boxChrome) והטקסט בתוך הריפוד — אותה גיאומטריה שהוקצתה (§11).
  */
 function projectSideNotes(page, settings, measure, out) {
-  const sizePt = settings['body-font-size-pt'] * 0.75;
-  const fontName = settings['s-note-body-font'];
-  // **S70 (R7-M4):** בם-בו הפקטור מולד (מטריקות אמת)
-  const factor = (measure && measure.impl === 'font-metrics')
-    ? 1 : (SIDE_NOTE_FONT_FACTORS[fontName] || (fontName && fontName !== settings['body-font'] ? 1.08 : 1));
   for (const sn of page.sideNotes) {
     if (sn.yTop == null) continue; // רק המוקמות בפועל (placeSideNotes)
-    const pitch = Math.round(sizePt * (96 / 72) * 1.15);
-    const tokens = [];
-    if (sn.counterMark) tokens.push({ text: scrubPUAText(String(sn.counterMark)) });
-    for (const w of String(sn.text || '').split(/\s+/)) {
-      const t = scrubPUAText(w);
-      if (t) tokens.push({ text: t, wFactor: factor });
+    // גודל הגוף מהחותמת (פריט עוגן מורחב יכול להצהיר גודל משלו — §11)
+    const sizePt = (sn.stampCtx && Number(sn.stampCtx.sizePt) > 0) ? sn.stampCtx.sizePt : settings['body-font-size-pt'] * 0.75;
+    const isBox = sn.itemKind === 'info-box';
+    const chrome = sn.boxChrome || { pad: 0, border: 0 };
+    const boxW = (sn.boxSpec && Number(sn.boxSpec.widthPx) > 0) ? sn.boxSpec.widthPx : sn.colWidth;
+    if (isBox) {
+      // רקע ומסגרת התיבה — מהחוזה בלבד, באותו ערוץ עיטורים של ה-PDF
+      const hPt = out.height * (72 / 96);
+      const PX_TO_PT = 72 / 96;
+      const r2 = (v) => Math.round(v * 100) / 100;
+      const yTopPt = hPt - (sn.yTop + sn.heightPx) * PX_TO_PT;
+      const ops = [];
+      const bg = sn.styleSpec && sn.styleSpec.background ? hexColorToRgb(sn.styleSpec.background) : null;
+      if (bg) {
+        ops.push(`${r2(bg[0])} ${r2(bg[1])} ${r2(bg[2])} rg ${r2(sn.x * PX_TO_PT)} ${r2(yTopPt)} ${r2(boxW * PX_TO_PT)} ${r2(sn.heightPx * PX_TO_PT)} re f`);
+      }
+      if (chrome.border > 0) {
+        ops.push(`0 0 0 RG ${r2(0.75)} w ${r2(sn.x * PX_TO_PT)} ${r2(yTopPt)} ${r2(boxW * PX_TO_PT)} ${r2(sn.heightPx * PX_TO_PT)} re S`);
+      }
+      if (ops.length) {
+        if (!out.decorations) out.decorations = [];
+        out.decorations.push({
+          x: sn.x, y: sn.yTop, w: boxW, h: sn.heightPx,
+          kind: 'info-box', slot: 'margin', kindStyle: null,
+          inkType: 'rule', inkUri: null, paint: null, pdfOps: ops
+        });
+      }
     }
-    const rec = wrapNoteTokens(tokens, sn.x, sn.colWidth, sn.yTop, pitch, sizePt, measure, 'margin', colorOfSetting(settings['s-note-body-color']));
-    if (!rec) continue;
+    const rec = projectStampedRows(sn, sn.x, boxW, sn.yTop, {
+      sizePt, fontKey: 'margin',
+      color: colorOfSetting(settings['s-note-body-color']), measure,
+      padPx: isBox ? chrome.pad + chrome.border : 0
+    });
+    if (!rec) { pushStampDiagnostic(out, 'side-note', page, sn); continue; } // §9.8
     rec.lines.forEach((line) => {
       out.lines.push({
-        x: sn.x, y: line.y, w: sn.colWidth, h: pitch,
+        x: sn.x, y: line.y, w: boxW, h: sn.lineH,
         words: line.words.map(wd => ({ text: wd.text, x: wd.x, w: wd.w, sizePt: wd.sizePt, fontKey: wd.fontKey })),
-        align: 'right', kind: 'side-note', level: sn.level != null ? sn.level : null,
+        align: 'right', kind: isBox ? 'info-box' : 'side-note', level: sn.level != null ? sn.level : null,
         isLast: true, sizePt, baselineY: null,
         tokenId: sn.anchorToken != null ? sn.anchorToken : (sn.ownToken != null ? sn.ownToken : null)
       });
