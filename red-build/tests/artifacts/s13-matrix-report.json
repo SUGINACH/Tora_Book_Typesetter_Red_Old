@@ -5,15 +5,15 @@
     {
       "config": "default",
       "pages": 36,
-      "ms": 206,
+      "ms": 262,
       "contentPreserved": true,
       "geometryNeutral": true,
       "layoutHash": "f6f32c4073c4fd356d54793d840104ee3f2987f541e45a22af8737b88c2b6db9",
-      "findingsOpen": 17,
+      "findingsOpen": 25,
       "findingsHigh": 0,
       "openByKind": {
         "rollback-compromise": 9,
-        "column-imbalance": 8
+        "column-imbalance": 16
       },
       "htmlDeterministic": true,
       "pdfDeterministic": true,
@@ -22,15 +22,15 @@
     {
       "config": "ornaments",
       "pages": 36,
-      "ms": 144,
+      "ms": 174,
       "contentPreserved": true,
       "geometryNeutral": true,
       "layoutHash": "f6f32c4073c4fd356d54793d840104ee3f2987f541e45a22af8737b88c2b6db9",
-      "findingsOpen": 17,
+      "findingsOpen": 25,
       "findingsHigh": 0,
       "openByKind": {
         "rollback-compromise": 9,
-        "column-imbalance": 8
+        "column-imbalance": 16
       },
       "htmlDeterministic": true,
       "pdfDeterministic": true,
@@ -39,15 +39,15 @@
     {
       "config": "aq-on",
       "pages": 36,
-      "ms": 86,
+      "ms": 132,
       "contentPreserved": true,
       "geometryNeutral": true,
       "layoutHash": "f6f32c4073c4fd356d54793d840104ee3f2987f541e45a22af8737b88c2b6db9",
-      "findingsOpen": 17,
+      "findingsOpen": 25,
       "findingsHigh": 0,
       "openByKind": {
         "rollback-compromise": 9,
-        "column-imbalance": 8
+        "column-imbalance": 16
       },
       "htmlDeterministic": true,
       "pdfDeterministic": true,
@@ -56,15 +56,15 @@
     {
       "config": "continuous-notes",
       "pages": 36,
-      "ms": 81,
+      "ms": 74,
       "contentPreserved": true,
       "geometryNeutral": true,
       "layoutHash": "6c27e968c4a39a16ecad0f0aa7905117168e2ef67531298a6adb7a621e01aea0",
-      "findingsOpen": 17,
+      "findingsOpen": 25,
       "findingsHigh": 0,
       "openByKind": {
         "rollback-compromise": 9,
-        "column-imbalance": 8
+        "column-imbalance": 16
       },
       "htmlDeterministic": true,
       "pdfDeterministic": true,
@@ -73,15 +73,15 @@
     {
       "config": "verso-headers",
       "pages": 36,
-      "ms": 66,
+      "ms": 72,
       "contentPreserved": true,
       "geometryNeutral": true,
       "layoutHash": "f6f32c4073c4fd356d54793d840104ee3f2987f541e45a22af8737b88c2b6db9",
-      "findingsOpen": 17,
+      "findingsOpen": 25,
       "findingsHigh": 0,
       "openByKind": {
         "rollback-compromise": 9,
-        "column-imbalance": 8
+        "column-imbalance": 16
       },
       "htmlDeterministic": true,
       "pdfDeterministic": true,
@@ -90,15 +90,15 @@
     {
       "config": "custom-styles",
       "pages": 36,
-      "ms": 86,
+      "ms": 79,
       "contentPreserved": true,
       "geometryNeutral": true,
       "layoutHash": "f6f32c4073c4fd356d54793d840104ee3f2987f541e45a22af8737b88c2b6db9",
-      "findingsOpen": 17,
+      "findingsOpen": 25,
       "findingsHigh": 0,
       "openByKind": {
         "rollback-compromise": 9,
-        "column-imbalance": 8
+        "column-imbalance": 16
       },
       "htmlDeterministic": true,
       "pdfDeterministic": true,

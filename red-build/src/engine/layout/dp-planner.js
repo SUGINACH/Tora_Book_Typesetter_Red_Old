@@ -7,13 +7,14 @@ const { Ledger } = require('../core/ledger');
 const { runProtections } = require('./protections-matrix');
 const { runRetreatLoop } = require('./retreat-loop');
 const { generateCandidates } = require('./candidate-generator');
-const { blockGapPx, colCapacityOf, planningUsedHeight } = require('./column-flow'); // **שלב 5:** planningUsedHeight — מקור יחיד לגובה התפוס בזמן תכנון (חילוץ מ-#16)
+const { blockGapPx, colCapacityOf, planningUsedHeight, normalizeColumnGaps } = require('./column-flow'); // **שלב 5:** planningUsedHeight — מקור יחיד לגובה התפוס בזמן תכנון (חילוץ מ-#16); **פרוסה 2:** normalizeColumnGaps — נרמול פערים אחרי פיצול מחדש
 const { fixDropWordInColumns } = require('../typography/protectors');
 const { MARK_TAG } = require('../notes/markers'); // markerFragmentOf אינו נדרש כאן — הזיהוי לפי MARK_TAG ישירות (תבנית D-53)
 const { moveLineForward } = require('./ordering');
 const { optimalSplit } = require('./balancing'); // **EXT-8:** חלוקה גלובלית אופטימלית
-const { getFootnotesReservedHeight, noteHeight, noteMetrics } = require('./footnote-budget'); // **שלב 5:** noteMetrics — מקור יחיד למדדי ההערה (חילוץ מ-#16)
+const { getFootnotesReservedHeight, noteHeight, noteMetrics, stampNoteMetrics } = require('./footnote-budget'); // **שלב 5:** noteMetrics — מקור יחיד למדדי ההערה (חילוץ מ-#16); **פרוסה 2:** stampNoteMetrics — מדידה אחת ביצירה
 const CM = require('./constraint-matrix'); // **שלב 5:** מטריצת האילוצים המאוחדת (חילוץ שורש מ-#16/#17)
+const { createTraceRecorder } = require('./decision-trace'); // **פרוסה 2 (§2.7):** תיעוד החלטות דטרמיניסטי קומפקטי
 
 /** חתימת פריסה דטרמיניסטית — ללא Date/random (REQ-GOV determinism).
  * תיקון S7-E2E: tokenId נמצא ב‑meta של pushLines (לא על השורה עצמה) — יש לחלץ משם,
@@ -92,6 +93,11 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
   if (!measureFn) {
     throw new Error('dp-planner: env.measure is required (single measurement entry — REQ-LB-01). Silent fallback to global is forbidden.');
   }
+  // **פרוסה 2 (§2.7):** רשם ה-trace — opt-in (env.trace חיצוני או settings.
+  // _plannerTrace); כבוי בברירת המחדל (קומפקטיות זיכרון). הספירות נשמרות
+  // תמיד. המתכנן עצמו כבר אינו מודד — measureFn משמש רק להטבעה חד-פעמית
+  // של הערות שלא נמדדו במקורן (CP2 אמור לחתום את כולן; בדיקת הטוהר מוכיחה 0).
+  const trace = (env && env.trace) || createTraceRecorder({ enabled: settings['_plannerTrace'] === true });
   // **S10 (REQ-UI-03):** מזליף התקדמות מה‑DP — מכשור בלבד (no-op proof בבדיקה).
   // הערכת מספר העמודים: סכום גבהים נמדדים / קיבולת עמוד רגיל — מעודכנת בזמן אמת.
   const onProgress = env && typeof env.onProgress === 'function' ? env.onProgress : null;
@@ -128,7 +134,10 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
     flowCol = 0;
     const isRecto = pages.length % 2 === 0; // עמוד 1 = recto
     const tpl = buildPageTemplate(type, settings, isRecto);
-    return { index: pageIdx++, type, template: tpl, columns: Array.from({ length: tpl.columns.length }, () => []), footnotes: [], sideNotes: [], headingsOnPage: [], balanceInfo: null, fnReservedHeightPx: 0, chapterOpening: false };
+    // **פרוסה 2 (§2.5):** dpPlanned — סימון עמוד הזרימה לחוזה ה-PagePlan
+    // (finalizePagePlans ב-pipeline); openedBy — מעברי עמוד/סוג; reservations —
+    // שמורות אחידות של שלב 6 (מנגנון ההרחבה של מודל הקיבולת).
+    return { index: pageIdx++, type, template: tpl, columns: Array.from({ length: tpl.columns.length }, () => []), footnotes: [], sideNotes: [], headingsOnPage: [], balanceInfo: null, fnReservedHeightPx: 0, chapterOpening: false, dpPlanned: true, openedBy: null, reservations: [] };
   }
 
   let cur = newPage(PAGE_TYPES.REGULAR);
@@ -193,13 +202,20 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
           const seq = [...cur.columns[0], ...cur.columns[1]];
           cur.columns[0] = seq.slice(0, best.k);
           cur.columns[1] = seq.slice(best.k);
+          // **FX-6 (פרוסה 2):** נרמול פערים אחרי הפיצול מחדש — ראש כל טור אינו
+          // נושא פער-כניסה (אותו כלל GAP_HEAD_POLICY שבהצבה המקורית).
+          normalizeColumnGaps(cur.columns[0]);
+          normalizeColumnGaps(cur.columns[1]);
+          trace.emit(cur.index, 'balance-resplit', { k: best.k, delta: Math.round(best.delta), clean: best.clean });
         }
       }
       // מילה נופלת בין טורים (פורטר מ‑Gold) — גם שומר סדר (המילה חוצה את הגבול קדימה)
-      // **S5.2 (תיקון 2):** המיזוג מותר רק אם השורה המקבלת נכנסת ברוחב הטור
-      // (מדידה מחדש + FIT_EPS שמרני) — אותה מדידה של המתכנן; מילה שאינה
-      // נכנסת נשארת בטור המקורי (בלי גלישה אופקית שקטה — מחלקת D-92).
-      if (fixDropWordInColumns(cur.columns, 3, { measure: (t) => measureFn(t), colW: cur.template.columns[0].w })) {
+      // **S5.2 (תיקון 2) + פרוסה 2 (מדידה חוזרת — §2.3):** המיזוג מותר רק אם
+      // השורה המקבלת נכנסת ברוחב הטור — **מרוחבי ה-LineModel שכבר נמדדו**
+      // (naturalWidthPx של שורת המילה הבודדת + רווח טבעי מה-glue של השורה
+      // המקבלת): אפס מדידה חוזרת בתכנון; מילה שאינה נכנסת נשארת בטור המקורי
+      // (בלי גלישה אופקית שקטה — מחלקת D-92).
+      if (fixDropWordInColumns(cur.columns, 3, { colW: cur.template.columns[0].w })) {
         eventLog.emit('balance', 'fix-drop-word', { page: cur.index }, cur.index);
       }
       const a = usedHeight(cur.columns[0], cur), b = usedHeight(cur.columns[1], cur);
@@ -211,31 +227,40 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
       if (usedHeight(col, cur) > colCapacity(cur.template, cur) + 0.5) {
         const rec = ledger.create('containment', `page#${cur.index}`, cur.index, { used: usedHeight(col, cur), cap: colCapacity(cur.template, cur) }, 'page-plan');
         ledger.transition(rec.issue_id, cur.type === PAGE_TYPES.FILLER ? 'not-comparable' : 'persists', 'page-plan', 'overflow after placement');
+        trace.emit(cur.index, 'overflow-after-placement', { used: usedHeight(col, cur), cap: colCapacity(cur.template, cur) });
       }
     }
+    trace.emit(cur.index, 'page-flush', { used: cur.columns.map(c => usedHeight(c, cur)), fn: cur.footnotes.length });
     pages.push(cur);
   }
 
   function pushLines(lines, meta = {}, opts = {}) {
-    // grid-block-gap-pct: מרווח בין־בלוקי נצרך כאן — שורה ראשונה של בלוק חדש
-    // סופגת את ה‑gap (פרופורציונלי לגובה שורה), כך שתקציב הטור כולל אותו.
+    // **FX-6 (פרוסה 2 — הפער כגיאומטריה מתוכננת):** פתיחת בלוק מתחת לתוכן
+    // קיים בטור נושאת חותמת `gapBeforePx` על שורת הפתיחה — מקור יחיד שממנו
+    // נגזרים גם שער הכניסה (needPx), גם usedHeight (planningUsedHeight)
+    // וגם ההקרנה (DOM margin-top / PDF התקדמות-y). ראש טור/עמוד — הפער
+    // מדוכא (GAP_HEAD_POLICY); בלוקים רצופים — פער בכל פתיחה. בעבר הפער
+    // היה תנאי כניסה בלבד (pendingGap) ולא נצבר בשום מקום במורד הזרם.
     // **FX-1 (דוח 06, שלב 5):** startCol — הצבה מכוונת-ליווי: הטור שאומת
     // למחסנית כותרת+ליווי הוא נקודת הפתיחה. סדר הקריאה נשמר מבנית — אין
     // הצבה לטור מוקדם יותר מנקודת הפתיחה.
     const startCol = Math.max(0, Math.min(opts.startCol != null ? opts.startCol : escortLockCol, cur.columns.length - 1));
     const gap = meta.firstOfBlock ? blockGapPx(settings, lineH) : 0;
-    let pendingGap = gap;
+    let firstOfCall = true; // הפער שייך לשורה הראשונה של הקריאה בלבד
     for (const ln of lines) {
       let placed = false;
       // **שלב 5 (סדר קריאה מבני):** החיפוש מתחיל בטור הזרימה הנוכחי — שום
       // שורה אינה חוזרת לטור מוקדם מהזרימה (ראה flowCol לעיל).
       for (let c = Math.max(startCol, flowCol); c < cur.columns.length && !placed; c++) {
-        const needPx = ln.heightPx + pendingGap - 0.5;
+        // FX-6: החותמת — רק מתחת לתוכן קיים (דיכוי בראש טור/עמוד/אחרי פס).
+        const gapHere = firstOfCall && gap > 0 && cur.columns[c].length > 0 ? gap : 0;
+        const needPx = ln.heightPx + gapHere - CM.CAPACITY_EPS;
         if (colCapacity(cur.template, cur) - usedHeight(cur.columns[c], cur) >= needPx) {
-          cur.columns[c].push({ ...ln, meta, seq: seqCounter++ });
-          pendingGap = 0;
+          cur.columns[c].push({ ...ln, meta, seq: seqCounter++, ...(gapHere > 0 ? { gapBeforePx: gapHere } : {}) });
+          firstOfCall = false;
           placed = true;
           flowCol = Math.max(flowCol, c); // מונוטוניות הזרימה
+          trace.emit(cur.index, 'block-place', { token: meta.tokenId, col: c, lineH: ln.heightPx, gapPx: gapHere });
           // **FX-1:** נעילת ליווי — שורות גוף ראשונות אחרי הכותרת מקריעות את
           // המונה; בהשלמת שורות הליווי — שחרור הנעילה (ההצבה חוזרת לזרימה חופשית).
           if (escortLinesNeeded > 0 && ln.kind !== 'heading') {
@@ -245,10 +270,12 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
         }
       }
       if (!placed) {
+        trace.emit(cur.index, 'block-overflow-newpage', { token: meta.tokenId, lineH: ln.heightPx });
         flushPage();
         cur = newPage(meta.forceType || PAGE_TYPES.REGULAR);
-        cur.columns[0].push({ ...ln, meta, seq: seqCounter++ }); // טור חדש/עמוד חדש → ללא gap
-        pendingGap = 0;
+        cur.openedBy = meta.tokenId != null ? meta.tokenId : null; // מעבר עמוד — מי פתח
+        cur.columns[0].push({ ...ln, meta, seq: seqCounter++ }); // טור חדש/עמוד חדש → ללא gap (ראש טור)
+        firstOfCall = false;
       }
     }
   }
@@ -287,47 +314,66 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
       // החץ שהייתה כאן איבדה את סימון ה-impl (measureWithImpl.impl), וב-impl B
       // (ייצוא PDF) הופעל פקטור הגופן שנועד לטבלת impl A בלבד ⇒ תקציב מרזב
       // מנופח והחלטות split/move-whole מוטות בגבול התקרה. כמו recomputeFnBudget.
-      const h = noteHeight(n, settings, measureFn);
+      // **פרוסה 2 (מדידה אחת — §2.3 בביקורת):** הערה שכבר נמדדה (חותמת CP2
+      // או הטבעה קודמת) אינה נמדדת שוב — noteHeight צורך את החותמת; הטבעה
+      // חד-פעמית מתבצעת רק להערה שלא נמדדה מעולם (ונחתמת על המקור — כך
+      // שגם העתקים עתידיים שלה לא יימדדו שוב).
+      if (n.heightPx == null) stampNoteMetrics(n, settings, measureFn);
+      const h = n.heightPx;
       const isCont = n.isContinuation === true;
       // הערה ארוכה מתקרת המרזב ⇒ מדיניות (block mode בלבד; continuous אין תקרה — D-34)
       if (Number.isFinite(barMax) && h > barMax && settings['long-footnote-policy'] !== 'allow') {
         if (settings['long-footnote-policy'] === 'split') {
-          // **פיצול אמיתי של הטקסט**: החלק הראשון נכנס למרזב הזה, השאר לעמוד הבא
-          const fnSize = settings['body-font-size-pt'] * 0.8;
-          const fnLH = Math.round(fnSize * (96 / 72) * 1.25);
-          const laneW = settings._fnColWidthPx || 200;
-          const words = String(n.text).replace(/\uE000/g, ' ').split(/\s+/).filter(Boolean);
+          // **פיצול אמיתי של הטקסט (פרוסה 2 — מגבולות שורה מוחלטים):** החיתוך
+          // נעשה בגבול שורה מהמבנה שכבר נמדד (noteRows) — לא בספירת מילים
+          // עם מדידה חוזרת. החלק הראשון נכנס למרזב הזה; השאר נכנס לתור
+          // pendingBarNotes עם סימון המשך (isContinuation) — טקסט חדש שמוטבע
+          // פעם אחת בלבד (מדידתו הראשונה והאחרונה).
+          const fnLH = n.lineH || noteMetrics(settings).lineHeightPx;
+          const rows = n.noteRows || [];
           const linesFit = Math.max(1, Math.floor(barMax / fnLH));
-          let w = 0, linesUsed = 1, cutIdx = words.length;
-          for (let i = 0; i < words.length; i++) {
-            const ww = measureFn(words[i], fnSize);
-            if (w + ww > laneW && w > 0) { linesUsed++; w = ww; if (linesUsed > linesFit) { cutIdx = i; break; } } else w += ww;
-          }
-          if (cutIdx >= words.length) {
+          if (!rows.length || n.linesCount == null || n.linesCount <= linesFit) {
             // כל ההערה נכנסת בגבול התקרה — אין צורך בפיצול
             cur.footnotes.push({ ...n, heightPx: h, mode: isCont ? 'split-rest' : 'normal', isContinuation: isCont });
             continue;
           }
-          const firstText = words.slice(0, cutIdx).join(' ');
-          const restText = words.slice(cutIdx).join(' ');
-          cur.footnotes.push({ ...n, text: firstText, heightPx: linesFit * fnLH, lineH: fnLH, mode: 'split-first', linesShown: linesFit });
-          pendingBarNotes.push({ ...n, text: restText, isContinuation: true, continuationOf: n.tokenId, mode: 'split-rest' });
+          const cutRow = Math.min(linesFit, rows.length);
+          const cutIdx = rows[cutRow - 1].wTo;
+          const wordsArr = n.noteWords || String(n.text).replace(/\uE000/g, ' ').split(/\s+/).filter(Boolean);
+          if (cutIdx >= wordsArr.length) {
+            cur.footnotes.push({ ...n, heightPx: h, mode: isCont ? 'split-rest' : 'normal', isContinuation: isCont });
+            continue;
+          }
+          const firstText = wordsArr.slice(0, cutIdx).join(' ');
+          const restText = wordsArr.slice(cutIdx).join(' ');
+          cur.footnotes.push({
+            ...n, text: firstText, heightPx: cutRow * fnLH, lineH: fnLH, linesCount: cutRow,
+            noteRows: rows.slice(0, cutRow), noteWords: wordsArr.slice(0, cutIdx),
+            mode: 'split-first', linesShown: cutRow
+          });
+          pendingBarNotes.push(stampNoteMetrics(
+            { ...n, text: restText, isContinuation: true, continuationOf: n.tokenId, mode: 'split-rest' },
+            settings, measureFn
+          ));
           snap.clean = false; // נוצר המשך חדש — אין שחזור בטוח
-          eventLog.emit('notes-budget', 'fn-split', { token: n.tokenId, marker: n.marker, barMax, firstWords: cutIdx }, cur.index);
+          eventLog.emit('notes-budget', 'fn-split', { token: n.tokenId, marker: n.marker, barMax, firstWords: cutIdx, firstRows: cutRow }, cur.index);
+          trace.emit(cur.index, 'note-split', { token: n.tokenId, marker: n.marker, firstRows: cutRow, restRows: n.linesCount - cutRow });
           continue;
         }
         if (settings['long-footnote-policy'] === 'move-whole') {
           pendingBarNotes.push({ ...n, mode: 'moved-whole', deferredToNextPage: true });
           snap.clean = false; // הועברה לעמוד הבא — אין שחזור בטוח
           eventLog.emit('notes-budget', 'fn-moved-whole', { token: n.tokenId, marker: n.marker }, cur.index);
+          trace.emit(cur.index, 'note-moved-whole', { token: n.tokenId, marker: n.marker });
           continue;
         }
         if (settings['long-footnote-policy'] === 'reject-to-body' && rejectToBody(n, `bar overflow ${h}>${barMax}`)) {
           snap.clean = false; // מוטציית בלוק+lines — אין שחזור בטוח
+          trace.emit(cur.index, 'note-rejected-to-body', { token: n.tokenId, marker: n.marker });
           continue;
         }
       }
-      cur.footnotes.push({ ...n, heightPx: h, lineH: Math.round((settings['body-font-size-pt'] * 0.8) * (96 / 72) * 1.25), isContinuation: isCont, mode: isCont ? 'split-rest' : 'normal' });
+      cur.footnotes.push({ ...n, heightPx: h, lineH: n.lineH || noteMetrics(settings).lineHeightPx, isContinuation: isCont, mode: isCont ? 'split-rest' : 'normal' });
     }
     recomputeFnBudget(cur); // probe==reserved — פונקציה אחת (unified) לשני הצרכים
     return snap;
@@ -393,7 +439,8 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
       });
     } else {
       const textE = String(n.text).replace(/\uE000/g, ' ').replace(/ /g, '\uE000');
-      blk.lines.push({ words: [`${n.marker}\uE000${textE}`], heightPx: lineH, isLast: false, tokenId: blk.tokenId, kind: 'paragraph', part: 'rest' });
+      // **פרוסה 2:** סימון synthetic מפורש — שורה שנוצרה בזמן ההצבה (לא ממנוע השורות) — פוטרת מתועד באימות החוזה במקום לדווח שקרי על חוסר LineModel.
+      blk.lines.push({ words: [`${n.marker}\uE000${textE}`], heightPx: lineH, isLast: false, tokenId: blk.tokenId, kind: 'paragraph', part: 'rest', synthetic: 'reject-to-body' });
     }
     const ni = (blk.notes || []).findIndex(x => x.noteIndex === n.noteIndex);
     if (ni >= 0) blk.notes.splice(ni, 1); // מקור־אמת יחיד: לא לספור פעמיים
@@ -573,6 +620,7 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
           eventLog.emit('page-plan', pushed ? 'heading-escort-push' : 'heading-escort-directed', { token: blk.tokenId, page: cur.index, col: room, stackPx: Math.round(escortStack) }, cur.index);
           escortLockCol = room;      // הצבה מכוונת: הכותרת ושורות הליווי — בטור שאומת
           escortLinesNeeded = escortN;
+          trace.emit(cur.index, 'escort-directed', { token: blk.tokenId, col: room, stackPx: escortStack, pushed });
         } else {
           const rec = ledger.create('heading-escort', blk.tokenId, cur.index, { stackPx: Math.round(escortStack), capacityPx: colCapacity(cur.template, cur) }, 'protections');
           ledger.transition(rec.issue_id, 'correction-blocked', 'protections', 'no column fits heading+escort even on fresh page (oversized block)');
@@ -586,18 +634,22 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
     const needStack = CM.stackHeightPx(blk.lines, blockGapPx(settings, lineH));
     let chosenCol = ensureRoomFor(needStack);
     if (chosenCol === -1) {
-      const splitAt = findSplit(blk, cur, colCapacity, usedHeight, lineH, ledger, eventLog, settings, generateCandidates);
+      const splitAt = findSplit(blk, cur, colCapacity, usedHeight, lineH, ledger, eventLog, settings, generateCandidates, trace);
       if (splitAt > 0) {
         // **FX-3:** ההערות מחויבות לעמוד של החלק שבו שורת הסמן:
         // הסמן בחלק הראשון ⇒ כאן; הסמן בהמשך ⇒ בעמוד החדש (לאחר ה-flush).
         const splitMIdx = (blk.kind === 'paragraph' && (blk.notes || []).length && settings['footnotes-enabled'])
           ? firstMarkerLineOf(blk) : -1;
         if (blk.kind === 'paragraph' && splitMIdx < splitAt) reserveNotes(blk);
-        pushLines(blk.lines.slice(0, splitAt - 1), { tokenId: blk.tokenId, part: 'first' });
+        // **FX-6 (פרוסה 2):** החלק הראשון של הפיצול הוא פתיחת בלוק בפועל
+        // בטור שמתחתיו תוכן קיים — חותמת פער כמו כל פתיחת בלוק (בעבר חלק
+        // הפיצול לא סומן כלל כ-firstOfBlock ⇒ הפער לא נגבה גם כשער כניסה).
+        pushLines(blk.lines.slice(0, splitAt - 1), { tokenId: blk.tokenId, part: 'first', firstOfBlock: true, docPart: blk.part });
         pushLines([blk.lines[splitAt - 1]], { tokenId: blk.tokenId, part: 'first', isLast: true });
         flushPage(); cur = newPage(PAGE_TYPES.REGULAR);
+        cur.openedBy = blk.tokenId; // מעבר עמוד בפיצול — הבלוק פתח את העמוד החדש
         if (blk.kind === 'paragraph' && splitMIdx >= splitAt) reserveNotes(blk);
-        pushLines(blk.lines.slice(splitAt), { tokenId: blk.tokenId, part: 'rest' });
+        pushLines(blk.lines.slice(splitAt), { tokenId: blk.tokenId, part: 'rest', docPart: blk.part });
         continue;
       }
       // **FX-5/#16 — שמירת עמוד ריק:** אם העמוד ריק משורות גוף — אין טעם לאטום
@@ -708,7 +760,7 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
     assess
   });
 
-  return { pages, ledger, retreat, hash: layoutHash(pages), bodyHash: bodyGeometryHash(pages) };
+  return { pages, ledger, retreat, hash: layoutHash(pages), bodyHash: bodyGeometryHash(pages), trace };
 }
 
 /** איזון בטוח עם rollback (REQ-BAL-09): snapshot כולל footnotes/sideNotes.
@@ -746,10 +798,16 @@ function balancePageSafe(page, settings, ledger) {
   const seq = [...page.columns[0], ...page.columns[1]];
   page.columns[0] = seq.slice(0, best.k);
   page.columns[1] = seq.slice(best.k);
+  // **FX-6 (פרוסה 2):** נרמול פערים אחרי הפיצול מחדש — ראש כל טור אינו
+  // נושא פער-כניסה (GAP_HEAD_POLICY). נעשה לפני בדיקת החריגה כדי שההשוואת
+  // קיבולת תראה את הגיאומטריה האמיתית שתוקרן (כולל הפערים שנותרו בגוף הטור).
+  normalizeColumnGaps(page.columns[0]);
+  normalizeColumnGaps(page.columns[1]);
   // hard reject: חריגת קיבולת אחרי ההחלפה (הגנה כפולה — optimalSplit כבר מסנן) → rollback מלא
-  // **S5.2 (P-2):** קיבולת אפקטיבית פר-טור (פס + תקציב על הטור האחרון) — מקור יחיד.
+  // **S5.2 (P-2) + FX-6:** קיבולת אפקטיבית פר-טור (פס + תקציב על הטור האחרון + פערי
+  // בלוקים) — מקור יחיד; הפערים קבועים ואינם מתמתחים עם aqStretch.
   const overflows = (c, ci) => {
-    const hh = c.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1), 0);
+    const hh = c.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1) + (ln.gapBeforePx || 0), 0);
     return hh > colCapacityOf(page, { colIndex: ci }) + 0.5;
   };
   if (page.columns.some(overflows)) {
@@ -762,26 +820,45 @@ function balancePageSafe(page, settings, ledger) {
 }
 
 /** בחירת נקודת פיצול עם הגנות widow/orphan (≥2 שורות לכל צד). */
-function findSplit(blk, cur, colCapacity, usedHeight, lineH, ledger, eventLog, settings = {}, candidatesFn = null) {
+function findSplit(blk, cur, colCapacity, usedHeight, lineH, ledger, eventLog, settings = {}, candidatesFn = null, trace = null) {
   const cap = colCapacity(cur.template, cur);
   const free = cap - usedHeight(cur.columns[cur.columns.length - 1], cur);
-  // **FX-5 (דוח 06, שלב 5):** maxFit נספר מהגבהים האמיתיים — לא מהמרת lineH;
-  // המרת היחידות ההיסטורית פסלה פיצולים חוקיים (גם כאן, לא רק ב-ensureRoom).
-  const firstFit = Math.floor(free / lineH);
-  let maxFit = firstFit;
-  while (maxFit > 0 && maxFit * lineH > free) maxFit--;
-  // **שלב 5 (#16):** חלון הפיצול החוקי — מקור יחיד (constraint-matrix.legalSplitWindow):
-  // ≥2 שורות לכל צד (SRS §5.1). null ⇒ אין פיצול חוקי → הזזה מלאה.
-  if (!CM.legalSplitWindow(blk.lines.length, maxFit)) return 0; // אין פיצול חוקי → הזזה מלאה
+  // **FX-5 (פרוסה 2 — השלמת תיקון השורש):** maxFit נספר מהגבהים האמיתיים
+  // (heightPx מצטבר + פער הכניסה של הבלוק) מול המקום הפנוי — לא מהמרת
+  // lineH. ההמרה ההיסטורית (floor(free/lineH)) פסלה פיצולים חוקיים בכל בלוק
+  // שאינו אחיד-גבהים (כותרות/פסקאות-גוף גבוהות): maxFit נמוך מהאמת ⇒ החלון
+  // התכווץ ⇒ הזזה מלאה על פיצול שהיה נכנס.
+  const gap0 = blockGapPx(settings, lineH);
+  let maxFit = 0, acc = 0;
+  for (let i = 0; i < blk.lines.length; i++) {
+    const add = (i === 0 ? gap0 : 0) + (blk.lines[i].heightPx || 0);
+    if (acc + add > free + CM.CAPACITY_EPS) break;
+    acc += add; maxFit = i + 1;
+  }
+  // **שלב 5 (#16) + פרוסה 2 (מקור יחיד):** חלון הפיצול החוקי —
+  // constraint-matrix.legalSplitWindow: ≥2 שורות לכל צד **והחלק הראשון
+  // נכנס פיזית** (maxFit). null ⇒ אין פיצול חוקי → הזזה מלאה.
+  const win = CM.legalSplitWindow(blk.lines.length, maxFit);
+  if (!win) {
+    if (trace) trace.emit(cur.index, 'split-none', { token: blk.tokenId, lines: blk.lines.length, maxFit, free: Math.round(free) });
+    return 0; // אין פיצול חוקי → הזזה מלאה
+  }
 
   if (candidatesFn) {
     const cands = candidatesFn(blk, maxFit, cap, settings, ledger);
     if (cands.length) {
       eventLog.emit('protections', 'candidate-split', { token: blk.tokenId, at: cands[0].cut, score: cands[0].score });
+      if (trace) trace.emit(cur.index, 'split-candidate', {
+        token: blk.tokenId, cut: cands[0].cut, score: cands[0].score,
+        window: [win.lo, win.hi], candidates: cands.length,
+        rejected: (cands.rejections || []).length
+      });
       return cands[0].cut;
     }
+    if (trace) trace.emit(cur.index, 'split-candidates-exhausted', { token: blk.tokenId, window: [win.lo, win.hi], rejected: (cands.rejections || []).length });
   }
   eventLog.emit('protections', 'legal-split', { token: blk.tokenId, at: maxFit });
+  if (trace) trace.emit(cur.index, 'split-legal-maxfit', { token: blk.tokenId, at: maxFit, window: [win.lo, win.hi] });
   return maxFit;
 }
 

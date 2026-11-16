@@ -321,7 +321,15 @@ describe('S70 (R3-M2/M3) — כיול orphan/widow: רק הפרות אמיתיו
     // חריגות קיבולת תכנון 7→1; הערות 129/129 ומילים 346,241/346,241 זהות;
     // flowCol (מונוטוניות טורים) תיקם את היפוך הקריאה הבודד של הבסיס:
     // reading-order-break 1→0.
-    assert(r.layoutHash.startsWith('7c4e9bff'), `layout unchanged (got ${r.layoutHash.slice(0, 8)})`);
+    // **שלב 5 פרוסה 2 (FX-6 — הפער כגיאומטריה מתוכננת):** ננעל מחדש
+    // 7c4e9bff→a36b3637 — פער הבלוקים (gapBeforePx) נצבר מעתה בגובה התפוס
+    // ובהקרנה (DOM margin-top / PDF התקדמות-y), במקום להיות שער-כניסה בלבד
+    // שנעלם במורד הזרם. ההוכחה (s5-corpus-comparison, בסיס b2dd223): כל
+    // 4536 הבלוקים זהים ביט-לביט (identical=4536/4536, 0 redivision, 0 marker,
+    // 0 order-restore, 0 content-diff) — שבירת השורות לא נגעה כלל; השינוי
+    // היחיד הוא אריזת עמודים: 1089→1108 (+1.75%) — הפערים צורכים קיבולת
+    // אמיתית וגבולות העמודים זזים בהתאם. contentPreserved=true.
+    assert(r.layoutHash.startsWith('a36b3637'), `layout unchanged (got ${r.layoutHash.slice(0, 8)})`);
     const count = (kind) => [...r.ledger.issues.values()].filter(x => x.kind === kind && x.status === 'persists').length;
     assertEq(count('widow-bottom'), 0, 'false widow-bottom flood eliminated (was 1176)');
     assertEq(count('orphan-top'), 0, 'false orphan-top flood eliminated (was 791)');

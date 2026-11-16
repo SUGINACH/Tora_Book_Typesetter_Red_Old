@@ -9,7 +9,7 @@
     {
       "name": "very_long (DP)",
       "file": "audits/very_long_test_text.txt",
-      "lockHash": "7c4e9bff"
+      "lockHash": "a36b3637"
     },
     {
       "name": "very_long (legacy, run-ours = corpus-invariants CI)",

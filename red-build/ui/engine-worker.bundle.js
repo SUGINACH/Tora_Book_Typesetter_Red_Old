@@ -1,6 +1,6 @@
 // ui/engine-worker.bundle.js — **נוצר אוטומטית** ע"י tools/build-worker-bundle.js (אין לערוך ידנית)
 // חבילת ה־Worker (המנוע המלא — אין לטעון בחוט ה־UI)
-// מודולים: 82 · בלי חותמות זמן (דטרמיניזם)
+// מודולים: 84 · בלי חותמות זמן (דטרמיניזם)
 'use strict';
 
 var __crypto = (function () {
@@ -309,6 +309,9 @@ var __paths = {
   "src/engine/core/pipeline.js|../line/pipeline-bridge": "src/engine/line/pipeline-bridge.js",
   "src/engine/core/pipeline.js|../layout/dp-planner": "src/engine/layout/dp-planner.js",
   "src/engine/core/pipeline.js|../layout/page-templates": "src/engine/layout/page-templates.js",
+  "src/engine/core/pipeline.js|../layout/footnote-budget": "src/engine/layout/footnote-budget.js",
+  "src/engine/core/pipeline.js|../layout/plan-model": "src/engine/layout/plan-model.js",
+  "src/engine/core/pipeline.js|../layout/decision-trace": "src/engine/layout/decision-trace.js",
   "src/engine/core/pipeline.js|../decoration/folio": "src/engine/decoration/folio.js",
   "src/engine/core/pipeline.js|../decoration/headers-builder": "src/engine/decoration/headers-builder.js",
   "src/engine/core/pipeline.js|../layout/balancing": "src/engine/layout/balancing.js",
@@ -380,6 +383,7 @@ var __paths = {
   "src/engine/layout/dp-planner.js|./balancing": "src/engine/layout/balancing.js",
   "src/engine/layout/dp-planner.js|./footnote-budget": "src/engine/layout/footnote-budget.js",
   "src/engine/layout/dp-planner.js|./constraint-matrix": "src/engine/layout/constraint-matrix.js",
+  "src/engine/layout/dp-planner.js|./decision-trace": "src/engine/layout/decision-trace.js",
   "src/engine/layout/protections-matrix.js|./balancing": "src/engine/layout/balancing.js",
   "src/engine/layout/protections-matrix.js|./column-flow": "src/engine/layout/column-flow.js",
   "src/engine/layout/protections-matrix.js|../notes/markers": "src/engine/notes/markers.js",
@@ -389,7 +393,10 @@ var __paths = {
   "src/engine/layout/candidate-generator.js|./column-flow": "src/engine/layout/column-flow.js",
   "src/engine/layout/candidate-generator.js|./constraint-matrix": "src/engine/layout/constraint-matrix.js",
   "src/engine/typography/protectors.js|../line/breaks": "src/engine/line/breaks.js",
+  "src/engine/layout/ordering.js|./column-flow": "src/engine/layout/column-flow.js",
   "src/engine/layout/footnote-budget.js|./footnote-lanes": "src/engine/layout/footnote-lanes.js",
+  "src/engine/layout/plan-model.js|./column-flow": "src/engine/layout/column-flow.js",
+  "src/engine/layout/plan-model.js|./constraint-matrix": "src/engine/layout/constraint-matrix.js",
   "src/engine/audit/editing-recommendations.js|../core/pipeline": "src/engine/core/pipeline.js",
   "src/engine/audit/editing-recommendations.js|../parser/dfa-lexer": "src/engine/parser/dfa-lexer.js",
   "src/engine/audit/editing-recommendations.js|../parser/block-tokenizer": "src/engine/parser/block-tokenizer.js",
@@ -672,6 +679,11 @@ const { applyDropWord } = require('../typography/dropword');
 const { layoutModelBlock, flatTextOf } = require('../line/pipeline-bridge');
 const { planPages, layoutHash, bodyGeometryHash } = require('../layout/dp-planner');
 const { buildPageTemplate, PAGE_TYPES } = require('../layout/page-templates');
+// **שלב 5 פרוסה 2 (§§2.3/2.5/2.7 בביקורת):** מדדי הערה חד-פעמיים (חותמת CP2),
+// חוזי ColumnModel/PagePlan + validation + immutability, ורשם ה-trace.
+const { stampNoteMetrics } = require('../layout/footnote-budget');
+const { finalizePagePlans } = require('../layout/plan-model');
+const { createTraceRecorder } = require('../layout/decision-trace');
 const { assignNumbers } = require('../decoration/folio');
 const { buildHeader } = require('../decoration/headers-builder');
 const { autoQualityPass, applyChapterEndMode, alignColumnBottoms } = require('../layout/balancing');
@@ -1087,7 +1099,10 @@ function typeset(rawText, settingsIn, env = {}) {
           : { marker }); // רק הסמן בגוף; הטקסט זורם למקום ההצגה
       }
       if (!inlineNoteMode) {
-        notes.push({ text: String(noteRaw).replace(/\uE000/g, ' '), marker, tokenId: t.id, noteIndex: p.noteIndex, part: currentPart || 1 });
+        // **פרוסה 2 (§2.3 — מדידה אחת לכל פריט):** הערה נולדת עם חותמת מדדים
+        // מלאה (גובה/פיץ'/שורות מעוטפות) — מדידתה הראשונה והאחרונה; מכאן
+        // התקציב, ההצבה, הפיצול וההקרנה קוראים את החותמת ואינם מודדים שוב.
+        notes.push(stampNoteMetrics({ text: String(noteRaw).replace(/\uE000/g, ' '), marker, tokenId: t.id, noteIndex: p.noteIndex, part: currentPart || 1 }, settings, measureWithImpl));
         bodyMarkers.push(marker);
       }
     }
@@ -1157,7 +1172,10 @@ function typeset(rawText, settingsIn, env = {}) {
   const snapTracker = settings['audit-stage-snapshots'] === true ? createSnapshotTracker() : null;
 
   // ---- CP3: page plan (DP) + protections + retreat loop ----
-  const planned = planPages(blocks, settings, eventLog, ledger, { measure: measureWithImpl, onProgress });
+  // **פרוסה 2 (§2.7):** רשם ה-trace — opt-in (env.plannerTrace או settings._plannerTrace);
+  // כבוי בברירת המחדל. הספירות תמיד זמינות (stats) גם כשהרשומות כבויות.
+  const plannerTrace = (env && env.plannerTrace) || createTraceRecorder({ enabled: settings['_plannerTrace'] === true });
+  const planned = planPages(blocks, settings, eventLog, ledger, { measure: measureWithImpl, onProgress, trace: plannerTrace });
   let { pages } = planned;
   prog('page-plan', 70, 'הפריסה הושלמה', { totalPages: pages.length, pageIndex: pages.length });
 
@@ -1780,6 +1798,17 @@ function typeset(rawText, settingsIn, env = {}) {
   // + סיכום סיבתי Gold) — או null כשהמנגנון כבוי (ברירת מחדל).
   const stageSnapshots = snapTracker ? snapTracker.finalize(ledger) : null;
 
+  // **שלב 5 פרוסה 2 (§2.5 — חוזי ColumnModel/PagePlan):** השלמת התכנון —
+  // כאן, בסוף הזרימה (אחרי ה-DP, הנסיגות, שערים/TOC שמאנדקסים עמודים,
+  // איזון-סוף-פרק, AQ, הערות-צד ועיטורים), נבנים חוזי העמודים, מאומתים
+  // וקופאים: אין לזיזת שורה/הערה אחרי נקודה זו — תצוגה וייצוא קוראים בלבד.
+  // דיאגנוסטיקות חוזה נרשמות ל-ledger (page-plan-invalid) — לא מוסתרות.
+  const planContracts = finalizePagePlans(pages, {
+    settings, lineH: Math.round(settings['body-font-size-pt'] * (96 / 72) * settings['body-line-height']),
+    ledger, eventLog, trace: plannerTrace
+  });
+  eventLog.emit('page-plan', 'contracts-finalized', { ...planContracts, trace: plannerTrace.stats() });
+
   return {
     metadata, tokens, pages, ledger, events: eventLog,
     toc, numbers,
@@ -1800,7 +1829,10 @@ function typeset(rawText, settingsIn, env = {}) {
     scope,
     customStyles: customStylesRes,  // **S11:** הסגנונות שהופעלו בפועל (כולל שגיאות אימות)
     stageSnapshots,                 // **S1-ח:** צילומי-מצב/deltas/הקשר-עמוד (או null)
-    recommendations                 // **S11:** המלצות עריכה עם הוכחות (או null אם כובו)
+    recommendations,                // **S11:** המלצות עריכה עם הוכחות (או null אם כובו)
+    // **פרוסה 2:** חוזי התכנון + ה-trace
+    planContracts,
+    plannerTrace: plannerTrace.enabled ? plannerTrace.toJSON() : plannerTrace.stats()
   };
 }
 
@@ -8309,13 +8341,14 @@ const { Ledger } = require('../core/ledger');
 const { runProtections } = require('./protections-matrix');
 const { runRetreatLoop } = require('./retreat-loop');
 const { generateCandidates } = require('./candidate-generator');
-const { blockGapPx, colCapacityOf, planningUsedHeight } = require('./column-flow'); // **שלב 5:** planningUsedHeight — מקור יחיד לגובה התפוס בזמן תכנון (חילוץ מ-#16)
+const { blockGapPx, colCapacityOf, planningUsedHeight, normalizeColumnGaps } = require('./column-flow'); // **שלב 5:** planningUsedHeight — מקור יחיד לגובה התפוס בזמן תכנון (חילוץ מ-#16); **פרוסה 2:** normalizeColumnGaps — נרמול פערים אחרי פיצול מחדש
 const { fixDropWordInColumns } = require('../typography/protectors');
 const { MARK_TAG } = require('../notes/markers'); // markerFragmentOf אינו נדרש כאן — הזיהוי לפי MARK_TAG ישירות (תבנית D-53)
 const { moveLineForward } = require('./ordering');
 const { optimalSplit } = require('./balancing'); // **EXT-8:** חלוקה גלובלית אופטימלית
-const { getFootnotesReservedHeight, noteHeight, noteMetrics } = require('./footnote-budget'); // **שלב 5:** noteMetrics — מקור יחיד למדדי ההערה (חילוץ מ-#16)
+const { getFootnotesReservedHeight, noteHeight, noteMetrics, stampNoteMetrics } = require('./footnote-budget'); // **שלב 5:** noteMetrics — מקור יחיד למדדי ההערה (חילוץ מ-#16); **פרוסה 2:** stampNoteMetrics — מדידה אחת ביצירה
 const CM = require('./constraint-matrix'); // **שלב 5:** מטריצת האילוצים המאוחדת (חילוץ שורש מ-#16/#17)
+const { createTraceRecorder } = require('./decision-trace'); // **פרוסה 2 (§2.7):** תיעוד החלטות דטרמיניסטי קומפקטי
 
 /** חתימת פריסה דטרמיניסטית — ללא Date/random (REQ-GOV determinism).
  * תיקון S7-E2E: tokenId נמצא ב‑meta של pushLines (לא על השורה עצמה) — יש לחלץ משם,
@@ -8394,6 +8427,11 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
   if (!measureFn) {
     throw new Error('dp-planner: env.measure is required (single measurement entry — REQ-LB-01). Silent fallback to global is forbidden.');
   }
+  // **פרוסה 2 (§2.7):** רשם ה-trace — opt-in (env.trace חיצוני או settings.
+  // _plannerTrace); כבוי בברירת המחדל (קומפקטיות זיכרון). הספירות נשמרות
+  // תמיד. המתכנן עצמו כבר אינו מודד — measureFn משמש רק להטבעה חד-פעמית
+  // של הערות שלא נמדדו במקורן (CP2 אמור לחתום את כולן; בדיקת הטוהר מוכיחה 0).
+  const trace = (env && env.trace) || createTraceRecorder({ enabled: settings['_plannerTrace'] === true });
   // **S10 (REQ-UI-03):** מזליף התקדמות מה‑DP — מכשור בלבד (no-op proof בבדיקה).
   // הערכת מספר העמודים: סכום גבהים נמדדים / קיבולת עמוד רגיל — מעודכנת בזמן אמת.
   const onProgress = env && typeof env.onProgress === 'function' ? env.onProgress : null;
@@ -8430,7 +8468,10 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
     flowCol = 0;
     const isRecto = pages.length % 2 === 0; // עמוד 1 = recto
     const tpl = buildPageTemplate(type, settings, isRecto);
-    return { index: pageIdx++, type, template: tpl, columns: Array.from({ length: tpl.columns.length }, () => []), footnotes: [], sideNotes: [], headingsOnPage: [], balanceInfo: null, fnReservedHeightPx: 0, chapterOpening: false };
+    // **פרוסה 2 (§2.5):** dpPlanned — סימון עמוד הזרימה לחוזה ה-PagePlan
+    // (finalizePagePlans ב-pipeline); openedBy — מעברי עמוד/סוג; reservations —
+    // שמורות אחידות של שלב 6 (מנגנון ההרחבה של מודל הקיבולת).
+    return { index: pageIdx++, type, template: tpl, columns: Array.from({ length: tpl.columns.length }, () => []), footnotes: [], sideNotes: [], headingsOnPage: [], balanceInfo: null, fnReservedHeightPx: 0, chapterOpening: false, dpPlanned: true, openedBy: null, reservations: [] };
   }
 
   let cur = newPage(PAGE_TYPES.REGULAR);
@@ -8495,13 +8536,20 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
           const seq = [...cur.columns[0], ...cur.columns[1]];
           cur.columns[0] = seq.slice(0, best.k);
           cur.columns[1] = seq.slice(best.k);
+          // **FX-6 (פרוסה 2):** נרמול פערים אחרי הפיצול מחדש — ראש כל טור אינו
+          // נושא פער-כניסה (אותו כלל GAP_HEAD_POLICY שבהצבה המקורית).
+          normalizeColumnGaps(cur.columns[0]);
+          normalizeColumnGaps(cur.columns[1]);
+          trace.emit(cur.index, 'balance-resplit', { k: best.k, delta: Math.round(best.delta), clean: best.clean });
         }
       }
       // מילה נופלת בין טורים (פורטר מ‑Gold) — גם שומר סדר (המילה חוצה את הגבול קדימה)
-      // **S5.2 (תיקון 2):** המיזוג מותר רק אם השורה המקבלת נכנסת ברוחב הטור
-      // (מדידה מחדש + FIT_EPS שמרני) — אותה מדידה של המתכנן; מילה שאינה
-      // נכנסת נשארת בטור המקורי (בלי גלישה אופקית שקטה — מחלקת D-92).
-      if (fixDropWordInColumns(cur.columns, 3, { measure: (t) => measureFn(t), colW: cur.template.columns[0].w })) {
+      // **S5.2 (תיקון 2) + פרוסה 2 (מדידה חוזרת — §2.3):** המיזוג מותר רק אם
+      // השורה המקבלת נכנסת ברוחב הטור — **מרוחבי ה-LineModel שכבר נמדדו**
+      // (naturalWidthPx של שורת המילה הבודדת + רווח טבעי מה-glue של השורה
+      // המקבלת): אפס מדידה חוזרת בתכנון; מילה שאינה נכנסת נשארת בטור המקורי
+      // (בלי גלישה אופקית שקטה — מחלקת D-92).
+      if (fixDropWordInColumns(cur.columns, 3, { colW: cur.template.columns[0].w })) {
         eventLog.emit('balance', 'fix-drop-word', { page: cur.index }, cur.index);
       }
       const a = usedHeight(cur.columns[0], cur), b = usedHeight(cur.columns[1], cur);
@@ -8513,31 +8561,40 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
       if (usedHeight(col, cur) > colCapacity(cur.template, cur) + 0.5) {
         const rec = ledger.create('containment', `page#${cur.index}`, cur.index, { used: usedHeight(col, cur), cap: colCapacity(cur.template, cur) }, 'page-plan');
         ledger.transition(rec.issue_id, cur.type === PAGE_TYPES.FILLER ? 'not-comparable' : 'persists', 'page-plan', 'overflow after placement');
+        trace.emit(cur.index, 'overflow-after-placement', { used: usedHeight(col, cur), cap: colCapacity(cur.template, cur) });
       }
     }
+    trace.emit(cur.index, 'page-flush', { used: cur.columns.map(c => usedHeight(c, cur)), fn: cur.footnotes.length });
     pages.push(cur);
   }
 
   function pushLines(lines, meta = {}, opts = {}) {
-    // grid-block-gap-pct: מרווח בין־בלוקי נצרך כאן — שורה ראשונה של בלוק חדש
-    // סופגת את ה‑gap (פרופורציונלי לגובה שורה), כך שתקציב הטור כולל אותו.
+    // **FX-6 (פרוסה 2 — הפער כגיאומטריה מתוכננת):** פתיחת בלוק מתחת לתוכן
+    // קיים בטור נושאת חותמת `gapBeforePx` על שורת הפתיחה — מקור יחיד שממנו
+    // נגזרים גם שער הכניסה (needPx), גם usedHeight (planningUsedHeight)
+    // וגם ההקרנה (DOM margin-top / PDF התקדמות-y). ראש טור/עמוד — הפער
+    // מדוכא (GAP_HEAD_POLICY); בלוקים רצופים — פער בכל פתיחה. בעבר הפער
+    // היה תנאי כניסה בלבד (pendingGap) ולא נצבר בשום מקום במורד הזרם.
     // **FX-1 (דוח 06, שלב 5):** startCol — הצבה מכוונת-ליווי: הטור שאומת
     // למחסנית כותרת+ליווי הוא נקודת הפתיחה. סדר הקריאה נשמר מבנית — אין
     // הצבה לטור מוקדם יותר מנקודת הפתיחה.
     const startCol = Math.max(0, Math.min(opts.startCol != null ? opts.startCol : escortLockCol, cur.columns.length - 1));
     const gap = meta.firstOfBlock ? blockGapPx(settings, lineH) : 0;
-    let pendingGap = gap;
+    let firstOfCall = true; // הפער שייך לשורה הראשונה של הקריאה בלבד
     for (const ln of lines) {
       let placed = false;
       // **שלב 5 (סדר קריאה מבני):** החיפוש מתחיל בטור הזרימה הנוכחי — שום
       // שורה אינה חוזרת לטור מוקדם מהזרימה (ראה flowCol לעיל).
       for (let c = Math.max(startCol, flowCol); c < cur.columns.length && !placed; c++) {
-        const needPx = ln.heightPx + pendingGap - 0.5;
+        // FX-6: החותמת — רק מתחת לתוכן קיים (דיכוי בראש טור/עמוד/אחרי פס).
+        const gapHere = firstOfCall && gap > 0 && cur.columns[c].length > 0 ? gap : 0;
+        const needPx = ln.heightPx + gapHere - CM.CAPACITY_EPS;
         if (colCapacity(cur.template, cur) - usedHeight(cur.columns[c], cur) >= needPx) {
-          cur.columns[c].push({ ...ln, meta, seq: seqCounter++ });
-          pendingGap = 0;
+          cur.columns[c].push({ ...ln, meta, seq: seqCounter++, ...(gapHere > 0 ? { gapBeforePx: gapHere } : {}) });
+          firstOfCall = false;
           placed = true;
           flowCol = Math.max(flowCol, c); // מונוטוניות הזרימה
+          trace.emit(cur.index, 'block-place', { token: meta.tokenId, col: c, lineH: ln.heightPx, gapPx: gapHere });
           // **FX-1:** נעילת ליווי — שורות גוף ראשונות אחרי הכותרת מקריעות את
           // המונה; בהשלמת שורות הליווי — שחרור הנעילה (ההצבה חוזרת לזרימה חופשית).
           if (escortLinesNeeded > 0 && ln.kind !== 'heading') {
@@ -8547,10 +8604,12 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
         }
       }
       if (!placed) {
+        trace.emit(cur.index, 'block-overflow-newpage', { token: meta.tokenId, lineH: ln.heightPx });
         flushPage();
         cur = newPage(meta.forceType || PAGE_TYPES.REGULAR);
-        cur.columns[0].push({ ...ln, meta, seq: seqCounter++ }); // טור חדש/עמוד חדש → ללא gap
-        pendingGap = 0;
+        cur.openedBy = meta.tokenId != null ? meta.tokenId : null; // מעבר עמוד — מי פתח
+        cur.columns[0].push({ ...ln, meta, seq: seqCounter++ }); // טור חדש/עמוד חדש → ללא gap (ראש טור)
+        firstOfCall = false;
       }
     }
   }
@@ -8589,47 +8648,66 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
       // החץ שהייתה כאן איבדה את סימון ה-impl (measureWithImpl.impl), וב-impl B
       // (ייצוא PDF) הופעל פקטור הגופן שנועד לטבלת impl A בלבד ⇒ תקציב מרזב
       // מנופח והחלטות split/move-whole מוטות בגבול התקרה. כמו recomputeFnBudget.
-      const h = noteHeight(n, settings, measureFn);
+      // **פרוסה 2 (מדידה אחת — §2.3 בביקורת):** הערה שכבר נמדדה (חותמת CP2
+      // או הטבעה קודמת) אינה נמדדת שוב — noteHeight צורך את החותמת; הטבעה
+      // חד-פעמית מתבצעת רק להערה שלא נמדדה מעולם (ונחתמת על המקור — כך
+      // שגם העתקים עתידיים שלה לא יימדדו שוב).
+      if (n.heightPx == null) stampNoteMetrics(n, settings, measureFn);
+      const h = n.heightPx;
       const isCont = n.isContinuation === true;
       // הערה ארוכה מתקרת המרזב ⇒ מדיניות (block mode בלבד; continuous אין תקרה — D-34)
       if (Number.isFinite(barMax) && h > barMax && settings['long-footnote-policy'] !== 'allow') {
         if (settings['long-footnote-policy'] === 'split') {
-          // **פיצול אמיתי של הטקסט**: החלק הראשון נכנס למרזב הזה, השאר לעמוד הבא
-          const fnSize = settings['body-font-size-pt'] * 0.8;
-          const fnLH = Math.round(fnSize * (96 / 72) * 1.25);
-          const laneW = settings._fnColWidthPx || 200;
-          const words = String(n.text).replace(/\uE000/g, ' ').split(/\s+/).filter(Boolean);
+          // **פיצול אמיתי של הטקסט (פרוסה 2 — מגבולות שורה מוחלטים):** החיתוך
+          // נעשה בגבול שורה מהמבנה שכבר נמדד (noteRows) — לא בספירת מילים
+          // עם מדידה חוזרת. החלק הראשון נכנס למרזב הזה; השאר נכנס לתור
+          // pendingBarNotes עם סימון המשך (isContinuation) — טקסט חדש שמוטבע
+          // פעם אחת בלבד (מדידתו הראשונה והאחרונה).
+          const fnLH = n.lineH || noteMetrics(settings).lineHeightPx;
+          const rows = n.noteRows || [];
           const linesFit = Math.max(1, Math.floor(barMax / fnLH));
-          let w = 0, linesUsed = 1, cutIdx = words.length;
-          for (let i = 0; i < words.length; i++) {
-            const ww = measureFn(words[i], fnSize);
-            if (w + ww > laneW && w > 0) { linesUsed++; w = ww; if (linesUsed > linesFit) { cutIdx = i; break; } } else w += ww;
-          }
-          if (cutIdx >= words.length) {
+          if (!rows.length || n.linesCount == null || n.linesCount <= linesFit) {
             // כל ההערה נכנסת בגבול התקרה — אין צורך בפיצול
             cur.footnotes.push({ ...n, heightPx: h, mode: isCont ? 'split-rest' : 'normal', isContinuation: isCont });
             continue;
           }
-          const firstText = words.slice(0, cutIdx).join(' ');
-          const restText = words.slice(cutIdx).join(' ');
-          cur.footnotes.push({ ...n, text: firstText, heightPx: linesFit * fnLH, lineH: fnLH, mode: 'split-first', linesShown: linesFit });
-          pendingBarNotes.push({ ...n, text: restText, isContinuation: true, continuationOf: n.tokenId, mode: 'split-rest' });
+          const cutRow = Math.min(linesFit, rows.length);
+          const cutIdx = rows[cutRow - 1].wTo;
+          const wordsArr = n.noteWords || String(n.text).replace(/\uE000/g, ' ').split(/\s+/).filter(Boolean);
+          if (cutIdx >= wordsArr.length) {
+            cur.footnotes.push({ ...n, heightPx: h, mode: isCont ? 'split-rest' : 'normal', isContinuation: isCont });
+            continue;
+          }
+          const firstText = wordsArr.slice(0, cutIdx).join(' ');
+          const restText = wordsArr.slice(cutIdx).join(' ');
+          cur.footnotes.push({
+            ...n, text: firstText, heightPx: cutRow * fnLH, lineH: fnLH, linesCount: cutRow,
+            noteRows: rows.slice(0, cutRow), noteWords: wordsArr.slice(0, cutIdx),
+            mode: 'split-first', linesShown: cutRow
+          });
+          pendingBarNotes.push(stampNoteMetrics(
+            { ...n, text: restText, isContinuation: true, continuationOf: n.tokenId, mode: 'split-rest' },
+            settings, measureFn
+          ));
           snap.clean = false; // נוצר המשך חדש — אין שחזור בטוח
-          eventLog.emit('notes-budget', 'fn-split', { token: n.tokenId, marker: n.marker, barMax, firstWords: cutIdx }, cur.index);
+          eventLog.emit('notes-budget', 'fn-split', { token: n.tokenId, marker: n.marker, barMax, firstWords: cutIdx, firstRows: cutRow }, cur.index);
+          trace.emit(cur.index, 'note-split', { token: n.tokenId, marker: n.marker, firstRows: cutRow, restRows: n.linesCount - cutRow });
           continue;
         }
         if (settings['long-footnote-policy'] === 'move-whole') {
           pendingBarNotes.push({ ...n, mode: 'moved-whole', deferredToNextPage: true });
           snap.clean = false; // הועברה לעמוד הבא — אין שחזור בטוח
           eventLog.emit('notes-budget', 'fn-moved-whole', { token: n.tokenId, marker: n.marker }, cur.index);
+          trace.emit(cur.index, 'note-moved-whole', { token: n.tokenId, marker: n.marker });
           continue;
         }
         if (settings['long-footnote-policy'] === 'reject-to-body' && rejectToBody(n, `bar overflow ${h}>${barMax}`)) {
           snap.clean = false; // מוטציית בלוק+lines — אין שחזור בטוח
+          trace.emit(cur.index, 'note-rejected-to-body', { token: n.tokenId, marker: n.marker });
           continue;
         }
       }
-      cur.footnotes.push({ ...n, heightPx: h, lineH: Math.round((settings['body-font-size-pt'] * 0.8) * (96 / 72) * 1.25), isContinuation: isCont, mode: isCont ? 'split-rest' : 'normal' });
+      cur.footnotes.push({ ...n, heightPx: h, lineH: n.lineH || noteMetrics(settings).lineHeightPx, isContinuation: isCont, mode: isCont ? 'split-rest' : 'normal' });
     }
     recomputeFnBudget(cur); // probe==reserved — פונקציה אחת (unified) לשני הצרכים
     return snap;
@@ -8695,7 +8773,8 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
       });
     } else {
       const textE = String(n.text).replace(/\uE000/g, ' ').replace(/ /g, '\uE000');
-      blk.lines.push({ words: [`${n.marker}\uE000${textE}`], heightPx: lineH, isLast: false, tokenId: blk.tokenId, kind: 'paragraph', part: 'rest' });
+      // **פרוסה 2:** סימון synthetic מפורש — שורה שנוצרה בזמן ההצבה (לא ממנוע השורות) — פוטרת מתועד באימות החוזה במקום לדווח שקרי על חוסר LineModel.
+      blk.lines.push({ words: [`${n.marker}\uE000${textE}`], heightPx: lineH, isLast: false, tokenId: blk.tokenId, kind: 'paragraph', part: 'rest', synthetic: 'reject-to-body' });
     }
     const ni = (blk.notes || []).findIndex(x => x.noteIndex === n.noteIndex);
     if (ni >= 0) blk.notes.splice(ni, 1); // מקור־אמת יחיד: לא לספור פעמיים
@@ -8875,6 +8954,7 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
           eventLog.emit('page-plan', pushed ? 'heading-escort-push' : 'heading-escort-directed', { token: blk.tokenId, page: cur.index, col: room, stackPx: Math.round(escortStack) }, cur.index);
           escortLockCol = room;      // הצבה מכוונת: הכותרת ושורות הליווי — בטור שאומת
           escortLinesNeeded = escortN;
+          trace.emit(cur.index, 'escort-directed', { token: blk.tokenId, col: room, stackPx: escortStack, pushed });
         } else {
           const rec = ledger.create('heading-escort', blk.tokenId, cur.index, { stackPx: Math.round(escortStack), capacityPx: colCapacity(cur.template, cur) }, 'protections');
           ledger.transition(rec.issue_id, 'correction-blocked', 'protections', 'no column fits heading+escort even on fresh page (oversized block)');
@@ -8888,18 +8968,22 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
     const needStack = CM.stackHeightPx(blk.lines, blockGapPx(settings, lineH));
     let chosenCol = ensureRoomFor(needStack);
     if (chosenCol === -1) {
-      const splitAt = findSplit(blk, cur, colCapacity, usedHeight, lineH, ledger, eventLog, settings, generateCandidates);
+      const splitAt = findSplit(blk, cur, colCapacity, usedHeight, lineH, ledger, eventLog, settings, generateCandidates, trace);
       if (splitAt > 0) {
         // **FX-3:** ההערות מחויבות לעמוד של החלק שבו שורת הסמן:
         // הסמן בחלק הראשון ⇒ כאן; הסמן בהמשך ⇒ בעמוד החדש (לאחר ה-flush).
         const splitMIdx = (blk.kind === 'paragraph' && (blk.notes || []).length && settings['footnotes-enabled'])
           ? firstMarkerLineOf(blk) : -1;
         if (blk.kind === 'paragraph' && splitMIdx < splitAt) reserveNotes(blk);
-        pushLines(blk.lines.slice(0, splitAt - 1), { tokenId: blk.tokenId, part: 'first' });
+        // **FX-6 (פרוסה 2):** החלק הראשון של הפיצול הוא פתיחת בלוק בפועל
+        // בטור שמתחתיו תוכן קיים — חותמת פער כמו כל פתיחת בלוק (בעבר חלק
+        // הפיצול לא סומן כלל כ-firstOfBlock ⇒ הפער לא נגבה גם כשער כניסה).
+        pushLines(blk.lines.slice(0, splitAt - 1), { tokenId: blk.tokenId, part: 'first', firstOfBlock: true, docPart: blk.part });
         pushLines([blk.lines[splitAt - 1]], { tokenId: blk.tokenId, part: 'first', isLast: true });
         flushPage(); cur = newPage(PAGE_TYPES.REGULAR);
+        cur.openedBy = blk.tokenId; // מעבר עמוד בפיצול — הבלוק פתח את העמוד החדש
         if (blk.kind === 'paragraph' && splitMIdx >= splitAt) reserveNotes(blk);
-        pushLines(blk.lines.slice(splitAt), { tokenId: blk.tokenId, part: 'rest' });
+        pushLines(blk.lines.slice(splitAt), { tokenId: blk.tokenId, part: 'rest', docPart: blk.part });
         continue;
       }
       // **FX-5/#16 — שמירת עמוד ריק:** אם העמוד ריק משורות גוף — אין טעם לאטום
@@ -9010,7 +9094,7 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
     assess
   });
 
-  return { pages, ledger, retreat, hash: layoutHash(pages), bodyHash: bodyGeometryHash(pages) };
+  return { pages, ledger, retreat, hash: layoutHash(pages), bodyHash: bodyGeometryHash(pages), trace };
 }
 
 /** איזון בטוח עם rollback (REQ-BAL-09): snapshot כולל footnotes/sideNotes.
@@ -9048,10 +9132,16 @@ function balancePageSafe(page, settings, ledger) {
   const seq = [...page.columns[0], ...page.columns[1]];
   page.columns[0] = seq.slice(0, best.k);
   page.columns[1] = seq.slice(best.k);
+  // **FX-6 (פרוסה 2):** נרמול פערים אחרי הפיצול מחדש — ראש כל טור אינו
+  // נושא פער-כניסה (GAP_HEAD_POLICY). נעשה לפני בדיקת החריגה כדי שההשוואת
+  // קיבולת תראה את הגיאומטריה האמיתית שתוקרן (כולל הפערים שנותרו בגוף הטור).
+  normalizeColumnGaps(page.columns[0]);
+  normalizeColumnGaps(page.columns[1]);
   // hard reject: חריגת קיבולת אחרי ההחלפה (הגנה כפולה — optimalSplit כבר מסנן) → rollback מלא
-  // **S5.2 (P-2):** קיבולת אפקטיבית פר-טור (פס + תקציב על הטור האחרון) — מקור יחיד.
+  // **S5.2 (P-2) + FX-6:** קיבולת אפקטיבית פר-טור (פס + תקציב על הטור האחרון + פערי
+  // בלוקים) — מקור יחיד; הפערים קבועים ואינם מתמתחים עם aqStretch.
   const overflows = (c, ci) => {
-    const hh = c.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1), 0);
+    const hh = c.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1) + (ln.gapBeforePx || 0), 0);
     return hh > colCapacityOf(page, { colIndex: ci }) + 0.5;
   };
   if (page.columns.some(overflows)) {
@@ -9064,26 +9154,45 @@ function balancePageSafe(page, settings, ledger) {
 }
 
 /** בחירת נקודת פיצול עם הגנות widow/orphan (≥2 שורות לכל צד). */
-function findSplit(blk, cur, colCapacity, usedHeight, lineH, ledger, eventLog, settings = {}, candidatesFn = null) {
+function findSplit(blk, cur, colCapacity, usedHeight, lineH, ledger, eventLog, settings = {}, candidatesFn = null, trace = null) {
   const cap = colCapacity(cur.template, cur);
   const free = cap - usedHeight(cur.columns[cur.columns.length - 1], cur);
-  // **FX-5 (דוח 06, שלב 5):** maxFit נספר מהגבהים האמיתיים — לא מהמרת lineH;
-  // המרת היחידות ההיסטורית פסלה פיצולים חוקיים (גם כאן, לא רק ב-ensureRoom).
-  const firstFit = Math.floor(free / lineH);
-  let maxFit = firstFit;
-  while (maxFit > 0 && maxFit * lineH > free) maxFit--;
-  // **שלב 5 (#16):** חלון הפיצול החוקי — מקור יחיד (constraint-matrix.legalSplitWindow):
-  // ≥2 שורות לכל צד (SRS §5.1). null ⇒ אין פיצול חוקי → הזזה מלאה.
-  if (!CM.legalSplitWindow(blk.lines.length, maxFit)) return 0; // אין פיצול חוקי → הזזה מלאה
+  // **FX-5 (פרוסה 2 — השלמת תיקון השורש):** maxFit נספר מהגבהים האמיתיים
+  // (heightPx מצטבר + פער הכניסה של הבלוק) מול המקום הפנוי — לא מהמרת
+  // lineH. ההמרה ההיסטורית (floor(free/lineH)) פסלה פיצולים חוקיים בכל בלוק
+  // שאינו אחיד-גבהים (כותרות/פסקאות-גוף גבוהות): maxFit נמוך מהאמת ⇒ החלון
+  // התכווץ ⇒ הזזה מלאה על פיצול שהיה נכנס.
+  const gap0 = blockGapPx(settings, lineH);
+  let maxFit = 0, acc = 0;
+  for (let i = 0; i < blk.lines.length; i++) {
+    const add = (i === 0 ? gap0 : 0) + (blk.lines[i].heightPx || 0);
+    if (acc + add > free + CM.CAPACITY_EPS) break;
+    acc += add; maxFit = i + 1;
+  }
+  // **שלב 5 (#16) + פרוסה 2 (מקור יחיד):** חלון הפיצול החוקי —
+  // constraint-matrix.legalSplitWindow: ≥2 שורות לכל צד **והחלק הראשון
+  // נכנס פיזית** (maxFit). null ⇒ אין פיצול חוקי → הזזה מלאה.
+  const win = CM.legalSplitWindow(blk.lines.length, maxFit);
+  if (!win) {
+    if (trace) trace.emit(cur.index, 'split-none', { token: blk.tokenId, lines: blk.lines.length, maxFit, free: Math.round(free) });
+    return 0; // אין פיצול חוקי → הזזה מלאה
+  }
 
   if (candidatesFn) {
     const cands = candidatesFn(blk, maxFit, cap, settings, ledger);
     if (cands.length) {
       eventLog.emit('protections', 'candidate-split', { token: blk.tokenId, at: cands[0].cut, score: cands[0].score });
+      if (trace) trace.emit(cur.index, 'split-candidate', {
+        token: blk.tokenId, cut: cands[0].cut, score: cands[0].score,
+        window: [win.lo, win.hi], candidates: cands.length,
+        rejected: (cands.rejections || []).length
+      });
       return cands[0].cut;
     }
+    if (trace) trace.emit(cur.index, 'split-candidates-exhausted', { token: blk.tokenId, window: [win.lo, win.hi], rejected: (cands.rejections || []).length });
   }
   eventLog.emit('protections', 'legal-split', { token: blk.tokenId, at: maxFit });
+  if (trace) trace.emit(cur.index, 'split-legal-maxfit', { token: blk.tokenId, at: maxFit, window: [win.lo, win.hi] });
   return maxFit;
 }
 
@@ -9567,12 +9676,26 @@ __modules["src/engine/layout/balancing.js"] = function (require, module, exports
 
 // (moveLineForward אינו נדרש עוד באיזון: optimalSplit מכסה את מרחב המצבים כולו — EXT-8)
 
-const { colCapacityOf } = require('./column-flow'); // **S5.2 (P-2):** קיבולת הטור — מקור יחיד
+const { colCapacityOf, normalizeColumnGaps } = require('./column-flow'); // **S5.2 (P-2):** קיבולת הטור — מקור יחיד; **פרוסה 2:** נרמול פערים אחרי פיצול מחדש
 const { seamIsClean, escortCleanBoundary } = require('./constraint-matrix'); // **שלב 5:** תפר נקי + תפר מודע-ליווי — מקור יחיד (חילוץ שורש מ-#16/#17)
 
 function usedHeight(col) {
   // **EXT-20:** גובה בפועל — כולל מקדם ה-AQ האנכי (לפני ה-AQ כל המקדמים 1).
-  return col.reduce((s, ln) => s + ln.heightPx * (ln.aqStretch || 1), 0);
+  // **FX-6 (פרוסה 2):** פער הבלוקים (gapBeforePx) נכלל — הפער הוא גאומטריה
+  // מתוכננת; הוא קבוע ואינו מתמתח עם aqStretch (המתיחה חלה על גובה השורה).
+  return col.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1) + (ln.gapBeforePx || 0), 0);
+}
+
+/** **FX-6 (פרוסה 2):** מרכיבי הגובה של טור — שורות מתיחות ופערים קבועים.
+ * שימוש: חישוב מקדם מתיחה מדויק (target/cur) שבו הפערים אינם מתמתחים:
+ * factor = (target − Σgap) / Σ(heightPx×stretch). */
+function columnStretchParts(col) {
+  let lines = 0, gaps = 0;
+  for (const ln of col) {
+    lines += (ln.heightPx || 0) * (ln.aqStretch || 1);
+    gaps += ln.gapBeforePx || 0;
+  }
+  return { lines, gaps };
 }
 
 /** הערכת "איזון" עמוד: הפרש גובה טורים. */
@@ -9601,7 +9724,9 @@ function optimalSplit(cols, opts = {}) {
   const seq = [...c0, ...c1];
   const n = seq.length;
   if (!n) return null;
-  const h = (ln) => (ln.heightPx || 0) * (ln.aqStretch || 1);
+  // **FX-6 (פרוסה 2):** פערי בלוקים נכללים בגובה השורה במרחב המצבים —
+  // הפיצול ממזער את ה-|Δ| האמיתי (כולל הפערים המתוכננים).
+  const h = (ln) => (ln.heightPx || 0) * (ln.aqStretch || 1) + (ln.gapBeforePx || 0);
   const pre = new Float64Array(n + 1);
   for (let i = 0; i < n; i++) pre[i + 1] = pre[i] + h(seq[i]);
   const total = pre[n];
@@ -9658,6 +9783,10 @@ function balancePage(page, maxDelta) {
   const k0 = page.columns[0].length;
   page.columns[0] = seq.slice(0, best.k);
   page.columns[1] = seq.slice(best.k);
+  // **FX-6 (פרוסה 2):** נרמול פערים אחרי הפיצול מחדש — ראש כל טור אינו
+  // נושא פער-כניסה (GAP_HEAD_POLICY; אותו כלל שחל בהצבה המקורית).
+  normalizeColumnGaps(page.columns[0]);
+  normalizeColumnGaps(page.columns[1]);
   const after = pageImbalance(page);
   return { changed: true, moves: Math.abs(best.k - k0), before, after, optimal: true, cleanBoundary: best.clean };
 }
@@ -9686,7 +9815,9 @@ function alignColumnBottoms(pages, settings, eventLog, opts = {}) {
     if (cols.length !== 2) continue;
     const c0 = cols[0], c1 = cols[1];
     if (!c0.length || !c1.length) { skipped++; continue; } // טור ריק — אין מה למתוח
-    const hh = (c) => c.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1), 0);
+    // **FX-6 (פרוסה 2):** גבהים כוללים פערי בלוקים — אותה סמנטיקה כמו usedHeight
+    // (הפער קבוע; המתיחה חלה על השורות בלבד — ראה columnStretchParts).
+    const hh = (c) => c.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1) + (ln.gapBeforePx || 0), 0);
     const h0 = hh(c0), h1 = hh(c1);
     const delta = Math.abs(h0 - h1);
     if (delta <= maxDelta) continue; // כבר מאוזן — אין התערבות
@@ -9703,7 +9834,12 @@ function alignColumnBottoms(pages, settings, eventLog, opts = {}) {
     const shortI = h0 < h1 ? 0 : 1;
     const shortCol = cols[shortI];
     const usedS = Math.min(h0, h1);
-    const raw = usedS > 0.5 ? target / usedS : 1; // **S72 (שיפור 4):** מקדם מדויק — יעד/נוכחי
+    // **FX-6 (פרוסה 2):** מקדם מדויק עם פערים קבועים — הפערים אינם מתמתחים:
+    // factor = (target − Σgap) / Σ(heightPx×stretch). בלי זה, מתיחה שחושבה
+    // מ-used כולל-פערים לא הגיעה ליעדה בפועל (הפערים נשארו בגובהם המקורי).
+    const partsS = columnStretchParts(shortCol);
+    const stretchTo = (target) => partsS.lines > 0.5 ? (target - partsS.gaps) / partsS.lines : 1;
+    const raw = stretchTo(Math.max(h0, h1));
     if (!(raw > 1 + 1e-4)) continue;
     const lo = settings['aq-word-spacing-min'];
     const tallCol = cols[1 - shortI];
@@ -9713,8 +9849,9 @@ function alignColumnBottoms(pages, settings, eventLog, opts = {}) {
     // (פער גדול על טורים קצרים) — מתיחה חד-צדדית עד התקרה ושארית
     // מדווחת באירוע (clamped=true).
     const mid = (Math.max(h0, h1) + usedS) / 2;
-    const fShort = usedS > 0.5 ? mid / usedS : 1;
-    const fTall = Math.max(h0, h1) > 0.5 ? mid / Math.max(h0, h1) : 1;
+    const partsT = columnStretchParts(tallCol);
+    const fShort = stretchTo(mid);
+    const fTall = partsT.lines > 0.5 ? (mid - partsT.gaps) / partsT.lines : 1;
     let factor, shared = false;
     if (raw > hi + 1e-9 && fShort <= hi + 1e-9 && fTall >= lo - 1e-9) {
       factor = fShort; shared = true;
@@ -9725,8 +9862,9 @@ function alignColumnBottoms(pages, settings, eventLog, opts = {}) {
     for (const ln of shortCol) ln.aqStretch = factor;
     if (shared) for (const ln of tallCol) ln.aqStretch = fTall;
     aligned++;
-    const afterShort = usedS * factor;
-    const afterTall = shared ? Math.max(h0, h1) * fTall : Math.max(h0, h1);
+    // **FX-6:** דיווח מדויק — הגובה בפועל אחרי מתיחה = Σgap + Σ(heightPx×factor)
+    const afterShort = partsS.gaps + partsS.lines * factor;
+    const afterTall = shared ? (partsT.gaps + partsT.lines * fTall) : Math.max(h0, h1);
     eventLog.emit('balance', 'bottom-align', {
       page: page.index, col: shortI, factor: Number(factor.toFixed(4)),
       factorTall: shared ? Number(fTall.toFixed(4)) : null,
@@ -9793,11 +9931,12 @@ function autoQualityPass(pages, settings, eventLog) {
       const cap = colCapacityOf(page, { colIndex: c });
       const deficit = cap - used;
       if (deficit > 4 && mayStretch) {
-        // **S72 (שיפור 4 — מקדם מדויק):** rawFactor = cap/used — מגיע
-        // ליעד בדיוק גם בטורים מעורבי-גבהים (כותרות+גוף). בעבר חושב
-        // 1+(deficit/n)/h(שורה-ראשונה) — קירוב שהחטיא את היעד בכל טור
-        // שאינו אחיד (נמדד: פספוס של עד ~10px בטור עם 2 כותרות).
-        const rawFactor = used > 0.5 ? cap / used : 1;
+        // **S72 (שיפור 4) + FX-6 (פרוסה 2):** מקדם מדויק עם פערים קבועים —
+        // (cap − Σgap)/Σ(heightPx×stretch) — מגיע ליעד בדיוק גם בטורים
+        // מעורבי-גבהים וגם כשפערי בלוקים בטור (הפערים אינם משתתפים במתיחה).
+        // בעבר חושב 1+(deficit/n)/h(שורה-ראשונה) — קירוב שהחטיא את היעד.
+        const parts = columnStretchParts(lines);
+        const rawFactor = parts.lines > 0.5 ? (cap - parts.gaps) / parts.lines : 1;
         for (const stage of AQ_STAGES) {
           const [lo, hi] = stageBounds(settings, stage);
           const factor = Math.min(hi, Math.max(lo, rawFactor));
@@ -9814,9 +9953,9 @@ function autoQualityPass(pages, settings, eventLog) {
         }
       } else if (deficit < -4 && compressFirst) {
         // עודף מעל התקרה ⇒ כיווץ עד min (כיווץ לפני מתיחה — compress-first)
-        // **S72 (שיפור 4):** מקדם מדויק גם בכיווץ — cap/used (היה קירוב
-        // first-line שהחטיא את היעד בטורים מעורבי-גבהים).
-        const rawFactor = used > 0.5 ? cap / used : 1;
+        // **S72 (שיפור 4) + FX-6:** מקדם מדויק גם בכיווץ — (cap − Σgap)/Σh.
+        const parts = columnStretchParts(lines);
+        const rawFactor = parts.lines > 0.5 ? (cap - parts.gaps) / parts.lines : 1;
         for (const stage of AQ_STAGES) {
           const [lo, hi] = stageBounds(settings, stage);
           const factor = Math.max(lo, Math.min(hi, rawFactor));
@@ -9832,7 +9971,7 @@ function autoQualityPass(pages, settings, eventLog) {
   return { applied };
 }
 
-module.exports = { balancePage, optimalSplit, pageImbalance, applyChapterEndMode, autoQualityPass, alignColumnBottoms, usedHeight };
+module.exports = { balancePage, optimalSplit, pageImbalance, applyChapterEndMode, autoQualityPass, alignColumnBottoms, usedHeight, columnStretchParts };
 
 };
 __modules["src/engine/layout/column-flow.js"] = function (require, module, exports) {
@@ -9874,18 +10013,37 @@ function isFullWidthBlock(block, settings) {
 }
 
 /**
+ * **FX-6 (שלב 5 פרוסה 2) — נרמול פערים אחרי שינוי מבני של טור:**
+ * שורה שהפכה לראש הטור (איזון/הזזה/פיצול) אינה נושאת עוד פער-כניסה —
+ * GAP_HEAD_POLICY (constraint-matrix): דיכוי בראש טור. החלפת הייחוס בעותק
+ * שומרת על אובייקטי השורה המשותפים (rollback/צילומי-מצב) ללא מוטציה.
+ * @param {Array} col - טור (מערך שורות ממוקמות)
+ */
+function normalizeColumnGaps(col) {
+  if (col.length && col[0].gapBeforePx) col[0] = { ...col[0], gapBeforePx: 0 };
+}
+
+/**
  * **S5.2 (P-2 — איחוד חישוב קיבולת טור):** המקור היחיד לקיבולת האפקטיבית
  * של טור בעמוד DP: גובה תיבת התוכן מהתבנית, בהפחתת:
  *  - הפס החוצה־טורים (spanning band, FWD-1) — הטורים מתחילים מתחתיו;
- *  - תקציב ההערות של העמוד (fnReservedHeightPx, F-17) — נרשם על הטור האחרון.
- * בעבר חושבו 4 העתקים מקבילים (balancing.balancePage/autoQualityPass,
- * dp-planner.balancePageSafe, protections-matrix.containment) שהתעלמו מהפס
- * ו/או מהתקציב ⇒ גלישת טור שקטה בעמודים עם הערות או פס כותרת.
+ *  - תקציב ההערות של העמוד (fnReservedHeightPx, F-17) — חוצה־רוחב (R3-C2);
+ *  - **(פרוסה 2)** שמורות אחידות (`page.reservations`) — מנגנון ההרחבה
+ *    של שלב 6: כל אזור שמקטין את שטח הגוף (ריהוט, עיטור שמזמין מקום,
+ *    אזור שמור לפריט בלתי-ניתן לפיצול) נרשם כאן פעם אחת ומופחת מכל
+ *    הטורים (scope:'all-columns') או מהטור האחרון בלבד (scope:'last-column')
+ *    — ללא שינוי ליבת המתכנן.
  *
- * @param {object} page - עמוד DP: template.contentBox, spanning?, fnReservedHeightPx?, columns
+ * **מודל הקיבולת המיוצג (§2.6 בביקורת):** `capacityReservationsOf(page)`
+ * מפרט במפורש כל גורם שמקטין את שטח הגוף — margins/headers/folio כבר
+ * מיוצגים בתיבת התוכן של התבנית (page-templates), הפס החוצה־טורים ותקציב
+ * ההערות כאן, עיטורי H2/סגנונות בתוך גבהי השורות עצמן (F-08) והשאר —
+ * דרך ה-reservations. מקור אחד, ייצוג אחד, ללא חישובים מקביליים.
+ *
+ * @param {object} page - עמוד DP: template.contentBox, spanning?, fnReservedHeightPx?, reservations?, columns
  * @param {{colIndex?:number, fnBudget?:boolean}} [opts]
  *  - colIndex: הטור שאליו שייכת הקיבולת (ברירת מחדל: האחרון — המחמיר);
- *    תקציב ההערות מופחת רק מהטור האחרון (שם הוא נרשם).
+ *    שמורות last-column מופחתות ממנו בלבד.
  *  - fnBudget:false — ביטול הפחתת תקציב ההערות (למי שמודד usage כולל
  *    התקציב בעצמו — כמו usedHeight של dp-planner או extraLast של optimalSplit).
  */
@@ -9900,25 +10058,59 @@ function colCapacityOf(page, opts = {}) {
   // לתוך אזור ההערות בכל עמוד רווי-הערות, והגנת containment הייתה עיוורת
   // לזה (אותה נוסחה).
   if (fn) cap -= fn;
+  // **פרוסה 2 — reservations אחידים (§2.6):** הפחתה חד-פעמית לפי scope.
+  const res = page.reservations;
+  if (res && res.length) {
+    const lastCol = page.columns ? page.columns.length - 1 : 0;
+    const ci = opts.colIndex != null ? opts.colIndex : lastCol;
+    for (const r of res) {
+      if (!r || !(r.px > 0)) continue;
+      if (r.scope === 'last-column') { if (ci === lastCol) cap -= r.px; }
+      else cap -= r.px; // 'all-columns' (ברירת המחדל)
+    }
+  }
   return cap;
 }
 
 /**
+ * **פרוסה 2 (§2.6 — מודל הקיבולת המיוצג):** רשימה תיאורית של כל הגורמים
+ * שמקטינים את שטח הגוף בעמוד — לחוזה ה-PagePlan, לאבחון ולבדיקות.
+ * טהור: קריאה בלבד; אותם מספרים ש-colCapacityOf מפחית בפועל.
+ */
+function capacityReservationsOf(page, opts = {}) {
+  if (!page || !page.template || !page.template.contentBox) return [];
+  const out = [
+    { kind: 'content-box', scope: 'all-columns', px: page.template.contentBox.height, detail: 'margins/header/folio excluded by template' },
+    { kind: 'spanning-band', scope: 'all-columns', px: (page.spanning && page.spanning.heightPx) || 0, detail: 'cross-column band (FWD-1)' },
+    { kind: 'notes-budget', scope: 'all-columns', px: (opts.fnBudget !== false && page.fnReservedHeightPx > 0) ? page.fnReservedHeightPx : 0, detail: 'footnote gutter budget (F-17, R3-C2)' }
+  ];
+  for (const r of (page.reservations || [])) {
+    if (r && r.px > 0) out.push({ kind: r.kind || 'reservation', scope: r.scope || 'all-columns', px: r.px, detail: r.reason || '' });
+  }
+  return out;
+}
+
+/**
  * **שלב 5 (חילוץ שורש מ-PR #16, S78/D-107 — גובה תפוס בזמן תכנון, מקור יחיד):**
- * Σ גבהי שורות + יתרת תקציב ההערות של העמוד — נרשם על הטור האחרון (F-17).
+ * Σ גבהי שורות + פערי בלוקים (FX-6: `gapBeforePx` — הפער נצבר כאן בפועל,
+ * לא רק בשער הכניסה) + יתרת תקציב ההערות של העמוד — נרשם על הטור האחרון (F-17).
  * זו סמנטיקת ה-**תכנון** (לפני AQ — בלי מקדם מתיחה); סמנטיקת ה-**רינדור**
  * (עם aqStretch) חיה ב-balancing.usedHeight. עד כאן היו שני מימושים מקבילים
  * באותו שם בשני מודולים (dp-planner מקומי מול זה) — כעת צרכן יחיד.
  */
 function planningUsedHeight(col, page) {
-  let h = col.reduce((s, ln) => s + (ln.heightPx || 0), 0);
+  let h = 0;
+  for (const ln of col) h += (ln.heightPx || 0) + (ln.gapBeforePx || 0);
   if (page && page.fnReservedHeightPx > 0 && page.columns[page.columns.length - 1] === col) {
     h += page.fnReservedHeightPx; // נשמר פעם אחת — בסוף הטור האחרון
   }
   return h;
 }
 
-module.exports = { columnWidths, blockGapPx, isFullWidthBlock, colCapacityOf, planningUsedHeight, buildPageTemplate };
+module.exports = {
+  columnWidths, blockGapPx, isFullWidthBlock, colCapacityOf, capacityReservationsOf,
+  planningUsedHeight, normalizeColumnGaps, buildPageTemplate
+};
 
 };
 __modules["src/engine/layout/constraint-matrix.js"] = function (require, module, exports) {
@@ -9983,7 +10175,18 @@ const CAPACITY_EPS = 0.5;
 /**
  * חלון הפיצול החוקי של בלוק בן `linesCount` שורות כשמתאימות `maxFit`
  * שורות במקום הפנוי: חיתוך חוקי רק ב-[lo..hi] כאשר lo = 2 (שתי שורות
- * לפחות יישארו) ו-hi = linesCount − 2 (שתיים לפחות יעברו).
+ * לפחות יישארו) ו-hi = min(linesCount − 2, maxFit) (שתיים לפחות יעברו
+ * **והחלק הראשון נכנס פיזית למקום הפנוי).
+ *
+ * **שלב 5 פרוסה 2 (תיקון שורש — יישוב הפער חוזה↔התנהגות):** עד כאן `hi`
+ * התעלם מ-`maxFit` — החוזה הכריז על [2..lines−2] בעוד generateCandidates
+ * ניהל בעצמו גם טווח [2..lines−1) וגם דחיית `cut > maxFit` נפרדת: שני
+ * מקורות לאותה מדיניות, עם נקודת חיכוך אחת אמיתית — חיתוך lines−1 (משאיר
+ * שורה בודדת ביעד) היה חוקי בפועל אף שהחוזה אסר אותו. מעתה החלון כאן
+ * הוא **מקור האמת היחיד** לטווח החוקי (הן את הכלל ≥2-לכל-צד והן את
+ * גבול הקיבולת), והצרכנים (findSplit, generateCandidates) קוראים ממנו
+ * בלבד — אין עוד תנאי טווח משוכפל.
+ *
  * @returns {{lo:number, hi:number}|null} — null אם אין חלון חוקי כלל
  *   (הבלוק קצר מדי או שהמקום הפנוי קטן מדי ⇒ ההזזה מלאה, לא פיצול).
  */
@@ -9991,7 +10194,7 @@ function legalSplitWindow(linesCount, maxFit) {
   if (maxFit < MIN_LINES_PER_SIDE) return null;
   if (linesCount - maxFit < MIN_LINES_PER_SIDE) return null;
   const lo = MIN_LINES_PER_SIDE;
-  const hi = linesCount - MIN_LINES_PER_SIDE;
+  const hi = Math.min(linesCount - MIN_LINES_PER_SIDE, maxFit);
   return hi >= lo ? { lo, hi } : null;
 }
 
@@ -10040,6 +10243,8 @@ function escortCleanBoundary(seq, k) {
 
 /**
  * דגלי מדיניות ווידוא/יתום — קריאה מרוכזת אחת (מקור: settings-registry).
+ * **פרוסה 2:** ה-fallback מיושב ל-'normal' — זהה לברירת המחדל ברגיסטרי
+ * (עד כאן 'standard' — מחרוזת שאינה ב-enum ולעולם לא הופיעה בפועל).
  * @returns {{preventWidowsTop, preventWidowsBottom, preventOrphansTop, preventOrphansBottom, strictness}}
  */
 function widowOrphanPolicy(settings) {
@@ -10048,9 +10253,51 @@ function widowOrphanPolicy(settings) {
     preventWidowsBottom: settings['prevent-widows-bottom'] === true,
     preventOrphansTop: settings['prevent-orphans-top'] === true,
     preventOrphansBottom: settings['prevent-orphans-bottom'] === true,
-    strictness: settings['widow-strictness'] || 'standard'
+    strictness: settings['widow-strictness'] || 'normal'
   };
 }
+
+/**
+ * **טבלת מדיניות האילוצים (שלב 5 פרוסה 2 — §2.4 בביקורת):** הכרזה חד-משמעית
+ * מה קשיח (פוסל מועמד/מצב) ומה רך (עדיפות/עונש בלבד). כלל ההכרעה:
+ * hard = הפרתו יוצרת מצב בלתי-חוקי (חריגת קיבולת, פחות מ-2 שורות
+ * לצד חיתוך, כותרת ללא ליווי); soft = העדפה בין מצבים חוקיים.
+ * מדיניות strict (widow-strictness=strict): מועמד חיתוך שמשאיר בדיוק את
+ * המינימום החוקי ביעד (שתי שורות) נענש — strict מעדיף שלא להסתפק במינימום
+ * החוקי בראש הטור הבא; normal = שקילות; relaxed = דילוג על בדיקת
+ * orphan-top בהגנות (קיים). שלוש הרמות מוגדרות, מתועדות ונבדקות חיוב/שלילה.
+ */
+const CONSTRAINT_POLICY = Object.freeze({
+  minLinesPerSide: { type: 'hard', scope: 'split-window', description: '≥2 שורות לכל צד של חיתוך פסקה (SRS §5.1)' },
+  maxFitBound: { type: 'hard', scope: 'split-window', description: 'החלק הראשון חייב להיכנס למקום הפנוי בפועל (yPx)' },
+  seamClean: { type: 'hard', scope: 'balance', description: 'גבול איזון אינו מותיר ריצת-פסקה בת שורה אחת מכל צד' },
+  escortCleanBoundary: { type: 'hard', scope: 'balance', description: 'גבול איזון אינו מותיר כותרת עם <2 שורות ליווי' },
+  headingEscort: { type: 'hard', scope: 'placement', description: 'כותרת H1–H6 + min(2, עוקבות) שורות באותו טור (REQ-BAL-10)' },
+  columnCapacity: { type: 'hard', scope: 'placement', description: 'usedHeight (כולל gaps + תקציב הערות) ≤ קיבולת אפקטיבית' },
+  readingOrder: { type: 'hard', scope: 'placement', description: 'מונוטוניות flowCol + seq עולה בסדר הקריאה' },
+  strictDestMinimum: {
+    type: 'soft', scope: 'candidate-scoring',
+    description: 'strict: עונש על מועמד שמשאיר בדיוק את המינימום החוקי (2 שורות) בראש היעד',
+    penalty: 1e9
+  },
+  balanceDelta: {
+    type: 'soft', scope: 'balance',
+    description: 'איזון טורים ממזער |Δ| בכפוף לאילוצים הקשיחים; פשרה מתועדת כשאין פיצול חוקי',
+    threshold: 'settings[imbalance-max-delta-px]'
+  }
+});
+
+/**
+ * **FX-6 (שלב 5 פרוסה 2 — סמנטיקת פער הבלוקים בחוזה הגאומטרי):** הפער
+ * בין בלוקים הוא גאומטריה מתוכננת, לא רק תנאי כניסה. הכללים הקנוניים:
+ *  - הפער נחתם פעם אחת על השורה הראשונה של הבלוק (`gapBeforePx`) במקום
+ *    ההצבה — מקור יחיד; המקרינים קוראים ואינם מוסיפים בעצמם.
+ *  - דיכוי בראש טור: שורה ראשונה בטור (גם מתחת לפס חוצה-טורים) — בלי
+ *    פער; ראש עמוד — בלי פער; בלוקים רצופים — פער בכל פתיחת בלוק.
+ *  - הפער נכלל ב-usedHeight (תכנון ורינדור) ובבדיקות הקיבולת; המתיחה
+ *    האנכית (aqStretch) חלה על גובה השורה בלבד — הפער קבוע.
+ */
+const GAP_HEAD_POLICY = 'suppress-at-column-head';
 
 /**
  * מספר השורות שחייבות להיכנס יחד עם כותרת לטור (REQ-BAL-10):
@@ -10067,10 +10314,13 @@ function escortNeedLines(headingLines, followingLines) {
  * זהו ניפוץ הכפילות "יחידות lineH מול heightPx" (FX-1/FX-5): הבדיקה
  * וההצבה מודדות באותה יחידה — הגובה הפיזי שייצרך בפועל.
  *
+ * **FX-6 (פרוסה 2):** פער הכניסה הוא חלק מהמחסנית לצורך בדיקת קיבולת
+ * שמרנית (הבלוק עשוי להיפתח באמצע טור). בפועל, אם הבלוק נפתח בראש טור —
+ * הפער מדוכא בחותמת (GAP_HEAD_POLICY) והשימוש בפועל קטן מהמחסנית
+ * בסכום הפער בלבד (שמרנות מתועדת, לא אי-דיוק).
+ *
  * @param {Array<{heightPx:number}>} lines
- * @param {number} [admissionGapPx=0] — blockGapPx של הבלוק (שער כניסה בלבד;
- *   FX-6 — פער הבלוקים עדיין אינו נצבר בגאומטריה במורד הזרם; תיקונו הוקדם
- *   לשלב B של התוכנית בדוח 06 — דורש תיאום הקרנה ואינו נכנס לפרוסה זו).
+ * @param {number} [admissionGapPx=0] — blockGapPx של הבלוק
  */
 function stackHeightPx(lines, admissionGapPx = 0) {
   let h = admissionGapPx;
@@ -10097,12 +10347,16 @@ function escortStackHeightPx(headBlock, nextBlock, gapOf) {
 }
 
 /**
- * האם חיתוך במקום `cut` משאיר יתום בראש היעד (שורת המשך בודדת)?
- * תיקון FX-4: התנאי ההיסטורי `cut < 2` היה בלתי-ספיק לעולם (הלולאה
- * ב-candidate-generator מתחילה ב-cut = 2) — עונש strict מעולם לא נשרף.
+ * האם חיתוך במקום `cut` משאיר **בדיוק את המינימום החוקי** בראש היעד
+ * (שתי שורות — פחות מזה אינו חוקי כלל ונחסם מראש ע"י legalSplitWindow).
+ * **פרוסה 2:** לאחר שהחלון הפך לסמכות היחידה, תפקיד הפונקציה השתנה —
+ * היא כבר אינה מזהה מצב בלתי-חוקי (אין כזה בתוך החלון), אלא מסמנת את
+ * **מדיניות strict** (עונש רך על הסתפקות במינימום; CONSTRAINT_POLICY.
+ * strictDestMinimum). משמרת את כוונת FX-4 (מדיניות שקרית כלפי המשתמש —
+ * אסור שתחזור) בנוסח שאינו מתנגש לחוזה החלון.
  */
 function orphanAtDestination(lineCount, cut) {
-  return lineCount - cut < WIDOW_ORPHAN_MIN;
+  return lineCount - cut <= WIDOW_ORPHAN_MIN;
 }
 
 module.exports = {
@@ -10110,6 +10364,8 @@ module.exports = {
   ESCORT_MIN_LINES,
   WIDOW_ORPHAN_MIN,
   CAPACITY_EPS,
+  GAP_HEAD_POLICY,
+  CONSTRAINT_POLICY,
   legalSplitWindow,
   seamIsClean,
   escortCleanBoundary,
@@ -10304,7 +10560,9 @@ __modules["src/engine/layout/candidate-generator.js"] = function (require, modul
 'use strict';
 
 const { blockGapPx } = require('./column-flow');
-const { MIN_LINES_PER_SIDE, orphanAtDestination } = require('./constraint-matrix'); // **שלב 5:** חלון הפיצול + עונש strict חי — מקור יחיד (חילוץ שורש מ-#16/#17)
+const {
+  MIN_LINES_PER_SIDE, legalSplitWindow, orphanAtDestination, CONSTRAINT_POLICY
+} = require('./constraint-matrix'); // **שלב 5 פרוסה 2:** החלון — מקור יחיד לטווח החוקי (הן ≥2/צד, הן maxFit)
 
 /**
  * מחזיר מועמדי פיצול לבלוק בתוך טור:
@@ -10312,45 +10570,59 @@ const { MIN_LINES_PER_SIDE, orphanAtDestination } = require('./constraint-matrix
  *  - scoring = f(Δ height, capacityBefore/capacityAfter justify, next-block context)
  *  - ladder עונשין: whole-paragraph moves > line moves > leading > para-spacing
  *
- * **שלב 5 — שני תיקוני שורש מאוחדים (חילוץ מ-#16/#17):**
+ * **שלב 5 — תיקוני שורש מאוחדים (חילוץ מ-#16/#17):**
  *  - **מועמד מוגבל למקום הפנוי (#16):** פרמטר `cur` (maxFit — השורות שנכנסות
  *    במקום הפנוי) היה **מת**: המועמד המנצח נבחר לפי איזון בלבד ויכול היה
  *    לחרוג מהמקום הפנוי ⇒ pushLines פלט את העודף בפליטה מרומזת ⇒ עמוד
- *    כמעט-ריק באמצע הספר (נמדד: עמוד עם 4+4 שורות בלבד; מקורו cut=16 מול
- *    maxFit≈8). כעת מועמד שחורג מ-maxFit נדחה HARD עם רישום סיבה (D-11).
- *  - **FX-4 (#17, דוח 06):** העונש ההיסטורי `cut < 2` היה בלתי-ספיק לעולם
- *    (הלולאה מתחילה ב-cut = 2) — widow-strictness=strict לא שינה דבר
- *    (מדיניות שקרית כלפי המשתמש). התנאי הנכון: החלק השני קצר מהמינימום ⇒
- *    יתום בראש היעד (orphanAtDestination).
+ *    כמעט-ריק באמצע הספר. כעת מועמד שחורג נדחה HARD עם רישום סיבה.
+ *  - **FX-4 (#17, דוח 06):** עונש strict — כעת מוגדר כמדיניות רכה מוגדרת
+ *    (CONSTRAINT_POLICY.strictDestMinimum): עונש על מועמד שמשאיר בדיוק את
+ *    המינימום החוקי (2 שורות) בראש היעד; חיתוך שמשאיר פחות — בלתי-חוקי
+ *    מיסודו ואינו מיוצר כלל (החלון חוסם אותו).
+ *
+ * **פרוסה 2 — יישוב הפער חוזה↔התנהגות (§2.4 בביקורת):** הטווח נגזר כולו
+ * מ-`legalSplitWindow` — מקור האמת היחיד. אין עוד לולאת `cut < lines` עצמאית,
+ * אין עוד בדיקת `cut > maxFit` משוכפלת (החלון כולל את הגבול), ואין עוד
+ * מועמד lines−1 שמפר את החוזה. כל דחייה חוזרת גם in-band (`out.rejections`)
+ * לצורך decision-trace — לא רק ל-ledger.
  *
  * @param {object} blk        בלוק עם .lines (נמדדו)
  * @param {number} cur        maxFit — שורות שנכנסות במקום הפנוי (גבול עליון חוקי למועמדים)
  * @param {number} colCapacityPx
  * @param {object} settings
  * @param {object} ledger     Ledger (core/ledger) — כתיבת סיבה לכל דחייה (S5.1.10)
+ * @returns {Array<{cut, before, after, capacityBefore, capacityAfter, score}>} —
+ *   ממוין לפי score עולה; `out.rejections` — דחיות קומפקטיות ל-trace.
  */
 function generateCandidates(blk, cur, colCapacityPx, settings, ledger) {
-  const maxFit = Number(cur) || 0; // **שלב 5:** maxFit חי — גבול עליון חוקי למועמדים
+  const maxFit = Number(cur) || 0;
   const out = [];
+  out.rejections = [];
   const lineH = blk.lineHeightPx || 20;
   const gap = blockGapPx(settings, lineH);
-  for (let cut = MIN_LINES_PER_SIDE; cut < blk.lines.length; cut++) {
-    // HARD reject: חיתוך שחורג מהמקום הפנוי — החלק הראשון לא ייכנס לעמוד (#16)
-    if (cut > maxFit) {
-      if (ledger) ledger.create('candidate-rejected', `${blk.tokenId}@${cut}`, null, { why: 'exceeds-free-space', cut, maxFit }, 'candidate-gen');
-      continue;
-    }
+  // **פרוסה 2:** החלון החוקי — מקור יחיד. null ⇒ אין פיצול חוקי כלל.
+  const win = legalSplitWindow(blk.lines.length, maxFit);
+  if (!win) {
+    if (ledger) ledger.create('candidate-rejected', `${blk.tokenId}@window`, null, { why: 'no-legal-window', lines: blk.lines.length, maxFit }, 'candidate-gen');
+    out.rejections.push({ why: 'no-legal-window', lines: blk.lines.length, maxFit });
+    return out;
+  }
+  const strict = settings['widow-strictness'] === 'strict';
+  const strictPenalty = CONSTRAINT_POLICY.strictDestMinimum.penalty;
+  for (let cut = win.lo; cut <= win.hi; cut++) {
     const before = blk.lines.slice(0, cut).reduce((s, l) => s + (l.heightPx || lineH), 0) + gap;
     const after = blk.lines.slice(cut).reduce((s, l) => s + (l.heightPx || lineH), 0);
     // HARD reject: overflow אינו נענש במשקל אלא נפסל לחלוטין (D-11)
     if (before > colCapacityPx) {
-      if (ledger) ledger.create('candidate-rejected', `${blk.tokenId}@${cut}`, null, { why: 'overflow-before', before, cap: colCapacityPx }, 'candidate-gen');
+      if (ledger) ledger.create('candidate-rejected', `${blk.tokenId}@${cut}`, null, { why: 'overflow-before', cut, before, cap: colCapacityPx }, 'candidate-gen');
+      out.rejections.push({ cut, why: 'overflow-before', before: Math.round(before), cap: Math.round(colCapacityPx) });
       continue;
     }
     // justify capability: האם הטור שלפני יכול להצדיק (להגיע לקצה) — p376-class reasoning
     const capacityBefore = colCapacityPx - before;
+    // **strict (מדיניות רכה, מוכרזת):** עונש על הסתפקות במינימום החוקי ביעד.
     const score = Math.abs(capacityBefore - (colCapacityPx - after))
-      + (settings['widow-strictness'] === 'strict' && orphanAtDestination(blk.lines.length, cut) ? 1e9 : 0); // **FX-4:** התנאי הנכון
+      + (strict && orphanAtDestination(blk.lines.length, cut) ? strictPenalty : 0);
     out.push({ cut, before, after, capacityBefore, capacityAfter: colCapacityPx - after, score });
   }
   out.sort((a, b) => a.score - b.score);
@@ -10435,10 +10707,17 @@ function protectWords(words, measure, colWidthPx) {
  * **S5.2 (תיקון 2 — מיזוג ללא בדיקת רוחב):** בעבר המילה נדחפה לשורה הראשונה
  * של הטור הבא (`unshift` + `pop`) ללא מדידה מחדש — השורה המקבלת יכלה לגלוש
  * מהטור (נמדד +1.95..25px בביקורת) ⇒ הדפדפן עוטף מחדש ⇒ טקסט-על-טקסט
- * (מחלקת D-92). כעת: המיזוג נשמר רק אם הרוחב הטבעי הממוזג נכנס ב‑colW−FIT_EPS
- * (אותה מדידה של המתכנן: widthPx הקיים של השורה המקבלת + רווח + מדידת המילה);
- * לא ממזגים לתוך שורת כותרת/שורה אחרונה (isLast), לא מוציאים מילה מכותרת;
- * וללא מדידה (opts.measure) — אין מיזוג בכלל (שמרנות: מי שלא מודד לא מוכיח התאמה).
+ * (מחלקת D-92). כעת: המיזוג נשמר רק אם הרוחב הטבעי הממוזג נכנס ב‑colW−FIT_EPS.
+ *
+ * **פרוסה 2 (ביטול מדידה חוזרת — §2.3 בביקורת):** הרוחב הממוזג נגזר מה
+ * **מדדים שכבר נקבעו** במנוע השורות — שום קריאת מדידה חדשה בשלב התכנון:
+ *  - רוחב המילה הנופלת = `last.lineModel.naturalWidthPx` (שורת מילה בודדת —
+ *    הרוחב הטבעי שלה הוא רוחב המילה כולל תג הסמן שבה, בדיוק כפי שתוצג);
+ *  - רוחב הרווח המפריד = ה-glue הטבעי הראשון של השורה המקבלת
+ *    (`nextFirst.lineModel.glue[0].naturalPx` — אותו רווח שהמנוע מדד);
+ *  - רוחב השורה המקבלת = `nextFirst.widthPx` (נמדד בשבירה).
+ * נתיב המורשת (ללא lineModel) — נפילה חזרה ל-`opts.measure` אם סופק;
+ * בלי שניהם אין מיזוג (שמרנות: מי שלא מודד/לא קיבל מדדים לא מוכיח התאמה).
  * @param {Array<Array<object>>} columnLines
  * @param {number} minLen - אורך מינימלי של מילה "נופלת"
  * @param {{measure?:(t:string)=>number, colW?:number, fitEps?:number}} [opts]
@@ -10459,11 +10738,14 @@ function fixDropWordInColumns(columnLines, minLen = 3, opts = {}) {
     if (nextFirst.kind === 'heading' || nextFirst.isLast === true) continue;
     if (last.kind === 'heading') continue;
     if (last.words.length === 1 && last.words[0].length < minLen && nextFirst.words.length > 1) {
-      // רוחב טבעי ממוזג = widthPx שנמדד לשורה המקבלת + רווח + המילה הנמשכת.
-      // התג (MARK_TAG, D-53) מוסר מהמדידה — כמו ב-measureWithParen של ה-pipeline;
-      // NBSP נמדד כרווח (כמו internal-glue ב-kp).
+      // רוחב טבעי ממוזג מהמדדים הקיימים (LineModel) — ורק בהיעדרם, מדידה
+      // (נתיב מורשת). התג (MARK_TAG, D-53) כלול ברוחב הטבעי כפי שיוצג.
       let mergedW = null;
-      if (measure && colW > 0) {
+      const srcLM = last.lineModel;
+      const dstLM = nextFirst.lineModel;
+      if (srcLM && dstLM && dstLM.glue && dstLM.glue.length) {
+        mergedW = (nextFirst.widthPx || 0) + dstLM.glue[0].naturalPx + (srcLM.naturalWidthPx || 0);
+      } else if (measure && colW > 0) {
         const word = String(last.words[0]).replace(/\uE102/g, '').replace(/\u00A0/g, ' ');
         mergedW = (nextFirst.widthPx || 0) + measure(' ') + measure(word);
       }
@@ -10485,6 +10767,8 @@ __modules["src/engine/layout/ordering.js"] = function (require, module, exports)
 // src/engine/layout/ordering.js — Reading-order-preserving column moves (P0-3; D-49)
 'use strict';
 
+const { normalizeColumnGaps } = require('./column-flow'); // **FX-6 (פרוסה 2):** נרמול פערים אחרי הזזה מבנית
+
 /**
  * הזזת שורה בין טורים תוך **שמירת סדר הקריאה בלבד** (תיקון P0-3):
  * סדר קריאה: col0 (ימני, נקרא ראשון) מלמעלה למטה, ואז col1.
@@ -10494,17 +10778,23 @@ __modules["src/engine/layout/ordering.js"] = function (require, module, exports)
  * שתי ההזזות שומרות את סדר המילים בדיוק; בעבר האיזון העביר שורה **אחורה**
  * בסדר הקריאה (הצגת סוף פסקה לפני תחילתה) — רגרסיה שלא הייתה באף גרסה קודמת.
  * מודול עצמאי ללא תלויות — נצרך ע"י dp-planner וגם balancing (מניעת תלות מעגלית).
+ * **FX-6 (פרוסה 2):** כל הזזה מבנית מנרמלת את פערי הכניסה של ראשי הטורים
+ * (GAP_HEAD_POLICY — ראש טור אינו נושא פער; הכלל חי בסמכות המוטציה עצמה).
  */
 function moveLineForward(cols, hi, lo) {
   if (hi === lo || cols.length < 2) return false;
   if (hi === 0 && lo === 1) {           // col0 גבוה: סוף col0 → ראש col1
     if (!cols[0] || !cols[0].length) return false;
     cols[1].unshift(cols[0].pop());
+    normalizeColumnGaps(cols[0]);
+    normalizeColumnGaps(cols[1]);
     return true;
   }
   if (hi === 1 && lo === 0) {           // col1 גבוה: ראש col1 → סוף col0
     if (!cols[1] || !cols[1].length) return false;
     cols[0].push(cols[1].shift());
+    normalizeColumnGaps(cols[0]);
+    normalizeColumnGaps(cols[1]);
     return true;
   }
   return false;
@@ -10544,37 +10834,85 @@ function noteMetrics(settings) {
 }
 
 function noteHeight(note, settings, measure) {
+  // **פרוסה 2 (מדידה אחת — §2.3 בביקורת):** צריכת החותמת קודמת לחישוב —
+  // הערה שנמדדה פעם אחת (ביצירתה, CP2) אינה נמדדת שוב לאף החלטת הצבה.
+  if (note && note.heightPx != null) return note.heightPx;
+  return noteRowsOf(note, settings, measure).heightPx;
+}
+
+/**
+ * **פרוסה 2 — שבירת שורות ההערה + מדדיה (מקור יחיד, חד-פעמי):**
+ * אותו אלגוריתם גרידי ברוחב הנתיב (כמו שהיה ב-noteHeight) — אך מוחזר
+ * כמבנה שורות מלא: `{ rows, heightPx, linesCount, lineH, words }`, כאשר כל
+ * שורה היא `{ wFrom, wTo, widthPx }` (טווח מילים + רוחב). השורות כוללות את
+ * הסמן ורווח ההמשך בשורה הראשונה — כמו שמצויר בפועל (R3-C3).
+ * הצרכנים: התקציב (noteHeight), הפיצול של הערה ארוכה (dp-planner —
+ * חיתוך בגבול שורה מוחלט, בלי מדידת מילים מחדש) והקרנת המרזב (עתיד
+ * שלב 6/7 — אותן שורות בדיוק). ההטבעה עצמה — stampNoteMetrics להלן.
+ */
+// **פרוסה 2 (טוהר מדידה — חשבונאות בדיקה, דפוס api.cacheStats):** מונה פנימי
+// להפעלות שבירת השורות של ההערה. הבדיקות מוכיחות באמצעותו שכל הערה נמדדת
+// בדיוק פעם אחת (החותמת) — ושההמשכים מטיצול הם הטקסטים החדשים היחידים.
+const _rowsStats = { calls: [] };
+function __resetRowsStats() { _rowsStats.calls.length = 0; }
+function __rowsStats() {
+  const perKey = Object.create(null);
+  for (const k of _rowsStats.calls) perKey[k] = (perKey[k] || 0) + 1;
+  return { total: _rowsStats.calls.length, keys: _rowsStats.calls.slice(), perKey };
+}
+
+function noteRowsOf(note, settings, measure) {
+  if (note && note.text != null) {
+    _rowsStats.calls.push(`${note.tokenId || ''}#${note.noteIndex != null ? note.noteIndex : ''}#${String(note.text).slice(0, 24)}`);
+  }
   const { sizePt, lineHeightPx: lh } = noteMetrics(settings); // **שלב 5:** מקור יחיד לגודל/פיץ'
   const words = String(note.text).replace(/\uE000/g, ' ').split(/\s+/).filter(Boolean);
   const colW = laneWidth(settings);
   // **S70 (R7-M4):** הפקטור מתקן את טבלת impl A בלבד; ב-impl B
-  // (font-metrics) המטריקות מדויקות והכפלה הייתה מנפיחת את תקציב ההערות.
+  // (font-metrics) המטריקות מדויקות והכפלה הייתה מנפחת את תקציב ההערות.
   const factor = (measure && measure.impl === 'font-metrics')
     ? 1 : (NOTE_FONT_FACTORS[settings['f-note-body-font']] || 1);
   // **S6.0 (R3-C3 — אומדן ללא רווחים):** ההקרנה (wrapNoteTokens) שוברת
-  // את ההערה **עם** רוחבי רווח בין מילים — האומדן כאן סכם מילים בלבד
+  // את ההערה **עם** רוחבי רווח בין מילים — האומדן כאן סיכם מילים בלבד
   // ⇒ כל הערה הגובלת בשבירת-שורה נמדדה שורה אחת פחות (19–21px) וההערה
   // שאחריה חפפה אותה (32% מ-230 הערות בדגימה). נכללים גם הסמן ורווח
   // ההמשך בשורה הראשונה — כמו שמצויר בפועל.
   const spaceW = measure(' ', sizePt) * factor;
   const mkTxt = note && note.marker != null ? String(note.marker) : '';
   const mkW = mkTxt ? measure(mkTxt, sizePt) * factor + spaceW : 0;
-  let lines = 1, w = Math.min(mkW, colW);
-  for (const word of words) {
-    const ww = measure(word, sizePt) * factor;
-    const addW = (w > 0 ? spaceW : 0) + ww;
-    if (w + addW > colW && w > 0) { lines++; w = ww; } else w += addW;
+  const rows = [];
+  let rowW = Math.min(mkW, colW); // סמן בפינת השורה הראשונה
+  let wFrom = 0;
+  for (let i = 0; i < words.length; i++) {
+    const ww = measure(words[i], sizePt) * factor;
+    const addW = (rowW > 0 ? spaceW : 0) + ww;
+    if (rowW + addW > colW && rowW > 0) {
+      rows.push({ wFrom, wTo: i, widthPx: rowW });
+      wFrom = i; rowW = ww;
+    } else rowW += addW;
   }
-  return lines * lh;
+  rows.push({ wFrom, wTo: words.length, widthPx: rowW });
+  return { rows, heightPx: rows.length * lh, linesCount: rows.length, lineH: lh, words };
 }
 
 /**
- * רוחב נתיב אחד במרזב לפי footnote-columns.
- * **S5.2 (P-4):** _fnColWidthPx מכוין כעת ב-pipeline מהגיאומטריה —
- * 1 ⇒ רוחב תיבת התוכן המלא (674.90px בברירת המחדל; כמו שמוקרן בגיאומטריה:
- * x=colLeftOf, w=colWidthOf); 2 ⇒ (רוחב מלא − מרזב התבנית)/2. הפונקציה
- * נשארת פשוטה — ההכוונה נעשתה במקור היחיד (pipeline) ולא כאן.
+ * **פרוסה 2 (§2.3 — מדידה אחת לכל פריט):** הטבעת מדדי ההערה על אובייקט
+ * ההערה עצמו, ברגע יצירתה (CP2 ב-pipeline). מרגע זה כל הצרכנים — תקציב,
+ * הצבה, פיצול, ניקוז זנב — קוראים את החותמת ואינם מודדים שוב. הערה שנוצרה
+ * בפיצול (המשך) היא טקסט חדש — מוטבעת אף היא פעם אחת בלבד.
+ * @param {object} note - { text, marker, ... } — מוטציה באתר (המקור בידי ה-pipeline)
+ * @returns {object} ה-note עצמו (שרשרת)
  */
+function stampNoteMetrics(note, settings, measure) {
+  const m = noteRowsOf(note, settings, measure);
+  note.heightPx = m.heightPx;
+  note.lineH = m.lineH;
+  note.linesCount = m.linesCount;
+  note.noteRows = m.rows;
+  note.noteWords = m.words;
+  return note;
+}
+
 function laneWidth(settings) {
   const base = settings._fnColWidthPx || 200;
   return settings['footnote-columns'] === 2 ? base : base;
@@ -10599,7 +10937,7 @@ function getFootnotesReservedHeight(pageNotes, settings, measure) {
   return Math.max(totals[0], totals[1]);
 }
 
-module.exports = { getFootnotesReservedHeight, noteHeight, noteMetrics, laneWidth, NOTE_FONT_FACTORS };
+module.exports = { getFootnotesReservedHeight, noteHeight, noteRowsOf, stampNoteMetrics, noteMetrics, laneWidth, NOTE_FONT_FACTORS, __resetRowsStats, __rowsStats };
 
 };
 __modules["src/engine/layout/footnote-lanes.js"] = function (require, module, exports) {
@@ -10650,6 +10988,364 @@ function assignFootnoteLanes(notes, heightOf) {
 }
 
 module.exports = { assignFootnoteLanes };
+
+};
+__modules["src/engine/layout/decision-trace.js"] = function (require, module, exports) {
+// src/engine/layout/decision-trace.js — תיעוד החלטות תכנון דטרמיניסטי קומפקטי (שלב 5 פרוסה 2)
+'use strict';
+
+/**
+ * **רשם החלטות התכנון (§2.7 בביקורת שלב 5):** trace שמסביר אילו מועמדים
+ * נבחנו, אילו אילוצים הופעלו, מדוע מועמד נדחה, מה ניקודו, מדוע נבחר,
+ * מדוע בוצעה נסיגה ומה תוצאתה — לכל החלטה מהותית של ה-Planner.
+ *
+ * עקרונות החוזה:
+ *  - **דטרמיניזם מוחלט:** אסורים תאריך/שעה/אקראיות/מזהי ריצה; הסדר הוא
+ *    סדר ההחלטות עצמן. שתי ריצות זהות מניבות trace זהה ביט-לביט.
+ *  - **קומפקטיות מוגבלת:** תקרת רשומות (ברירת מחדל 20,000) + דגל
+ *    truncated — לא מנפח זיכרון ללא גבול. ההפעלה opt-in (env.plannerTrace
+ *    או settings._plannerTrace) — כבוי בברירת המחדל; הספירות (counts)
+ *    נשמרות תמיד כך שגם trace כבוי מדווח כמות החלטות לפי סוג.
+ *  - **שימושי לאבחון:** כל רשומה היא { p: עמוד, k: סוג, d: נתונים } —
+ *    מפתח קצר, נתונים עגולים (round2) — קריא בפלט JSON ובבדיקות.
+ */
+
+const DEFAULT_MAX_ENTRIES = 20000;
+
+function createTraceRecorder(opts = {}) {
+  const enabled = opts.enabled === true;
+  const maxEntries = Number.isFinite(opts.maxEntries) && opts.maxEntries > 0 ? opts.maxEntries : DEFAULT_MAX_ENTRIES;
+  const entries = [];
+  const counts = Object.create(null);
+  let truncated = false;
+
+  /** עיגול ערכים מספריים בנתונים — דטרמיניזם בפלט (בלי שאריות נקודה צפה). */
+  function freezeData(d) {
+    if (d == null || typeof d !== 'object') return d;
+    const out = {};
+    for (const k of Object.keys(d).sort()) {
+      const v = d[k];
+      if (typeof v === 'number' && !Number.isInteger(v)) out[k] = Math.round(v * 100) / 100;
+      else if (Array.isArray(v)) out[k] = v.slice(0, 8); // רשימות נחתכות — קומפקטיות
+      else out[k] = v;
+    }
+    return out;
+  }
+
+  return {
+    enabled,
+    /** רשומת החלטה. page — אינדקס העמוד (או null להחלטה גלובלית). */
+    emit(page, kind, data) {
+      counts[kind] = (counts[kind] || 0) + 1;
+      if (!enabled) return;
+      if (entries.length >= maxEntries) { truncated = true; return; }
+      entries.push({ p: page == null ? null : page, k: kind, d: freezeData(data) });
+    },
+    /** ספירות בלבד (ללא רשומות) — תמיד זמין, גם כשה-trace כבוי. */
+    stats() {
+      return { enabled, entries: entries.length, truncated, counts: { ...counts } };
+    },
+    /** פלט JSON — הרשומות עצמן (כשמופעל). */
+    toJSON() {
+      return { entries, truncated };
+    }
+  };
+}
+
+module.exports = { createTraceRecorder, DEFAULT_MAX_ENTRIES };
+
+};
+__modules["src/engine/layout/plan-model.js"] = function (require, module, exports) {
+// src/engine/layout/plan-model.js — חוזים פורמליים: ColumnModel + PagePlan (שלב 5 פרוסה 2, §2.5 בביקורת)
+'use strict';
+
+/**
+ * **מעמד:** חוזה התכנון הפורמלי של עמודי הזרימה — ColumnModel ו-PagePlan.
+ * עד כאן עבד ה-Planner עם אובייקטים חופשיים בעלי שדות מקריים (page.columns
+ * כמערכי מערכים + שדות נלווים); מעתה כל עמוד זרימה נושא `page.plan` — חוזה
+ * מוגדר-סכמה, מאומת וקפוא בסוף התכנון.
+ *
+ * עקרונות:
+ *  - **אין מודל מקביל:** ה-descriptor מחזיק הפניות חיות (`lines` הוא המערך
+ *    שב-`page.columns[i]` עצמו — לא עותק). PageModel העתידי (שלב 7) ייבנה
+ *    מה-PagePlan ולא לצידו; PagePlan הוא חוזה תכנון, לא מודל ציור.
+ *  - **מקורות הסמכות נשארים אחדים:** הקיבולת נגזרת מ-colCapacityOf, הגובה
+ *    התפוס מ-planningUsedHeight (column-flow), הפערים מהחותמות gapBeforePx
+ *    על השורות. ה-descriptor מחשב מהם ואינו מחזיק נוסחאות משלו.
+ *  - **validation:** אינווריאנטים מבניים (סדר קריאה RTL, מונוטוניות seq,
+ *    שימור LineModel, חוקיות חותמות פער, קיבולת או דיווח חריגה). הפרה
+ *    קשה — נרשמת ל-ledger (page-plan-invalid) ומופיעה ב-plan.diagnostics;
+ *    לא מוסתרת ולא מפילה את ההפקה.
+ *  - **immutability:** לאחר השלמת התכנון (סוף ה-pipeline — אחרי כל מעברי
+ *    השורות, השערים, ה-TOC, ההערות והעיטורים) המבנה קופא: plan, מערכי
+ *    הטורים, רשומות השורה, המרזב והערות הצד. צרכן שזקוק לשינוי — מריץ
+ *    תכנון מחדש; אין mutation מאוחר במקרין (§7.1-12 של התוכנית).
+ */
+
+const { colCapacityOf, capacityReservationsOf, planningUsedHeight, blockGapPx } = require('./column-flow');
+const { CAPACITY_EPS, GAP_HEAD_POLICY } = require('./constraint-matrix');
+
+const PAGE_PLAN_SCHEMA = 'page-plan-v1';
+
+/** האם העמוד הוא עמוד זרימה שתוכנן ב-Planner היחיד (dp-planner). */
+function isFlowPage(page) {
+  return Boolean(page && page.dpPlanned === true && page.template && Array.isArray(page.columns));
+}
+
+/**
+ * ColumnModel — חוזה הטור עבור עמוד זרימה אחד. מחושב, לא מאוחסן: כל
+ * שדה נגזר בזמן ההפקה ממקור הסמכות שלו.
+ * @param {object} page - עמוד DP
+ * @param {number} ci - אינדקס הטור
+ * @param {object} ctx - { lineH } (לחישוב פער צפוי באימות)
+ */
+function buildColumnModel(page, ci, ctx) {
+  const tpl = page.template;
+  const geo = tpl.columns[ci] || { x: 0, w: 0 };
+  const spanH = page.spanning && page.spanning.heightPx ? page.spanning.heightPx : 0;
+  const col = page.columns[ci] || [];
+  const isLast = ci === page.columns.length - 1;
+  let gapsPx = 0;
+  let overflow = null;
+  for (const ln of col) gapsPx += ln.gapBeforePx || 0;
+  const usedPx = planningUsedHeight(col, page);
+  const capPx = colCapacityOf(page, { colIndex: ci, fnBudget: false });
+  if (usedPx > capPx + CAPACITY_EPS) {
+    overflow = { usedPx: Math.round(usedPx * 100) / 100, capPx: Math.round(capPx * 100) / 100, by: Math.round((usedPx - capPx) * 100) / 100 };
+  }
+  return {
+    kind: 'ColumnModel',
+    index: ci,
+    readOrder: ci, // RTL: col0 = הטור הימני, נקרא ראשון (מאומת מול גיאומטריית התבנית)
+    geometry: { x: geo.x, y: tpl.contentBox.top + spanH, w: geo.w, height: Math.max(0, capPx) },
+    capacityPx: capPx,
+    lines: col, // הפניה חיה — לא עותק; LineModel המלא על כל שורה (ln.lineModel)
+    lineCount: col.length,
+    gapsPx,
+    noteBudgetPx: isLast ? (page.fnReservedHeightPx || 0) : 0, // התקציב נרשם על הטור האחרון (F-17)
+    reservedPx: 0, // שמורות last-column (ריהוט שלב 6) — דרך page.reservations
+    usedHeightPx: usedPx,
+    overflow,
+    placementReasons: [] // מאוכלס מה-trace כשמופעל (finalizePagePlans)
+  };
+}
+
+/**
+ * PagePlan — חוזה התכנון של עמוד זרימה אחד.
+ * @param {object} page - עמוד DP
+ * @param {object} opts - { lineH, traceEntries } — traceEntries: רשומות ה-trace של העמוד (או null)
+ */
+function buildPagePlan(page, opts = {}) {
+  const columns = page.columns.map((_, ci) => buildColumnModel(page, ci, opts));
+  const tr = opts.traceEntries;
+  return {
+    kind: 'PagePlan',
+    schema: PAGE_PLAN_SCHEMA,
+    page: {
+      index: page.index,
+      type: page.type,
+      isRecto: page.isRecto !== false && (page.index % 2 === 0),
+      chapterOpening: Boolean(page.chapterOpening),
+      terminalResidual: Boolean(page.terminalResidual)
+    },
+    template: page.template, // גאומטריית העמוד — מקור יחיד (page-templates)
+    columns, // בסדר קריאה מוגדר (RTL: ימני ראשון — מאומת)
+    spanning: page.spanning
+      ? { heightPx: page.spanning.heightPx, lineCount: page.spanning.lines.length, customStyle: page.spanning.customStyle ? page.spanning.customStyle.id : null }
+      : null,
+    reservations: capacityReservationsOf(page), // §2.6 — כל אזור שמקטין את שטח הגוף, מיוצג
+    transitions: {
+      pageType: page.type,
+      chapterOpening: Boolean(page.chapterOpening),
+      openedBy: page.openedBy || null
+    },
+    notes: {
+      footnotes: page.footnotes.length,
+      reservedPx: page.fnReservedHeightPx || 0,
+      sideNotes: (page.sideNotes || []).length
+    },
+    gapPolicy: GAP_HEAD_POLICY,
+    trace: tr
+      ? { entries: tr.length, kinds: [...new Set(tr.map(e => e.k))].sort() }
+      : { entries: 0, kinds: [], note: 'trace disabled (opt-in via env.plannerTrace)' },
+    diagnostics: [] // validatePagePlan מאכלס
+  };
+}
+
+/**
+ * אימות אינווריאנטים של חוזה העמוד. מחזיר רשימת אבחונים (ריקה = תקין).
+ * כל אבחון: { code, col?, detail } — קוד קבוע, נתונים עגולים.
+ * @param {object} page - עמוד DP (עם plan שכבר נבנה)
+ * @param {object} opts - { lineH, settings }
+ */
+function validatePagePlan(page, opts = {}) {
+  const out = [];
+  const plan = page.plan;
+  const tpl = page.template;
+  const push = (code, detail, col) => out.push({ code, ...(col != null ? { col } : {}), detail });
+
+  // (1) סדר קריאה RTL מבני: col0 הוא הטור הימני (גדול ב-x), ואחריו שמאלי.
+  if (tpl.columns.length === 2) {
+    if (!(tpl.columns[0].x > tpl.columns[1].x)) {
+      push('rtl-column-order', `template col0.x=${tpl.columns[0].x} ≤ col1.x=${tpl.columns[1].x} — ימני חייב להיקרא ראשון`);
+    }
+  }
+  for (let ci = 0; ci < plan.columns.length; ci++) {
+    if (plan.columns[ci].readOrder !== ci) push('read-order-index', `col ${ci}: readOrder=${plan.columns[ci].readOrder}`);
+  }
+
+  // (2) מונוטוניות seq לאורך סדר הקריאה (סדר הצבה = סדר מסמך; P0-3).
+  let prevSeq = -1;
+  for (const col of page.columns) {
+    for (const ln of col) {
+      if (ln.seq == null) continue;
+      if (ln.seq <= prevSeq) push('seq-not-monotonic', `seq ${ln.seq} ≤ ${prevSeq} בסדר הקריאה`);
+      prevSeq = ln.seq;
+    }
+  }
+
+  // (3) שימור LineModel + גבהים תקינים + חוקיות חותמות פער (FX-6).
+  // **פתיחת בלוק בטור** נקבעת לפי זהות: שורה שtokenId שלה שונה מזה של
+  // הקודמת לה באותו טור (meta.firstOfBlock נישא על כל שורות הקריאה ל-pushLines,
+  // לא רק על הפותחת — אינו מבחין ביניהן; הזהות מבחינה).
+  const expectedGap = opts.settings ? blockGapPx(opts.settings, opts.lineH || 0) : null;
+  const tokOf = (ln) => ln.tokenId != null ? ln.tokenId : (ln.meta && ln.meta.tokenId);
+  for (let ci = 0; ci < page.columns.length; ci++) {
+    const col = page.columns[ci];
+    for (let li = 0; li < col.length; li++) {
+      const ln = col[li];
+      if (!(ln.heightPx > 0)) push('line-missing-height', `שורה ללא heightPx חיובי (${ln.heightPx})`, ci);
+      if (!ln.lineModel && !ln.synthetic) {
+        // נתיב המורשת (עד שלב 9) אינו מצרף LineModel — חריגה מתועדת, לא שקטה.
+        push('line-model-missing', `שורה ללא LineModel (tokenId=${tokOf(ln)})`, ci);
+      }
+      const hasGap = ln.gapBeforePx != null && ln.gapBeforePx > 0;
+      const isBlockStart = li > 0 && tokOf(ln) !== tokOf(col[li - 1]);
+      if (li === 0 && hasGap) push('gap-at-column-head', `ראש הטור נושא פער ${ln.gapBeforePx}px — מנוגד ל-${GAP_HEAD_POLICY}`, ci);
+      if (isBlockStart && expectedGap != null && expectedGap > 0 && !hasGap) {
+        push('gap-missing-at-block-start', `פתיחת בלוק באמצע טור ללא חותמת פער (צפוי ${expectedGap}px)`, ci);
+      }
+      if (hasGap && !isBlockStart && li > 0) push('gap-on-continuation', `שורת המשך נושאת פער ${ln.gapBeforePx}px`, ci);
+    }
+  }
+
+  // (4) קיבולת: חריגה מדווחת כאבחון overflow ברמת הטור (לא נעלמת).
+  for (let ci = 0; ci < plan.columns.length; ci++) {
+    const cm = plan.columns[ci];
+    if (cm.overflow) push('column-overflow', `used ${cm.overflow.usedPx}px > cap ${cm.overflow.capPx}px (by ${cm.overflow.by}px)`, ci);
+  }
+
+  // (5) תקציב הערות: חיובי ⟺ יש הערות (מרזב לא ריק).
+  if ((page.fnReservedHeightPx || 0) > 0 && page.footnotes.length === 0) {
+    push('notes-budget-without-notes', `fnReservedHeightPx=${page.fnReservedHeightPx} ללא הערות`);
+  }
+  if (page.footnotes.length > 0 && !(page.fnReservedHeightPx > 0) && page.type !== 'endnotes') {
+    push('notes-without-budget', `${page.footnotes.length} הערות ללא תקציב`);
+  }
+
+  // (6) רצף הקריאה של הפס החוצה-טורים: שורותיו נושאות seq (חלק מסדר המסמך).
+  if (page.spanning && page.spanning.lines) {
+    for (const ln of page.spanning.lines) {
+      if (ln.seq == null) push('spanning-line-without-seq', 'שורת פס חוצה-טורים ללא seq');
+    }
+  }
+  return out;
+}
+
+/**
+ * הקפאת חוזה העמוד — immutability לאחר השלמת התכנון (§2.5):
+ * ה-plan, מערכי הטורים, רשומות השורה, המרזב, הערות הצד והפס החוצה-טורים.
+ * אובייקט העמוד עצמו נשאר בר-הרחבה (ריהוט שלב 6 נרשם דרך reservations
+ * לפני ההקפאה; אחריה — הרצה מחדש של התכנון).
+ */
+function freezePagePlan(page) {
+  for (const col of page.columns) {
+    for (const ln of col) Object.freeze(ln);
+    Object.freeze(col);
+  }
+  Object.freeze(page.columns); // מבנה הטורים קפוא — אין הוספת/הסרת/הזזת שורות
+  if (page.spanning) {
+    for (const ln of page.spanning.lines) Object.freeze(ln);
+    Object.freeze(page.spanning.lines);
+    Object.freeze(page.spanning);
+  }
+  for (const n of page.footnotes) Object.freeze(n);
+  Object.freeze(page.footnotes);
+  for (const sn of (page.sideNotes || [])) Object.freeze(sn);
+  if (page.sideNotes) Object.freeze(page.sideNotes);
+  for (const cm of page.plan.columns) Object.freeze(cm.geometry);
+  for (const cm of page.plan.columns) Object.freeze(cm);
+  Object.freeze(page.plan.reservations);
+  Object.freeze(page.plan);
+}
+
+/**
+ * **הפקת החוזים לכל עמודי התוצר** — נקודת הכניסה של ה-pipeline (סוף הזרימה,
+ * לפני ההחזרה): בונה, מאמת, מקפיא. עמודים מבניים (שערים/TOC/הערות-סיום/
+ * מותאמים) מקבלים חוזה מינימלי מוקלד — הם נבנים על ידי בונים ייעודיים
+ * ויאוחדו תחת אותו חוזה בשלב 6.
+ * @param {Array} pages - עמודי התוצר
+ * @param {{settings?:object, lineH?:number, ledger?:object, eventLog?:object, trace?:object}} [opts]
+ * @returns {{plans:number, flowPages:number, structuralPages:number, diagnostics:number, frozen:boolean}}
+ */
+function finalizePagePlans(pages, opts = {}) {
+  const ledger = opts.ledger || null;
+  const trace = opts.trace || null;
+  const byPage = new Map();
+  if (trace && trace.enabled) {
+    for (const e of trace.toJSON().entries) {
+      if (e.p == null) continue;
+      if (!byPage.has(e.p)) byPage.set(e.p, []);
+      byPage.get(e.p).push(e);
+    }
+  }
+  let flowPages = 0, structuralPages = 0, diagnostics = 0;
+  for (const page of pages) {
+    if (!isFlowPage(page)) {
+      structuralPages++;
+      page.plan = Object.freeze({ kind: 'PagePlan', schema: PAGE_PLAN_SCHEMA, structural: true, pageType: page.type || 'unknown' });
+      continue;
+    }
+    flowPages++;
+    page.plan = buildPagePlan(page, {
+      lineH: opts.lineH,
+      traceEntries: byPage.get(page.index) || null
+    });
+    const diags = validatePagePlan(page, { settings: opts.settings, lineH: opts.lineH });
+    page.plan.diagnostics = diags;
+    diagnostics += diags.length;
+    for (const d of diags) {
+      if (ledger) {
+        const rec = ledger.create('page-plan-invalid', `p${page.index}:${d.code}`, page.index, d, 'page-plan');
+        ledger.transition(rec.issue_id, 'persists', 'page-plan', `plan contract diagnostic: ${d.code}`);
+      }
+    }
+    // סיבות הצבה קומפקטיות מה-trace (כשמופעל) — על הטור שאליו השתייכו.
+    const tr = byPage.get(page.index) || [];
+    for (const cm of page.plan.columns) {
+      cm.placementReasons = tr.filter(e => e.k === 'block-place' && e.d && e.d.col === cm.index)
+        .map(e => ({ token: e.d.token, stackPx: e.d.stackPx, gapPx: e.d.gapPx || 0 }));
+    }
+    if (opts.freeze !== false) freezePagePlan(page);
+  }
+  return {
+    plans: flowPages + structuralPages,
+    flowPages,
+    structuralPages,
+    diagnostics,
+    frozen: opts.freeze !== false
+  };
+}
+
+module.exports = {
+  PAGE_PLAN_SCHEMA,
+  isFlowPage,
+  buildColumnModel,
+  buildPagePlan,
+  validatePagePlan,
+  freezePagePlan,
+  finalizePagePlans
+};
 
 };
 __modules["src/engine/decoration/folio.js"] = function (require, module, exports) {
@@ -16850,13 +17546,15 @@ function estimateSideNoteHeight(text, settings, measureFn) {
 /** מיקום Y של שורה בטור: גובה מצטבר מראש התוכן.
  * **S6.0 (R3-M1):** מיושר למודל המרנדרים — מתחיל מתחת לפס החוצה-טורים
  * (spanning) וכולל את מקדם ה-AQ (aqStretch) — בעבר סכם גבהים גולמיים
- * מראש תיבת התוכן ⇒ עוגן שגוי בעד ~145px בעמודים עם פס/מתיחה. */
+ * מראש תיבת התוכן ⇒ עוגן שגוי בעד ~145px בעמודים עם פס/מתיחה.
+ * **FX-6 (פרוסה 2):** כולל גם את פערי הבלוקים (gapBeforePx) — אותה
+ * סמנטיקה כמו הקרנת הטור ב-PDF והרינדור ב-DOM (עוגן מדויק). */
 function lineYTop(page, colIdx, lineIdx) {
   let y = page.template.contentBox.top
     + (page.spanning && page.spanning.heightPx ? page.spanning.heightPx : 0);
   const col = page.columns[colIdx] || [];
   for (let i = 0; i < lineIdx && i < col.length; i++) {
-    y += (col[i].heightPx || 0) * (col[i].aqStretch || 1);
+    y += (col[i].gapBeforePx || 0) + (col[i].heightPx || 0) * (col[i].aqStretch || 1);
   }
   return y;
 }
@@ -19790,6 +20488,13 @@ function renderLine(ln, doc, settings = {}) {
   if (Number.isFinite(ln.heightPx)) {
     el.style.lineHeight = `${Math.round(ln.heightPx * (ln.aqStretch || 1) * 100) / 100}px`;
   }
+  // **FX-6 (פרוסה 2 — הפער מהחוזה הגיאומטרי):** פער הבלוקים מוקרן מהחותמת
+  // שנקבעה בתכנון (gapBeforePx) — מקור יחיד; המקרין קורא ואינו מוסיף כלום
+  // מעצמו. margin-top (ולא גובה שורה) — הפער אינו מערבב בין גובה השורה
+  // למרווח הבלוק; זהה ביט-לביט להתקדמות ה-y של הפרויקטור ל-PDF.
+  if (ln.gapBeforePx > 0) {
+    el.style.marginTop = `${Math.round(ln.gapBeforePx * 100) / 100}px`;
+  }
   // **S8 (F-08):** הזמנת עיטורי H2 בתוך תיבת השורה — הטקסט יורד/עולה ב־padding;
   // הגובה כבר תוקצב בפריסה, הרנדור רק מצייר בתוך התיבה (מקור יחיד — F-09).
   if (ln.h2OrnPadTop) el.style.paddingTop = `${ln.h2OrnPadTop}px`;
@@ -20070,7 +20775,9 @@ function renderTocPageContent(page, doc) {
 function renderColumnDivider(page, settings, doc) {
   const style = settings['column-divider-style'];
   if (!style || style === 'none' || page.columns.length < 2) return null;
-  const used = page.columns.map(col => col.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1), 0));
+  // **FX-6 (פרוסה 2):** הגובה כולל את פערי הבלוקים — אותה סמנטיקה כמו
+  // usedHeight של האיזון וכמו הפרויקטור ל-PDF (תצוגה = ייצוא).
+  const used = page.columns.map(col => col.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1) + (ln.gapBeforePx || 0), 0));
   // **S6.0 (R4-M5):** גובה המפריד כולל aqStretch — כמו הפרויקטור/PDF
   // (בעבר ה-DOM חישב גובה ללא המתיחה ⇒ מפריד באורך שונה בין תצוגה לייצוא).
   const h = columnDividerHeightPx(used);
@@ -22787,9 +23494,14 @@ function projectPage(page, settings, api) {
       const col = tpl.columns[ci] || { x: 0, w: 0 };
       let y = tpl.contentBox.top + spanOffset;
       for (const ln of colLines) {
+        // **FX-6 (פרוסה 2 — הפער מהחוזה הגיאומטרי):** התקדמות ה-y כוללת את
+        // פער הבלוקים מהחותמת שנקבעה בתכנון (gapBeforePx) — בדיוק כמו
+        // margin-top ב-DOM. מקור יחיד: אין כאן חישוב פער עצמאי ואין כפילה.
+        y += ln.gapBeforePx || 0;
         out.lines.push(projectLine(ln, col.x, y, col.w, settings, measure, lastAlignOf(ln, settings)));
         // **EXT-20:** מקדם ה-AQ מיושם על גובה השורה (אנכי) — השורות שאחריה
         // זזות בהתאם; התיבה והבסיס מחושבים מהגובה הנמתח (מודל תיבת שורה).
+        // **FX-6:** הפער קבוע — אינו מתמתח עם השורות.
         y += (ln.heightPx || 0) * (ln.aqStretch || 1);
       }
     });
@@ -23157,7 +23869,9 @@ function projectColumnDivider(page, settings, out) {
   const style = settings['column-divider-style'];
   if (!style || style === 'none' || !page.template || (page.columns || []).length < 2) return;
   const tpl = page.template;
-  const used = page.columns.map(col => col.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1), 0));
+  // **FX-6 (פרוסה 2):** גובה כולל פערי בלוקים — כמו renderColumnDivider ב-DOM
+  // (תצוגה = ייצוא; אותה נוסחה בדיוק).
+  const used = page.columns.map(col => col.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1) + (ln.gapBeforePx || 0), 0));
   const h = Math.max(0, Math.min(...used) - 8);
   if (h <= 0) return;
   const c1 = tpl.columns[1];

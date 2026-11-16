@@ -38,13 +38,15 @@ function estimateSideNoteHeight(text, settings, measureFn) {
 /** מיקום Y של שורה בטור: גובה מצטבר מראש התוכן.
  * **S6.0 (R3-M1):** מיושר למודל המרנדרים — מתחיל מתחת לפס החוצה-טורים
  * (spanning) וכולל את מקדם ה-AQ (aqStretch) — בעבר סכם גבהים גולמיים
- * מראש תיבת התוכן ⇒ עוגן שגוי בעד ~145px בעמודים עם פס/מתיחה. */
+ * מראש תיבת התוכן ⇒ עוגן שגוי בעד ~145px בעמודים עם פס/מתיחה.
+ * **FX-6 (פרוסה 2):** כולל גם את פערי הבלוקים (gapBeforePx) — אותה
+ * סמנטיקה כמו הקרנת הטור ב-PDF והרינדור ב-DOM (עוגן מדויק). */
 function lineYTop(page, colIdx, lineIdx) {
   let y = page.template.contentBox.top
     + (page.spanning && page.spanning.heightPx ? page.spanning.heightPx : 0);
   const col = page.columns[colIdx] || [];
   for (let i = 0; i < lineIdx && i < col.length; i++) {
-    y += (col[i].heightPx || 0) * (col[i].aqStretch || 1);
+    y += (col[i].gapBeforePx || 0) + (col[i].heightPx || 0) * (col[i].aqStretch || 1);
   }
   return y;
 }

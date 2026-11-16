@@ -1,9 +1,10 @@
-# STAGE5_UNIFIED_PLANNER — מתכנן עמודים וטורים יחיד (שלב 5; פרוסה 1 מתוך סדרה)
+# STAGE5_UNIFIED_PLANNER — מתכנן עמודים וטורים יחיד (שלב 5; פרוסאות 1+2 — הושלם)
 
-> **תוכנית:** `spec/00_CURRENT_ENGINE_COMPLETION_PLAN.md` §§5.x · **הוראת ביצוע:** §§18–29.
-> **ענף:** `stage5/unified-planner` (מעל main `dfb4168` — שלב 4 מקטע ב׳ ממוזג).
+> **תוכנית:** `spec/00_CURRENT_ENGINE_COMPLETION_PLAN.md` §§5.x · **הוראת ביצוע:** §§18–29 (פרוסה 1) + חלק ב׳ בביקורת (פרוסה 2).
+> **ענף פרוסה 1:** `stage5/unified-planner` (מעל main `dfb4168` — מוזג כ-PR #25). **ענף פרוסה 2:** `stage5b/planner-pageplan` (מעל main `b2dd223` — סוגר את יתרת שלב 5 לפי ממצאי הביקורת של PR #25).
 > **מימוש פרוסה 1:** `layout/constraint-matrix.js` (חדש — מיזוג SSOT מ-#16/#17) · `layout/footnote-lanes.js` (חדש) · `dp-planner.js` (FX-1/FX-3/FX-5 + flowCol + שמירת עמוד ריק + חותמי זנב) · `balancing.js` (תפר נקי+מודע-ליווי מהמטריצה) · `candidate-generator.js` (maxFit חי + FX-4) · `retreat-loop.js` (FX-2) · `column-flow.js` (planningUsedHeight) · `footnote-budget.js` (noteMetrics + נתיבים) · `notes/markers.js` (markerFragmentOf) · `output/dom-renderer.js` + `output/geometry-projector.js` (חלוקת נתיבים מה-SSOT).
-> **בדיקות:** `s5-unified-planner` (10) · `s5-corpus-comparison` (2 — מחליף את שער 4B שמילא תפקידו).
+> **מימוש פרוסה 2 (ממצאי ביקורת PR #25):** `layout/plan-model.js` (חדש — חוזי ColumnModel/PagePlan + validation + immutability) · `layout/decision-trace.js` (חדש — trace דטרמיניסטי קומפקטי) · `column-flow.js` (FX-6: פערים ב-planningUsedHeight + reservations אחידים + normalizeColumnGaps) · `dp-planner.js` (FX-6: חותמת gapBeforePx + findSplit בגבהים אמיתיים + reserveNotes מחותמות + פיצול בגבולות שורה) · `balancing.js` (פערים קבועים במתיחה) · `constraint-matrix.js` (חלון אמיתי + טבלת hard/soft) · `candidate-generator.js` (צריכת החלון + דחיות in-band) · `footnote-budget.js` (stampNoteMetrics — מדידה אחת) · `protectors.js` (fixDropWord מ-LineModel) · `side-notes.js` · `dom-renderer.js` · `geometry-projector.js` (הקרנת פער אחידה) · `pipeline.js` (חותמות CP2 + finalizePagePlans).
+> **בדיקות:** `s5-unified-planner` (10) · `s5-corpus-comparison` (2) · **`s5b-plan-contracts` (19 — חדש)** · **`s5b-measurement-purity` (7 — חדש)**.
 
 ---
 
@@ -107,6 +108,103 @@
 
 FX-6 (פער בלוקים נצבר — דורש תיאום הקרנה; פרוסה הבאה); חוזה Planner מלא (ColumnModel/PagePlan כטיפוסים — התעד בעבודה; המימוש הנוכחי עובד על עמודי DP קיימים); מיזוג העברות-הדיעבד של #16 (הוכרע: FX-3 גובר); סוגיית F-BL2 (SIDE_NOTE_OVERLAP — נתיב מורשת); שאלות 12–14 ללא שינוי; עונש runt — הכרעת משתמש.
 
-## 8. הצעד הבא (פרוסה 2)
+## 8. פרוסה 2 — סגירת יתרת שלב 5 (ממצאי ביקורת PR #25; ענף stage5b/planner-pageplan)
 
-(א) FX-6 — פער בלוקים נצבר בגאומטריה (תיאום usedHeight/הקרנה/תקציב). (ב) חוזה ColumnModel/PagePlan פורמלי + trace החלטות (§21/§28). (ג) capacity model יחיד מורחב (ריהוט עמוד/עיטורים/מפרידים — §23). (ד) בדיקות קבלה נוספות מ§27 (retreat/rollback על מסמכים סינתטיים).
+### 8.1 FX-6 — הפער בין בלוקים כגיאומטריה מתוכננת (ממצא §2.1)
+
+**הבעיה:** `pendingGap` שימש שער-כניסה בלבד (needPx) ולא נצבר בשום גאומטריה — לא ב-usedHeight, לא ב-DOM, לא ב-PDF.
+
+**התיקון מהשורש:**
+- **חותמת יחידה:** `gapBeforePx` נחתמת על שורת פתיחת הבלוק בעת ההצבה (`pushLines`) — רק מתחת לתוכן קיים בטור. **דיכוי בראש טור/עמוד/מתחת לפס חוצה-טורים** (`GAP_HEAD_POLICY = 'suppress-at-column-head'` — constraint-matrix). שער הכניסה (needPx) נגזר מאותה חותמת — probe == שימוש בפועל.
+- **צבירה:** `planningUsedHeight` (תכנון) ו-`balancing.usedHeight` (רינדור) כוללות את הפערים. המתיחה האנכית (aqStretch/alignColumnBottoms/autoQualityPass) חושבה מחדש לנוסחה המדויקת `(target − Σgap)/Σh` — הפער קבוע ואינו מתמתח.
+- **הקרנה אחידה:** DOM — `margin-top` מהחותמת (לא גובה שורה — אין ערבוב); PDF — התקדמות-y מהחותמת; מפריד הטורים ועוגן הערות-צד — אותה נוסחה. הוכחה: 121 חותמות ⇒ 121 margin-tops ⇒ מיקומי-y מדויקים (s5b-plan-contracts).
+- **נרמול מבני:** כל מוטציה מבנית (optimalSplit ב-flushPage/balancePageSafe, moveLineForward) מנקה את פער ראש הטור — הכלל חי בסמכות המוטציה.
+- **פיצול:** חלק `first` מסומן `firstOfBlock` (פתיחת בלוק אמיתית בטור) — בעבר לא סומן כלל.
+
+**הוכחות:** תרחישי חיוב/שלילה לכל המצבים (אמצע טור/ראש טור/ראש עמוד/אחרי פס/בלוקים רצופים/מעבר טור/מעבר עמוד) + הוכחת נגדי מובנית (GAP=0 ⇒ אותו מסמך נשאר בעמוד אחד — הפער הוא הגורם היחיד).
+
+### 8.2 צריכת LineModel מלאה (ממצא §2.2)
+
+- חוזה ההצבה מקבל את המודל המלא: כל שורה ממוקמת נושאת `lineModel` (ייחוס, לא עותק); ColumnModel מחזיק את מערך השורות **בהפניה חיה** (`cm.lines === page.columns[ci]`) — אין מודל מקבילי.
+- validation מוכיח שימור: `line-model-missing` מאובחן לכל שורה ללא LineModel שאינה מסומנת `synthetic` (reject-to-body — פטור מפורש); `heightPx === lineModel.lineHeightPx` לכל שורה (טוהר מדדים).
+- פיצול fixDropWord צורך `naturalWidthPx`/`glue.naturalPx` מה-LineModel — לא מחרוזת שטוחה ולא מדידה.
+
+### 8.3 ביטול מדידה חוזרת ב-Planner (ממצא §2.3)
+
+- **הערות (reserveNotes):** מדידה אחת ביצירת ההערה (CP2 — `stampNoteMetrics`: גובה + פיץ' + שורות מעוטפות). תקציב/הצבה/פיצול/ניקוז-זנב קוראים חותמת; `noteHeight` צורך חותמת לפני חישוב. הפיצול נחתך **בגבול שורה מוחלט** מהמבנה שנמדד (noteRows) — ההמשך (טקסט חדש) מוטבע פעם אחת משלו. מונה פנימי (`__rowsStats`) מוכיח: **אף הערה לא נמדדת פעמיים** במסלור המלא.
+- **fixDropWordInColumns:** הרוחב הממוזג = `widthPx` (נמדד בשבירה) + רווח טבעי מה-glue + `naturalWidthPx` של שורת המילה — **אפס קריאות מדידה** (מוכח במונה). נפילה חזרה ל-measure קיימת לנתיב המורשת בלבד.
+- **מונה כולל:** `planPages` עם קלטים מחויבים ⇒ 0 קריאות מדידה (s5b-measurement-purity).
+- **נותר בגבול הידוע:** הקרנת המרזב ב-PDF (wrapNoteTokens) עדיין עוטפת מילים בעצמה — תיעוד לשלב 6 (מודל הערות המאוחד; §6.1-3 של התוכנית) ולשלב 7 (projection ממקומי-מראש).
+
+### 8.4 מטריצת האילוצים — סמכות אמיתית (ממצא §2.4)
+
+- **חלון אמיתי:** `legalSplitWindow` מחזיר `hi = min(lines−2, maxFit)` — גם כלל ≥2-לכל-צד וגם גבול הקיבולת בפועל. generateCandidates צורך את החלון ישירות (אין עוד לולאת טווח עצמאית, אין עוד דחיית cut>maxFit משוכפלת, ומועמד lines−1 — שהיה חוקי בפועל אף שהחוזה אסר — חדל להיווצר).
+- **strict מוגדר:** `CONSTRAINT_POLICY` — טבלת hard/soft מוכרזת. strict = עונש רך על מועמד שמשאיר **בדיוק את המינימום החוקי** (2 שורות) בראש היעד; normal = שקילות; relaxed = דילוג orphan-top (קיים). שלוש הרמות מתועדות ונבדקות חיוב/שלילה — משמר את כוונת FX-4 בלי להתנגש לחוזה החלון.
+- נרמול משני: ה-fallback `'standard'` ב-widowOrphanPolicy יושב ל-'normal' (זהה לרגיסטרי; מחרוזת שאינה ב-enum מעולם לא הופיעה).
+
+### 8.5 ColumnModel ו-PagePlan פורמליים (ממצא §2.5)
+
+- `layout/plan-model.js`: `PAGE_PLAN_SCHEMA='page-plan-v1'`; `buildColumnModel` (אינדקס/readOrder RTL, גאומטריה, קיבולת, שורות בהפניה חיה, gaps, תקציב הערות, usedHeight, overflow, סיבות הצבה) ו-`buildPagePlan` (תבנית, טורים בסדר קריאה, פס, reservations מיוצגים, מעברי עמוד/סוג, תקציבי הערות, trace, אבחונים).
+- **validation:** אינווריאנטים — RTL מבני (col0.x>col1.x), מונוטוניות seq בסדר הקריאה, גבהים חיוביים, שימור LineModel, חוקיות חותמות פער (ראש-טור/פתיחה/המשך), קיבולת או overflow מדווח, תקציב⟺הערות, seq בפס. הפרות נרשמות ל-ledger (`page-plan-invalid`) — לא מוסתרות ולא מפילות הפקה.
+- **immutability:** `finalizePagePlans` בסוף ה-pipeline (אחרי כל מעברי השורות, שערים/TOC שמאנדקסים, איזון, AQ, הערות-צד ועיטורים): plan + מערכי טורים + רשומות שורה + מרזב + הערות-צד + פס — קפואים. מוטציה אחרי השלמת התכנון זורקת (מוכח בבדיקה).
+- עמודים מבניים (שערים/TOC/הערות-סיום/מותאמים) מקבלים חוזה מוקלד מינימלי (`structural: true`) — יאוחדו בשלב 6.
+
+### 8.6 capacity אחיד ומורחב (ממצא §2.6)
+
+- **reservations אחידים:** `page.reservations` — `{kind, scope:'all-columns'|'last-column', px, reason}`; `colCapacityOf` מפחית לפי scope. `capacityReservationsOf` מייצג במפורש כל גורם שמקטין את שטח הגוף (content-box/פס/תקציב הערות/reservations) — מנגנון ההרחבה של שלב 6 ללא שינוי ליבת המתכנן. עיטורי H2/סגנונות כבר מזמינים מקום בתוך גבהי השורות (F-08) — לא נספרים פעמיים.
+
+### 8.7 decision trace (ממצא §2.7)
+
+- `layout/decision-trace.js` — רשם קומפקטי `{p, k, d}`; תקרת רשומות + דגל truncated; ספירות תמיד זמינות; הפעלה opt-in (`env.plannerTrace` / `settings._plannerTrace`). נרשמים: הצבות (טור/חותמת), החלטות פיצול (חלון/מועמדים/דחיות/ניקוד), ליווי מכוון, התחייבויות/פיצול/דחיית הערות, נסיגות איזון, overflow, סגירות עמוד. דטרמיניזם מוכח ביט-לביט (שתי ריצות ⇒ trace זהה).
+- candidate-generator מחזיר דחיות in-band (`out.rejections`) — ל-trace, לא רק ל-ledger.
+
+### 8.8 RTL מבני (ממצא §3.1-6)
+
+- readOrder מוצהר ב-ColumnModel ומאומת מול גיאומטריית התבנית (col0 = ימני, נקרא ראשון); מונוטוניות seq לאורך סדר הקריאה מאומתת בכל עמוד זרימה.
+
+### 8.9 השוואת קורפוס ונעילות מחודשות (פרוסה 2)
+
+הבסיס נתפס לפני השינוי (`s5-main-baseline.json` — main `b2dd223`, אחרי מיזוג פרוסה 1):
+
+| קורפוס | נעילה ישנה | **נעילה חדשה** | עמודים | סיווג |
+|---|---|---|---|---|
+| canonical (DP) | `f6f32c40` | **`f6f32c40` (ללא שינוי)** | 36 ✓ | אפס שינוי — אין חריגות קיבולת בקורפוס הקטן; 121 חותמות פער הוקרנו ללא שינוי אריזה |
+| very_long (DP) | `7c4e9bff` | **`a36b3637`** | **1089→1108 (+1.75%)** | **4536/4536 בלוקים זהים ביט-לביט** — 0 redivision, 0 marker, 0 order-restore, 0 content-diff; השינוי היחיד: אריזת עמודים (הפערים צורכו קיבולת אמיתית) |
+| long (s72 fixed-doc) | `89108321` | **`4a1773cc`** | — | אותו אופי (אריזה בלבד) |
+| very_long (מורשת) | `legacy-a8bdd` | ללא שינוי | 695 | נתיב המורשת לא נגענו |
+
+**נעילות מחודשות בקבצים:** `tools/cross-check-locks.json` (very_long → a36b3637) · s69 (7c4e9bff→a36b3637) · s72 (89108321→4a1773cc) — כולן עם הצדקה מלאה בקובץ.
+
+### 8.10 ראיות (פרוסה 2)
+
+| בדיקה | תוצאה |
+|---|---|
+| `npm test` (64 קבצי סוויטה) | **1047 עברו / 0 נכשלו** (exit 0) — כולל s5b-plan-contracts (19) + s5b-measurement-purity (7) |
+| `test:determinism` | `f6f32c4073c4fd35` — דטרמיניסטי |
+| `cross-check` | canonical `f6f32c40` ✓ · very_long `a36b3637`/1108 ✓ · legacy `legacy-a8bdd` ✓ · באנדלים ✓ |
+| scan-control-triggers | 0 הפרות |
+| חוזי עמוד (canonical) | 25 עמודי זרימה + 11 מבניים; **0 דיאגנוסטיקות**; ledger page-plan-invalid = 0 |
+| טוהר מדידה | planPages עם קלטים מחויבים ⇒ 0 מדידות; כל הערה נמדדת פעם אחת; fixDropWord ⇒ 0 מדידות |
+| דוחות אמת קיימים | test-matrix/corpus-invariants/determinism/full-math/layout-audit — חתימות הכשל ההיסטוריות (SIDE_NOTE_OVERLAP עמ' 107; 353,687<355,967) נשמרות ללא כשלים חדשים |
+
+### 8.11 שער הקבלה של שלב 5 (§4 בהוראה) — מצב סופי
+
+- [x] כל סוגי הבלוקים במסלול הפעיל מתוכננים באמצעות Planner יחיד (פסקאות/כותרות/פסים/הערות/מותאמים — dp-planner).
+- [x] LineModel מלא נשמר דרך התכנון (validation + ייחוס חי; synthetic מסומן).
+- [x] ColumnModel ו-PagePlan מוגדרים ומאומתים (schema, invariants, ledger).
+- [x] capacity משותף לכל החלטות התכנון (colCapacityOf + reservations; תקציב הערות חוצה-רוחב).
+- [x] FX-6 נסגר (חותמת, צבירה, הקרנה כפול-ערוצית זהה, נרמול מבני, הוכחות חיוב/שלילה).
+- [x] אין מדידה חוזרת (מונים: 0 בתכנון; הערות חד-פעמיות; ההקרנה — שלב 6/7, מתועד).
+- [x] אין תיקון גיאומטריה עצמאי אחרי שבירת השורות (heightPx===lineModel.lineHeightPx לכל שורה).
+- [x] הערות, תמונות, כותרות ו-spanning משתתפים בהחלטה (FX-3; floatAreas ב-LineModel; פסים בקיבולת).
+- [x] rollback ו-fallback דטרמיניסטיים ומדווחים (retreat-loop + trace + ledger).
+- [x] אין אובדן תוכן, source anchors, fragments או סדר (contentPreserved; 4536/4536 מולטיסט-זהה).
+- [x] כל הבדלי הקורפוס מסווגים (0 בלתי-מסווגים; אריזה בלבד).
+- [x] דטרמיניזם נשמר (hash + trace ביט-לביט).
+- [x] כל הבדיקות הרלוונטיות רצות ומדווחות במדויק (1047/1047; תווית CI תוקנה ל-1047·64).
+
+**הפרדה מפורשת (סעיף 3.4 בהוראה):** הושלם-ומחובר: FX-6, חוזים, reservations, trace, טוהר מדידה בתכנון, נרמול מבני, RTL מאומת. קיים-אך-לא-נצרך: —. קיים חלקית: הקרנת הערות ב-PDF (עוטפת בעצמה — שלב 6). ממתין לשלב 6: מודל הערות מאוחד (צד/סיום/מרזב במקור אחד), ריהוט עמוד כפריטי חוזה (המנגנון — reservations — מוכן). ממתין לשלב 7: projection ממוקם-מראש (המקרינים יקבלו x/y סופיים). ממתין לשלב 9: הסרת נתיב המורשת.
+
+## 9. הצעד הבא (שלב 6)
+
+פריטי עמוד, הערות, עיטורים וריהוט עמוד כחוזי הרחבה של אותו מנוע: Page Item Contract + registry (kind/schema/validation/measurement/constraints/placement/diagnostics/DOM+PDF projection), מודל הערות מאוחד (מקצה אנכי משותף להערות צד), ריהוט עמוד דרך reservations, ופריט מותאם חדש לדוגמה דרך ה-registry בלבד. שער: §6.3 בתוכנית.

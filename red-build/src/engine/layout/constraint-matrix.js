@@ -59,7 +59,18 @@ const CAPACITY_EPS = 0.5;
 /**
  * חלון הפיצול החוקי של בלוק בן `linesCount` שורות כשמתאימות `maxFit`
  * שורות במקום הפנוי: חיתוך חוקי רק ב-[lo..hi] כאשר lo = 2 (שתי שורות
- * לפחות יישארו) ו-hi = linesCount − 2 (שתיים לפחות יעברו).
+ * לפחות יישארו) ו-hi = min(linesCount − 2, maxFit) (שתיים לפחות יעברו
+ * **והחלק הראשון נכנס פיזית למקום הפנוי).
+ *
+ * **שלב 5 פרוסה 2 (תיקון שורש — יישוב הפער חוזה↔התנהגות):** עד כאן `hi`
+ * התעלם מ-`maxFit` — החוזה הכריז על [2..lines−2] בעוד generateCandidates
+ * ניהל בעצמו גם טווח [2..lines−1) וגם דחיית `cut > maxFit` נפרדת: שני
+ * מקורות לאותה מדיניות, עם נקודת חיכוך אחת אמיתית — חיתוך lines−1 (משאיר
+ * שורה בודדת ביעד) היה חוקי בפועל אף שהחוזה אסר אותו. מעתה החלון כאן
+ * הוא **מקור האמת היחיד** לטווח החוקי (הן את הכלל ≥2-לכל-צד והן את
+ * גבול הקיבולת), והצרכנים (findSplit, generateCandidates) קוראים ממנו
+ * בלבד — אין עוד תנאי טווח משוכפל.
+ *
  * @returns {{lo:number, hi:number}|null} — null אם אין חלון חוקי כלל
  *   (הבלוק קצר מדי או שהמקום הפנוי קטן מדי ⇒ ההזזה מלאה, לא פיצול).
  */
@@ -67,7 +78,7 @@ function legalSplitWindow(linesCount, maxFit) {
   if (maxFit < MIN_LINES_PER_SIDE) return null;
   if (linesCount - maxFit < MIN_LINES_PER_SIDE) return null;
   const lo = MIN_LINES_PER_SIDE;
-  const hi = linesCount - MIN_LINES_PER_SIDE;
+  const hi = Math.min(linesCount - MIN_LINES_PER_SIDE, maxFit);
   return hi >= lo ? { lo, hi } : null;
 }
 
@@ -116,6 +127,8 @@ function escortCleanBoundary(seq, k) {
 
 /**
  * דגלי מדיניות ווידוא/יתום — קריאה מרוכזת אחת (מקור: settings-registry).
+ * **פרוסה 2:** ה-fallback מיושב ל-'normal' — זהה לברירת המחדל ברגיסטרי
+ * (עד כאן 'standard' — מחרוזת שאינה ב-enum ולעולם לא הופיעה בפועל).
  * @returns {{preventWidowsTop, preventWidowsBottom, preventOrphansTop, preventOrphansBottom, strictness}}
  */
 function widowOrphanPolicy(settings) {
@@ -124,9 +137,51 @@ function widowOrphanPolicy(settings) {
     preventWidowsBottom: settings['prevent-widows-bottom'] === true,
     preventOrphansTop: settings['prevent-orphans-top'] === true,
     preventOrphansBottom: settings['prevent-orphans-bottom'] === true,
-    strictness: settings['widow-strictness'] || 'standard'
+    strictness: settings['widow-strictness'] || 'normal'
   };
 }
+
+/**
+ * **טבלת מדיניות האילוצים (שלב 5 פרוסה 2 — §2.4 בביקורת):** הכרזה חד-משמעית
+ * מה קשיח (פוסל מועמד/מצב) ומה רך (עדיפות/עונש בלבד). כלל ההכרעה:
+ * hard = הפרתו יוצרת מצב בלתי-חוקי (חריגת קיבולת, פחות מ-2 שורות
+ * לצד חיתוך, כותרת ללא ליווי); soft = העדפה בין מצבים חוקיים.
+ * מדיניות strict (widow-strictness=strict): מועמד חיתוך שמשאיר בדיוק את
+ * המינימום החוקי ביעד (שתי שורות) נענש — strict מעדיף שלא להסתפק במינימום
+ * החוקי בראש הטור הבא; normal = שקילות; relaxed = דילוג על בדיקת
+ * orphan-top בהגנות (קיים). שלוש הרמות מוגדרות, מתועדות ונבדקות חיוב/שלילה.
+ */
+const CONSTRAINT_POLICY = Object.freeze({
+  minLinesPerSide: { type: 'hard', scope: 'split-window', description: '≥2 שורות לכל צד של חיתוך פסקה (SRS §5.1)' },
+  maxFitBound: { type: 'hard', scope: 'split-window', description: 'החלק הראשון חייב להיכנס למקום הפנוי בפועל (yPx)' },
+  seamClean: { type: 'hard', scope: 'balance', description: 'גבול איזון אינו מותיר ריצת-פסקה בת שורה אחת מכל צד' },
+  escortCleanBoundary: { type: 'hard', scope: 'balance', description: 'גבול איזון אינו מותיר כותרת עם <2 שורות ליווי' },
+  headingEscort: { type: 'hard', scope: 'placement', description: 'כותרת H1–H6 + min(2, עוקבות) שורות באותו טור (REQ-BAL-10)' },
+  columnCapacity: { type: 'hard', scope: 'placement', description: 'usedHeight (כולל gaps + תקציב הערות) ≤ קיבולת אפקטיבית' },
+  readingOrder: { type: 'hard', scope: 'placement', description: 'מונוטוניות flowCol + seq עולה בסדר הקריאה' },
+  strictDestMinimum: {
+    type: 'soft', scope: 'candidate-scoring',
+    description: 'strict: עונש על מועמד שמשאיר בדיוק את המינימום החוקי (2 שורות) בראש היעד',
+    penalty: 1e9
+  },
+  balanceDelta: {
+    type: 'soft', scope: 'balance',
+    description: 'איזון טורים ממזער |Δ| בכפוף לאילוצים הקשיחים; פשרה מתועדת כשאין פיצול חוקי',
+    threshold: 'settings[imbalance-max-delta-px]'
+  }
+});
+
+/**
+ * **FX-6 (שלב 5 פרוסה 2 — סמנטיקת פער הבלוקים בחוזה הגאומטרי):** הפער
+ * בין בלוקים הוא גאומטריה מתוכננת, לא רק תנאי כניסה. הכללים הקנוניים:
+ *  - הפער נחתם פעם אחת על השורה הראשונה של הבלוק (`gapBeforePx`) במקום
+ *    ההצבה — מקור יחיד; המקרינים קוראים ואינם מוסיפים בעצמם.
+ *  - דיכוי בראש טור: שורה ראשונה בטור (גם מתחת לפס חוצה-טורים) — בלי
+ *    פער; ראש עמוד — בלי פער; בלוקים רצופים — פער בכל פתיחת בלוק.
+ *  - הפער נכלל ב-usedHeight (תכנון ורינדור) ובבדיקות הקיבולת; המתיחה
+ *    האנכית (aqStretch) חלה על גובה השורה בלבד — הפער קבוע.
+ */
+const GAP_HEAD_POLICY = 'suppress-at-column-head';
 
 /**
  * מספר השורות שחייבות להיכנס יחד עם כותרת לטור (REQ-BAL-10):
@@ -143,10 +198,13 @@ function escortNeedLines(headingLines, followingLines) {
  * זהו ניפוץ הכפילות "יחידות lineH מול heightPx" (FX-1/FX-5): הבדיקה
  * וההצבה מודדות באותה יחידה — הגובה הפיזי שייצרך בפועל.
  *
+ * **FX-6 (פרוסה 2):** פער הכניסה הוא חלק מהמחסנית לצורך בדיקת קיבולת
+ * שמרנית (הבלוק עשוי להיפתח באמצע טור). בפועל, אם הבלוק נפתח בראש טור —
+ * הפער מדוכא בחותמת (GAP_HEAD_POLICY) והשימוש בפועל קטן מהמחסנית
+ * בסכום הפער בלבד (שמרנות מתועדת, לא אי-דיוק).
+ *
  * @param {Array<{heightPx:number}>} lines
- * @param {number} [admissionGapPx=0] — blockGapPx של הבלוק (שער כניסה בלבד;
- *   FX-6 — פער הבלוקים עדיין אינו נצבר בגאומטריה במורד הזרם; תיקונו הוקדם
- *   לשלב B של התוכנית בדוח 06 — דורש תיאום הקרנה ואינו נכנס לפרוסה זו).
+ * @param {number} [admissionGapPx=0] — blockGapPx של הבלוק
  */
 function stackHeightPx(lines, admissionGapPx = 0) {
   let h = admissionGapPx;
@@ -173,12 +231,16 @@ function escortStackHeightPx(headBlock, nextBlock, gapOf) {
 }
 
 /**
- * האם חיתוך במקום `cut` משאיר יתום בראש היעד (שורת המשך בודדת)?
- * תיקון FX-4: התנאי ההיסטורי `cut < 2` היה בלתי-ספיק לעולם (הלולאה
- * ב-candidate-generator מתחילה ב-cut = 2) — עונש strict מעולם לא נשרף.
+ * האם חיתוך במקום `cut` משאיר **בדיוק את המינימום החוקי** בראש היעד
+ * (שתי שורות — פחות מזה אינו חוקי כלל ונחסם מראש ע"י legalSplitWindow).
+ * **פרוסה 2:** לאחר שהחלון הפך לסמכות היחידה, תפקיד הפונקציה השתנה —
+ * היא כבר אינה מזהה מצב בלתי-חוקי (אין כזה בתוך החלון), אלא מסמנת את
+ * **מדיניות strict** (עונש רך על הסתפקות במינימום; CONSTRAINT_POLICY.
+ * strictDestMinimum). משמרת את כוונת FX-4 (מדיניות שקרית כלפי המשתמש —
+ * אסור שתחזור) בנוסח שאינו מתנגש לחוזה החלון.
  */
 function orphanAtDestination(lineCount, cut) {
-  return lineCount - cut < WIDOW_ORPHAN_MIN;
+  return lineCount - cut <= WIDOW_ORPHAN_MIN;
 }
 
 module.exports = {
@@ -186,6 +248,8 @@ module.exports = {
   ESCORT_MIN_LINES,
   WIDOW_ORPHAN_MIN,
   CAPACITY_EPS,
+  GAP_HEAD_POLICY,
+  CONSTRAINT_POLICY,
   legalSplitWindow,
   seamIsClean,
   escortCleanBoundary,

@@ -28,37 +28,85 @@ function noteMetrics(settings) {
 }
 
 function noteHeight(note, settings, measure) {
+  // **פרוסה 2 (מדידה אחת — §2.3 בביקורת):** צריכת החותמת קודמת לחישוב —
+  // הערה שנמדדה פעם אחת (ביצירתה, CP2) אינה נמדדת שוב לאף החלטת הצבה.
+  if (note && note.heightPx != null) return note.heightPx;
+  return noteRowsOf(note, settings, measure).heightPx;
+}
+
+/**
+ * **פרוסה 2 — שבירת שורות ההערה + מדדיה (מקור יחיד, חד-פעמי):**
+ * אותו אלגוריתם גרידי ברוחב הנתיב (כמו שהיה ב-noteHeight) — אך מוחזר
+ * כמבנה שורות מלא: `{ rows, heightPx, linesCount, lineH, words }`, כאשר כל
+ * שורה היא `{ wFrom, wTo, widthPx }` (טווח מילים + רוחב). השורות כוללות את
+ * הסמן ורווח ההמשך בשורה הראשונה — כמו שמצויר בפועל (R3-C3).
+ * הצרכנים: התקציב (noteHeight), הפיצול של הערה ארוכה (dp-planner —
+ * חיתוך בגבול שורה מוחלט, בלי מדידת מילים מחדש) והקרנת המרזב (עתיד
+ * שלב 6/7 — אותן שורות בדיוק). ההטבעה עצמה — stampNoteMetrics להלן.
+ */
+// **פרוסה 2 (טוהר מדידה — חשבונאות בדיקה, דפוס api.cacheStats):** מונה פנימי
+// להפעלות שבירת השורות של ההערה. הבדיקות מוכיחות באמצעותו שכל הערה נמדדת
+// בדיוק פעם אחת (החותמת) — ושההמשכים מטיצול הם הטקסטים החדשים היחידים.
+const _rowsStats = { calls: [] };
+function __resetRowsStats() { _rowsStats.calls.length = 0; }
+function __rowsStats() {
+  const perKey = Object.create(null);
+  for (const k of _rowsStats.calls) perKey[k] = (perKey[k] || 0) + 1;
+  return { total: _rowsStats.calls.length, keys: _rowsStats.calls.slice(), perKey };
+}
+
+function noteRowsOf(note, settings, measure) {
+  if (note && note.text != null) {
+    _rowsStats.calls.push(`${note.tokenId || ''}#${note.noteIndex != null ? note.noteIndex : ''}#${String(note.text).slice(0, 24)}`);
+  }
   const { sizePt, lineHeightPx: lh } = noteMetrics(settings); // **שלב 5:** מקור יחיד לגודל/פיץ'
   const words = String(note.text).replace(/\uE000/g, ' ').split(/\s+/).filter(Boolean);
   const colW = laneWidth(settings);
   // **S70 (R7-M4):** הפקטור מתקן את טבלת impl A בלבד; ב-impl B
-  // (font-metrics) המטריקות מדויקות והכפלה הייתה מנפיחת את תקציב ההערות.
+  // (font-metrics) המטריקות מדויקות והכפלה הייתה מנפחת את תקציב ההערות.
   const factor = (measure && measure.impl === 'font-metrics')
     ? 1 : (NOTE_FONT_FACTORS[settings['f-note-body-font']] || 1);
   // **S6.0 (R3-C3 — אומדן ללא רווחים):** ההקרנה (wrapNoteTokens) שוברת
-  // את ההערה **עם** רוחבי רווח בין מילים — האומדן כאן סכם מילים בלבד
+  // את ההערה **עם** רוחבי רווח בין מילים — האומדן כאן סיכם מילים בלבד
   // ⇒ כל הערה הגובלת בשבירת-שורה נמדדה שורה אחת פחות (19–21px) וההערה
   // שאחריה חפפה אותה (32% מ-230 הערות בדגימה). נכללים גם הסמן ורווח
   // ההמשך בשורה הראשונה — כמו שמצויר בפועל.
   const spaceW = measure(' ', sizePt) * factor;
   const mkTxt = note && note.marker != null ? String(note.marker) : '';
   const mkW = mkTxt ? measure(mkTxt, sizePt) * factor + spaceW : 0;
-  let lines = 1, w = Math.min(mkW, colW);
-  for (const word of words) {
-    const ww = measure(word, sizePt) * factor;
-    const addW = (w > 0 ? spaceW : 0) + ww;
-    if (w + addW > colW && w > 0) { lines++; w = ww; } else w += addW;
+  const rows = [];
+  let rowW = Math.min(mkW, colW); // סמן בפינת השורה הראשונה
+  let wFrom = 0;
+  for (let i = 0; i < words.length; i++) {
+    const ww = measure(words[i], sizePt) * factor;
+    const addW = (rowW > 0 ? spaceW : 0) + ww;
+    if (rowW + addW > colW && rowW > 0) {
+      rows.push({ wFrom, wTo: i, widthPx: rowW });
+      wFrom = i; rowW = ww;
+    } else rowW += addW;
   }
-  return lines * lh;
+  rows.push({ wFrom, wTo: words.length, widthPx: rowW });
+  return { rows, heightPx: rows.length * lh, linesCount: rows.length, lineH: lh, words };
 }
 
 /**
- * רוחב נתיב אחד במרזב לפי footnote-columns.
- * **S5.2 (P-4):** _fnColWidthPx מכוין כעת ב-pipeline מהגיאומטריה —
- * 1 ⇒ רוחב תיבת התוכן המלא (674.90px בברירת המחדל; כמו שמוקרן בגיאומטריה:
- * x=colLeftOf, w=colWidthOf); 2 ⇒ (רוחב מלא − מרזב התבנית)/2. הפונקציה
- * נשארת פשוטה — ההכוונה נעשתה במקור היחיד (pipeline) ולא כאן.
+ * **פרוסה 2 (§2.3 — מדידה אחת לכל פריט):** הטבעת מדדי ההערה על אובייקט
+ * ההערה עצמו, ברגע יצירתה (CP2 ב-pipeline). מרגע זה כל הצרכנים — תקציב,
+ * הצבה, פיצול, ניקוז זנב — קוראים את החותמת ואינם מודדים שוב. הערה שנוצרה
+ * בפיצול (המשך) היא טקסט חדש — מוטבעת אף היא פעם אחת בלבד.
+ * @param {object} note - { text, marker, ... } — מוטציה באתר (המקור בידי ה-pipeline)
+ * @returns {object} ה-note עצמו (שרשרת)
  */
+function stampNoteMetrics(note, settings, measure) {
+  const m = noteRowsOf(note, settings, measure);
+  note.heightPx = m.heightPx;
+  note.lineH = m.lineH;
+  note.linesCount = m.linesCount;
+  note.noteRows = m.rows;
+  note.noteWords = m.words;
+  return note;
+}
+
 function laneWidth(settings) {
   const base = settings._fnColWidthPx || 200;
   return settings['footnote-columns'] === 2 ? base : base;
@@ -83,4 +131,4 @@ function getFootnotesReservedHeight(pageNotes, settings, measure) {
   return Math.max(totals[0], totals[1]);
 }
 
-module.exports = { getFootnotesReservedHeight, noteHeight, noteMetrics, laneWidth, NOTE_FONT_FACTORS };
+module.exports = { getFootnotesReservedHeight, noteHeight, noteRowsOf, stampNoteMetrics, noteMetrics, laneWidth, NOTE_FONT_FACTORS, __resetRowsStats, __rowsStats };

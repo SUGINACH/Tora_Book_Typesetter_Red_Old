@@ -48,10 +48,19 @@ describe('שלב 5 — מטריצת האילוצים (SSOT; חילוץ מ-#16/#1
     assertEq(CM.ESCORT_MIN_LINES, 2, 'ESCORT_MIN_LINES');
     assertEq(CM.WIDOW_ORPHAN_MIN, 2, 'WIDOW_ORPHAN_MIN === MIN_LINES_PER_SIDE');
     assertEq(CM.CAPACITY_EPS, 0.5, 'CAPACITY_EPS');
-    // חלון חוקי: 5 שורות, maxFit 2 ⇒ [2..3]; maxFit 1 ⇒ null (הזזה מלאה)
-    assertEq(JSON.stringify(CM.legalSplitWindow(5, 2)), JSON.stringify({ lo: 2, hi: 3 }), 'window 5/2');
+    // **פרוסה 2 (חוזה החלון — מקור יחיד):** hi = min(lines−2, maxFit) — גם כלל
+    // ≥2-לכל-צד וגם גבול הקיבולת בפועל. 5 שורות maxFit 2 ⇒ [2..2]; 5/3 ⇒ [2..3];
+    // 10 שורות maxFit 3 ⇒ [2..3] (קיבולת כובלת); maxFit 1 ⇒ null (הזזה מלאה).
+    assertEq(JSON.stringify(CM.legalSplitWindow(5, 2)), JSON.stringify({ lo: 2, hi: 2 }), 'window 5/2');
+    assertEq(JSON.stringify(CM.legalSplitWindow(5, 3)), JSON.stringify({ lo: 2, hi: 3 }), 'window 5/3');
+    assertEq(JSON.stringify(CM.legalSplitWindow(10, 3)), JSON.stringify({ lo: 2, hi: 3 }), 'window 10/3 — maxFit כובל');
     assertEq(CM.legalSplitWindow(3, 2), null, '3 שורות maxFit 2 — אין חלון');
     assertEq(CM.legalSplitWindow(5, 1), null, 'maxFit 1 — אין חלון');
+    assertEq(CM.legalSplitWindow(10, 9), null, '10 שורות maxFit 9 — נשארת 1 ביעד — אין חלון');
+    // מדיניות hard/soft מוכרזת (CONSTRAINT_POLICY)
+    assertEq(CM.CONSTRAINT_POLICY.minLinesPerSide.type, 'hard', 'minLinesPerSide hard');
+    assertEq(CM.CONSTRAINT_POLICY.strictDestMinimum.type, 'soft', 'strictDestMinimum soft');
+    assertEq(CM.GAP_HEAD_POLICY, 'suppress-at-column-head', 'מדיניות פער בראש טור');
     // תפר נקי: אותה פסקה חוצה את הגבול עם ריצה בת שורה אחת מכל צד ⇒ לא נקי
     const mk = (tok, i) => ({ meta: { tokenId: tok }, words: [`w${i}`] });
     const seq = [mk('a', 1), mk('b', 1), mk('b', 2), mk('c', 1)];
@@ -67,9 +76,11 @@ describe('שלב 5 — מטריצת האילוצים (SSOT; חילוץ מ-#16/#1
     ];
     assertEq(CM.escortCleanBoundary(seqH, 2), false, 'כותרת עם שורה אחת בלבד אחריה');
     assertEq(CM.escortCleanBoundary(seqH, 3), true, 'הכותרת כולה ב-col0 עם 2 שורות');
-    // יתום ביעד (FX-4)
-    assertEq(CM.orphanAtDestination(6, 5), true, '5 נחתכות ⇒ 1 נותרת — יתום');
-    assertEq(CM.orphanAtDestination(6, 4), false, '4 נחתכות ⇒ 2 נותרות — חוקי');
+    // מינימום ביעד (FX-4 + פרוסה 2 — strict כמדיניות רכה): פחות מ-2 נחסם
+    // מראש על ידי החלון; בדיוק 2 (=המינימום החוקי) — מסומן לעונש strict.
+    assertEq(CM.orphanAtDestination(6, 5), true, '5 נחתכות ⇒ 1 נותרת — מחוץ לחלון מיסודו');
+    assertEq(CM.orphanAtDestination(6, 4), true, '4 נחתכות ⇒ בדיוק המינימום (2) — מסומן ל-strict');
+    assertEq(CM.orphanAtDestination(6, 3), false, '3 נחתכות ⇒ 3 נותרות — מעל המינימום, לא מסומן');
     // מחסניות
     assertEq(CM.stackHeightPx([{ heightPx: 24.2 }, { heightPx: 24.2 }], 5), 53.4, 'stack עם פער כניסה');
     assertEq(CM.escortNeedLines(1, 5), 3, 'כותרת + 2 ליווי');
@@ -259,14 +270,18 @@ describe('שלב 5 — FX-2: הפרדת הפרה סטטית מתנודה בלו�
 describe('שלב 5 — FX-4: עונש strict חי (חלון מועמדים)', () => {
   it('widow-strictness=strict מעניש חיתוך שמשאיר יתום ביעד; normal אינו', () => {
     const blk = { tokenId: 't1', lines: Array.from({ length: 6 }, () => ({ heightPx: 20, words: ['w'] })), lineHeightPx: 20 };
-    const strict = generateCandidates(blk, 5, 500, { 'widow-strictness': 'strict', 'grid-block-gap-pct': 0 }, null);
-    const normal = generateCandidates(blk, 5, 500, { 'widow-strictness': 'normal', 'grid-block-gap-pct': 0 }, null);
-    const scoreOf = (arr, cut) => arr.find(c => c.cut === cut).score;
-    // cut=5 משאיר שורה אחת ביעד ⇒ יתום — strict מעניש 1e9
-    assert(scoreOf(strict, 5) > 1e8, 'strict: יתום ביעד מעונש (' + scoreOf(strict, 5) + ')');
-    assert(scoreOf(normal, 5) < 1e3, 'normal: ללא עונש (' + scoreOf(normal, 5) + ')');
-    assert(scoreOf(strict, 4) < 1e3, 'strict: חיתוך חוקי (2+2) אינו מעונש');
-    // maxFit חי: מועמד שחורג מהמקום הפנוי נדחה (חילוץ #16)
+    const strict = generateCandidates(blk, 4, 500, { 'widow-strictness': 'strict', 'grid-block-gap-pct': 0 }, null);
+    const normal = generateCandidates(blk, 4, 500, { 'widow-strictness': 'normal', 'grid-block-gap-pct': 0 }, null);
+    const scoreOf = (arr, cut) => { const c = arr.find(x => x.cut === cut); if (!c) throw new Error('cut ' + cut + ' אינו בחלון: ' + JSON.stringify(arr.map(x => x.cut))); return c.score; };
+    // **פרוסה 2 (strict כמדיניות רכה מוכרזת):** החלון [2..4] חוסם מראש חיתוך
+    // שמשאיר <2 ביעד; strict מעניש 1e9 את מי שמשאיר **בדיוק את המינימום** (cut=4
+    // משאיר 2) — ואינו מעניש חיתוך עמוק יותר (cut=3 משאיר 3).
+    assert(scoreOf(strict, 4) > 1e8, 'strict: מינימום חוקי ביעד מעונש (' + scoreOf(strict, 4) + ')');
+    assert(scoreOf(normal, 4) < 1e3, 'normal: ללא עונש (' + scoreOf(normal, 4) + ')');
+    assert(scoreOf(strict, 3) < 1e3, 'strict: חיתוך עמוק (3 נותרות) אינו מעונש');
+    // חיתוך שמשאיר 1 ביעד (cut=5) אינו קיים כלל — החלון חוסם אותו מראש
+    assert(!strict.some(c => c.cut === 5), 'cut=5 מחוץ לחלון — לא נוצר כלל');
+    // maxFit חי: מועמד שחורג מהמקום הפנוי נדחה (חילוץ #16) — החלון עצמו כובל
     const capped = generateCandidates(blk, 3, 500, { 'grid-block-gap-pct': 0 }, null);
     assert(!capped.some(c => c.cut > 3), 'אף מועמד מעל maxFit');
     assert(capped.length > 0, 'יש מועמדים חוקיים בטווח');

@@ -36,18 +36,37 @@ function isFullWidthBlock(block, settings) {
 }
 
 /**
+ * **FX-6 (שלב 5 פרוסה 2) — נרמול פערים אחרי שינוי מבני של טור:**
+ * שורה שהפכה לראש הטור (איזון/הזזה/פיצול) אינה נושאת עוד פער-כניסה —
+ * GAP_HEAD_POLICY (constraint-matrix): דיכוי בראש טור. החלפת הייחוס בעותק
+ * שומרת על אובייקטי השורה המשותפים (rollback/צילומי-מצב) ללא מוטציה.
+ * @param {Array} col - טור (מערך שורות ממוקמות)
+ */
+function normalizeColumnGaps(col) {
+  if (col.length && col[0].gapBeforePx) col[0] = { ...col[0], gapBeforePx: 0 };
+}
+
+/**
  * **S5.2 (P-2 — איחוד חישוב קיבולת טור):** המקור היחיד לקיבולת האפקטיבית
  * של טור בעמוד DP: גובה תיבת התוכן מהתבנית, בהפחתת:
  *  - הפס החוצה־טורים (spanning band, FWD-1) — הטורים מתחילים מתחתיו;
- *  - תקציב ההערות של העמוד (fnReservedHeightPx, F-17) — נרשם על הטור האחרון.
- * בעבר חושבו 4 העתקים מקבילים (balancing.balancePage/autoQualityPass,
- * dp-planner.balancePageSafe, protections-matrix.containment) שהתעלמו מהפס
- * ו/או מהתקציב ⇒ גלישת טור שקטה בעמודים עם הערות או פס כותרת.
+ *  - תקציב ההערות של העמוד (fnReservedHeightPx, F-17) — חוצה־רוחב (R3-C2);
+ *  - **(פרוסה 2)** שמורות אחידות (`page.reservations`) — מנגנון ההרחבה
+ *    של שלב 6: כל אזור שמקטין את שטח הגוף (ריהוט, עיטור שמזמין מקום,
+ *    אזור שמור לפריט בלתי-ניתן לפיצול) נרשם כאן פעם אחת ומופחת מכל
+ *    הטורים (scope:'all-columns') או מהטור האחרון בלבד (scope:'last-column')
+ *    — ללא שינוי ליבת המתכנן.
  *
- * @param {object} page - עמוד DP: template.contentBox, spanning?, fnReservedHeightPx?, columns
+ * **מודל הקיבולת המיוצג (§2.6 בביקורת):** `capacityReservationsOf(page)`
+ * מפרט במפורש כל גורם שמקטין את שטח הגוף — margins/headers/folio כבר
+ * מיוצגים בתיבת התוכן של התבנית (page-templates), הפס החוצה־טורים ותקציב
+ * ההערות כאן, עיטורי H2/סגנונות בתוך גבהי השורות עצמן (F-08) והשאר —
+ * דרך ה-reservations. מקור אחד, ייצוג אחד, ללא חישובים מקביליים.
+ *
+ * @param {object} page - עמוד DP: template.contentBox, spanning?, fnReservedHeightPx?, reservations?, columns
  * @param {{colIndex?:number, fnBudget?:boolean}} [opts]
  *  - colIndex: הטור שאליו שייכת הקיבולת (ברירת מחדל: האחרון — המחמיר);
- *    תקציב ההערות מופחת רק מהטור האחרון (שם הוא נרשם).
+ *    שמורות last-column מופחתות ממנו בלבד.
  *  - fnBudget:false — ביטול הפחתת תקציב ההערות (למי שמודד usage כולל
  *    התקציב בעצמו — כמו usedHeight של dp-planner או extraLast של optimalSplit).
  */
@@ -62,22 +81,56 @@ function colCapacityOf(page, opts = {}) {
   // לתוך אזור ההערות בכל עמוד רווי-הערות, והגנת containment הייתה עיוורת
   // לזה (אותה נוסחה).
   if (fn) cap -= fn;
+  // **פרוסה 2 — reservations אחידים (§2.6):** הפחתה חד-פעמית לפי scope.
+  const res = page.reservations;
+  if (res && res.length) {
+    const lastCol = page.columns ? page.columns.length - 1 : 0;
+    const ci = opts.colIndex != null ? opts.colIndex : lastCol;
+    for (const r of res) {
+      if (!r || !(r.px > 0)) continue;
+      if (r.scope === 'last-column') { if (ci === lastCol) cap -= r.px; }
+      else cap -= r.px; // 'all-columns' (ברירת המחדל)
+    }
+  }
   return cap;
 }
 
 /**
+ * **פרוסה 2 (§2.6 — מודל הקיבולת המיוצג):** רשימה תיאורית של כל הגורמים
+ * שמקטינים את שטח הגוף בעמוד — לחוזה ה-PagePlan, לאבחון ולבדיקות.
+ * טהור: קריאה בלבד; אותם מספרים ש-colCapacityOf מפחית בפועל.
+ */
+function capacityReservationsOf(page, opts = {}) {
+  if (!page || !page.template || !page.template.contentBox) return [];
+  const out = [
+    { kind: 'content-box', scope: 'all-columns', px: page.template.contentBox.height, detail: 'margins/header/folio excluded by template' },
+    { kind: 'spanning-band', scope: 'all-columns', px: (page.spanning && page.spanning.heightPx) || 0, detail: 'cross-column band (FWD-1)' },
+    { kind: 'notes-budget', scope: 'all-columns', px: (opts.fnBudget !== false && page.fnReservedHeightPx > 0) ? page.fnReservedHeightPx : 0, detail: 'footnote gutter budget (F-17, R3-C2)' }
+  ];
+  for (const r of (page.reservations || [])) {
+    if (r && r.px > 0) out.push({ kind: r.kind || 'reservation', scope: r.scope || 'all-columns', px: r.px, detail: r.reason || '' });
+  }
+  return out;
+}
+
+/**
  * **שלב 5 (חילוץ שורש מ-PR #16, S78/D-107 — גובה תפוס בזמן תכנון, מקור יחיד):**
- * Σ גבהי שורות + יתרת תקציב ההערות של העמוד — נרשם על הטור האחרון (F-17).
+ * Σ גבהי שורות + פערי בלוקים (FX-6: `gapBeforePx` — הפער נצבר כאן בפועל,
+ * לא רק בשער הכניסה) + יתרת תקציב ההערות של העמוד — נרשם על הטור האחרון (F-17).
  * זו סמנטיקת ה-**תכנון** (לפני AQ — בלי מקדם מתיחה); סמנטיקת ה-**רינדור**
  * (עם aqStretch) חיה ב-balancing.usedHeight. עד כאן היו שני מימושים מקבילים
  * באותו שם בשני מודולים (dp-planner מקומי מול זה) — כעת צרכן יחיד.
  */
 function planningUsedHeight(col, page) {
-  let h = col.reduce((s, ln) => s + (ln.heightPx || 0), 0);
+  let h = 0;
+  for (const ln of col) h += (ln.heightPx || 0) + (ln.gapBeforePx || 0);
   if (page && page.fnReservedHeightPx > 0 && page.columns[page.columns.length - 1] === col) {
     h += page.fnReservedHeightPx; // נשמר פעם אחת — בסוף הטור האחרון
   }
   return h;
 }
 
-module.exports = { columnWidths, blockGapPx, isFullWidthBlock, colCapacityOf, planningUsedHeight, buildPageTemplate };
+module.exports = {
+  columnWidths, blockGapPx, isFullWidthBlock, colCapacityOf, capacityReservationsOf,
+  planningUsedHeight, normalizeColumnGaps, buildPageTemplate
+};
