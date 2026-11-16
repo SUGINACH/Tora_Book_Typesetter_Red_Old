@@ -74,19 +74,26 @@ function noteRowsOf(note, settings, measure) {
   const spaceW = measure(' ', sizePt) * factor;
   const mkTxt = note && note.marker != null ? String(note.marker) : '';
   const mkW = mkTxt ? measure(mkTxt, sizePt) * factor + spaceW : 0;
+  // **שלב 6 פרוסה 1 (הכנת "תקציב=הצבה=הקרנה"):** כל שורה נושאת גם את רוחבי
+  // המילים שלה (wordW) — כך שהקרנת המרזב (פרוסה 2) תוכל למקם מילים מהחותמת
+  // עצמה מבלי למדוד שוב; הרוחב בפינה הימנית של השורה הראשונה כולל את הסמן.
   const rows = [];
   let rowW = Math.min(mkW, colW); // סמן בפינת השורה הראשונה
   let wFrom = 0;
+  let rowWordW = [];
   for (let i = 0; i < words.length; i++) {
     const ww = measure(words[i], sizePt) * factor;
     const addW = (rowW > 0 ? spaceW : 0) + ww;
     if (rowW + addW > colW && rowW > 0) {
-      rows.push({ wFrom, wTo: i, widthPx: rowW });
-      wFrom = i; rowW = ww;
-    } else rowW += addW;
+      rows.push({ wFrom, wTo: i, widthPx: Math.round(rowW * 1000) / 1000, wordW: rowWordW });
+      wFrom = i; rowW = ww; rowWordW = [Math.round(ww * 1000) / 1000];
+    } else {
+      rowW += addW;
+      rowWordW.push(Math.round(ww * 1000) / 1000);
+    }
   }
-  rows.push({ wFrom, wTo: words.length, widthPx: rowW });
-  return { rows, heightPx: rows.length * lh, linesCount: rows.length, lineH: lh, words };
+  rows.push({ wFrom, wTo: words.length, widthPx: Math.round(rowW * 1000) / 1000, wordW: rowWordW });
+  return { rows, heightPx: rows.length * lh, linesCount: rows.length, lineH: lh, words, markerW: mkW ? Math.round(mkW * 1000) / 1000 : 0, spaceW: Math.round(spaceW * 1000) / 1000 };
 }
 
 /**
@@ -104,6 +111,9 @@ function stampNoteMetrics(note, settings, measure) {
   note.linesCount = m.linesCount;
   note.noteRows = m.rows;
   note.noteWords = m.words;
+  // **שלב 6 פרוסה 1:** רוחבי הסמן/הרווח — חלק מהחותמת (להקרנה עתידית מהמדדים)
+  note.markerW = m.markerW;
+  note.spaceW = m.spaceW;
   return note;
 }
 

@@ -15,6 +15,7 @@
 
 const { scrubPUAText } = require('./dom-renderer');
 const { MeasureAPI } = require('../typography/measure-api');
+const { folioGeometry: folioGeoOf, headerGeometry: headerGeoOf } = require('../layout/furniture-geometry'); // **שלב 6:** גיאומטריית ריהוט — מקור יחיד ל-DOM ול-PDF
 // **S5.4 (P-5):** מקורות יחידים להקרנת ההערות — פקטורי רוחב הגופן מהתקציב
 // (אותם מספרים שקבעו את גובה ההערה) וסמן אחיד מ-notes/markers (כמו ה-DOM).
 const { NOTE_FONT_FACTORS } = require('../layout/footnote-budget');
@@ -227,42 +228,19 @@ function projectPage(page, settings, api) {
 
   // גיליון
   if (page.folioDisplay) {
-    // **D-81:** מיקום/רוחב מהמקור היחיד (הקרן, מדידה 10pt) — הכותב וה-ink-bbox צורכים אותו.
-    const ft = scrubPUAText(String(page.folioDisplay));
-    // **S73 (גופן/גודל/צבע גיליון מההגדרות — נתיב DP):** page-num-font ('' = גוף
-    // הטקסט — התנהגות קודמת), page-num-size-pt (ברירת מחדל 10) ו-page-num-color
-    // (ברירת מחדל שחורה) — כמו ה-DOM. המדידה בגופן הגיליון כשרשום.
-    const folioSz = Number(settings['page-num-size-pt']) > 0 ? Number(settings['page-num-size-pt']) : 10;
+    // **שלב 6 פרוסה 1 (§8 בהוראה):** גיאומטריית הגיליון — מקור יחיד
+    // (layout/furniture-geometry). ה-DOM קורא מאותו מקור (סגנון מפורש) —
+    // אין עוד שני חישובים מקביליים של אותו מיקום בין תצוגה לייצוא.
+    // **S73:** גופן/גודל/צבע מההגדרות — page-num-font ('' = גוף הטקסט).
     const folioFam = settings['page-num-font'] || '';
     const folioMeasure = (folioFam && familyFontKeyOf(folioFam, settings))
       ? new MeasureAPI({ ...settings, 'body-font': folioFam }, 'font-metrics') : measure;
-    const fw = Math.max(1, Math.round(folioMeasure.measureTextWidth(ft, folioSz)));
-    // **S5.1 (תיקון C5):** מיקום לפי page-num-position מההגדרות — בעבר מוקשה
-    // bottom-center וכל ערך אחר הוגדר בשקט. 'outer' מודע-זוגיות כמו המקור
-    // (recto=index זוגי ⇒ שמאל; verso ⇒ ימין) — כמו folio--outer ב-CSS.
-    // **S69 (R4-M3 — סגירת קירוב):** העוגן האנכי מה-CSS החי (.folio{bottom:25px})
-    // ולא קירוב contentBox.bottom+2 שסטה מה-DOM בכ~17px. הבסיס = תחתית
-    // תיבת הגיליון − half-leading − descent (line-height: normal ≈ 1.2 —
-    // חסר הגדרה מפורשת ב-CSS); אותה נוסחה משמרת גם את top:4px/6px.
-    const FOLIO_BOTTOM_PX = 25; // styles.css: .folio{bottom:25px}
-    const folioPx = folioSz * (96 / 72);
-    const folioLineH = Math.round(folioPx * 1.2);
-    const ascEm = folioMeasure.ascentEm(), descEm = folioMeasure.descentEm();
-    const halfLead = Math.max(0, (folioLineH - (ascEm + descEm) * folioPx) / 2);
-    const pos = String((settings && settings['page-num-position']) || 'bottom-center');
-    if (pos === 'none') { out.folio = null; }
-    else {
-      const recto = (page.index % 2 === 0);
-      let fx = Math.round((tpl.width - fw) / 2);
-      let boxTop = tpl.height - FOLIO_BOTTOM_PX - folioLineH; // ראש תיבת הגיליון (כמו ה-DOM)
-      let baselineY = boxTop + halfLead + ascEm * folioPx;
-      if (pos === 'outer-left' || (pos === 'outer' && recto)) fx = 8;
-      else if (pos === 'outer-right' || (pos === 'outer' && !recto)) fx = Math.max(8, Math.round(tpl.width - fw - 8));
-      else if (pos === 'top') { boxTop = 4; baselineY = boxTop + halfLead + ascEm * folioPx; } // styles.css: .folio--top{top:4px}
-      else if (pos === 'in-header') { boxTop = 6; baselineY = boxTop + halfLead + ascEm * folioPx; } // styles.css: .folio--in-header{top:6px}
+    out.folio = folioGeoOf(page, settings, folioMeasure);
+    if (out.folio) {
       const folioKey = (folioFam && familyFontKeyOf(folioFam, settings)) || null;
       const folioColor = colorOfSetting(settings['page-num-color']);
-      out.folio = { y: boxTop, baselineY, x: fx, w: fw, sizePt: folioSz, text: ft, ...(folioKey ? { fontKey: folioKey } : {}), ...(folioColor ? { color: folioColor } : {}) };
+      if (folioKey) out.folio.fontKey = folioKey;
+      if (folioColor) out.folio.color = folioColor;
     }
   }
 
@@ -277,8 +255,9 @@ function projectPage(page, settings, api) {
       // **S73:** גופן הסלוט מהמודל (s.font — headers-builder מצרף את המשפחה
       // מההגדרות) ⇒ fontKey לכותב ה-PDF (משפחה רשומה ⇒ תת-גופן ייעודי);
       // צבע — s.color מהמודל (ברירת מחדל שחורה). מדידה בגופן הסלוט כשרשום.
+      // **שלב 6:** ראש אזור הכותרת — מקור יחיד (furniture-geometry.headerGeometry).
       out.header = {
-        y: Math.max(0, tpl.contentBox.top - 18),
+        y: headerGeoOf(page).y,
         slots: slots.map(s => {
           const t = scrubPUAText(String(s.text || ''));
           const sKey = familyFontKeyOf(s.font, settings);
