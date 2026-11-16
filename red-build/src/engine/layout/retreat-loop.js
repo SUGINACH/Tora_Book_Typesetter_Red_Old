@@ -24,6 +24,12 @@ const OSCILLATION_WINDOW = 4;
 function runRetreatLoop(ctx) {
   const { pages, settings, ledger, eventLog, repairFns, assess } = ctx;
   const history = []; // [{signature}]
+  // **FX-2 (דוח 06, שלב 5 — חילוץ שורש מ-#17):** האם רץ תיקון משנה-פריסה
+  // (mutates !== false) באיטרציה שהקליטה כל חתימה. חתימה חוזרת בלי מוטציה
+  // מאז שנראתה = הפרה סטטית (אין תיקון פעיל) — לא "תנודה בין תיקונים
+  // מתחרים" (התווית ההיסטורית שקרה אבחונית: שום תיקון לא רץ ושום דבר לא
+  // השתנה). גלאי התנודה יורה מעתה רק על תנודה אמיתית.
+  const historyMutated = []; // [bool] מקביל ל-history
   let iteration = 0;
   let lastSignature = null;
   /** מפת רישומים מהרצה זו: kind@target → record (למניעת כפילויות בין resolved↔persists). */
@@ -72,8 +78,19 @@ function runRetreatLoop(ctx) {
 
     // זיהוי תנודה: החתימה חוזרת על עצמה בתוך חלון
     const recent = history.slice(-OSCILLATION_WINDOW);
-    if (recent.some(h => h === signature)) {
-      // ping-pong → הקפאת הפשרה הטובה ביותר שנצפתה.
+    const repeatIdx = recent.findIndex(h => h === signature);
+    if (repeatIdx !== -1) {
+      const histIdx = history.length - recent.length + repeatIdx;
+      if (!historyMutated[histIdx]) {
+        // **FX-2:** הפרה סטטית — החתימה חוזרת בלי שאף תיקון משנה-פריסה רץ
+        // מאז שנראתה. הקפאה מתועדת עם סיבה מדויקת (לא תיוג של תחרות שלא היתה).
+        const persisted = recordRemaining(ledger, allViolations, 'protections', `static violation @iter${iteration} (no mutating repair)`, seen);
+        const rec = ledger.create('rollback-compromise', `loop@iter${iteration}`, null, { signature, reason: 'static violation' }, 'protections');
+        ledger.transition(rec.issue_id, 'correction-blocked', 'protections', 'violation persists unchanged — no mutating repair available (documented compromise)');
+        eventLog.emit('protections', 'retreat-static', { iteration, signature });
+        return { converged: false, iterations: iteration, compromise: rec.issue_id, persisted, frozenSignatures: history };
+      }
+      // ping-pong אמיתי (מוטציה רצה והחתימה חזרה) → הקפאת הפשרה הטובה ביותר שנצפתה.
       // **רישום הנשאר:** כל ההפרות בחתימה זו נמשכות — נרשמות עכשיו ל‑ledger האמיתי.
       const persisted = recordRemaining(ledger, allViolations, 'protections', `oscillation freeze @iter${iteration}`, seen);
       const rec = ledger.create('rollback-compromise', `loop@iter${iteration}`, null, { signature }, 'protections');
@@ -83,6 +100,7 @@ function runRetreatLoop(ctx) {
     }
 
     history.push(signature);
+    historyMutated.push(false);
     lastSignature = signature;
 
     // הפעלת תיקונים לפי סדר עדיפות קבוע (דטרמיניסטי): parens → reading-order → widows → headings → balance
@@ -92,7 +110,10 @@ function runRetreatLoop(ctx) {
     for (const kind of order) {
       if (!kinds.has(kind) || !repairFns[kind]) continue;
       const ofKind = allViolations.filter(v => v.kind === kind);
-      repairFns[kind](ofKind, ctx);
+      const fn = repairFns[kind];
+      fn(ofKind, ctx);
+      // **FX-2:** תיקון שמסומן mutates:false אינו משנה פריסה — אינו ראיה לתחרות
+      if (fn.mutates !== false) historyMutated[historyMutated.length - 1] = true;
       repairedAny = true;
       // הפרות מסוג זה טופלו — נרשמות ל‑ledger האמיתי כ‑resolved שקוף
       // (הן היו אמיתיות; רישום התיקון הוא חלק מהשקיפות, לא הסתרה).

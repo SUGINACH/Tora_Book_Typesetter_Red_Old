@@ -195,13 +195,14 @@ describe('S72.2 DP — יישור תחתיות ככלל עימוד (שיפורי
     assert(min >= 0.95 - 1e-9 && max <= 1.05 + 1e-9, `מקדם מחוץ לגבולות: [${min}, ${max}]`);
   });
 
-  it('נייטרליות: hash הקורפוס זהה לנעילה (bef8ebbed977) — aqStretch אינו משנה תוכן', () => {
-    // ננעל מחדש 16.11 (שלב 4 מקטע ב׳ — חיבור מנוע השורות הקנוני למסלול המוצר):
-    // הפער מול 010f9b35 מסווג פר-פריט בשיטת s4b-corpus-comparison (קנוני:
-    // 162/170 בלוקים זהים; 8 שונו — כולם סמני הערות: הצמדה מבנית P-1 + מדידת
-    // סמן בגודל רישום) וב-s4-line-comparison (very_long: 0 בלתי-מוסברים);
-    // מספר העמודים נשמר; contentPreserved=true (מאומת גם ב-long-real-text).
-    assert(result.layoutHash.startsWith('bef8ebbed977'), `hash הקורפוס השתנה: ${result.layoutHash.slice(0, 16)}`);
+  it('נייטרליות: hash הקורפוס זהה לנעילה (89108321) — aqStretch אינו משנה תוכן', () => {
+    // ננעל מחדש 16.11 (שלב 5 פרוסה 1 — תיקוני FX במתכנן): bef8ebbed977→89108321.
+    // הפער מסווג בשיטת s5-corpus-comparison: חלוקת השורות של כל הבלוקים זהה
+    // לבסיס (0 redivision/0 marker/0 content-diff) — השינוי הוא אריזת עמודים
+    // בלבד: קיבולת ב-yPx אמיתיים (FX-5) חיסלה עמודים ריקים-פנטום (ב-very_long:
+    // 1335→1089, ‑18.5%); contentPreserved=true; aqStretch ממשיך לעבוד על הטורים
+    // החדשים (הבדיקות הגיאומטריות לעיל מאמתות זאת על הפלט המעודכן).
+    assert(result.layoutHash.startsWith('89108321'), `hash הקורפוס השתנה: ${result.layoutHash.slice(0, 16)}`);
     const r2 = typeset(corpus, getDefaultSettings(), {});
     assertEq(result.layoutHash, r2.layoutHash, 'דטרמיניזם');
     // הקנוני — נעילת f6f32c40 ממקטע ב׳ (מאומת ב-s13-acceptance)

@@ -9,6 +9,7 @@
 // (moveLineForward אינו נדרש עוד באיזון: optimalSplit מכסה את מרחב המצבים כולו — EXT-8)
 
 const { colCapacityOf } = require('./column-flow'); // **S5.2 (P-2):** קיבולת הטור — מקור יחיד
+const { seamIsClean, escortCleanBoundary } = require('./constraint-matrix'); // **שלב 5:** תפר נקי + תפר מודע-ליווי — מקור יחיד (חילוץ שורש מ-#16/#17)
 
 function usedHeight(col) {
   // **EXT-20:** גובה בפועל — כולל מקדם ה-AQ האנכי (לפני ה-AQ כל המקדמים 1).
@@ -47,25 +48,13 @@ function optimalSplit(cols, opts = {}) {
   const total = pre[n];
   const k0 = c0.length;
 
-  // גבול-תפר נקי (ווידוא/יתום קלאסיים, מבוסס ריצות tokenId):
-  //  - widow-bottom: לבלוק שחוצה את הגבול יש **שורה אחת בדיוק** בתחתית col0
-  //    (השורה שלפני הגבול היא ראשונת הריצה שלו ב-seq).
-  //  - widow-top: לבלוק שחוצה את הגבול יש **שורה אחת בדיוק** בראש col1 והיא
-  //    גם אחרונת הבלוק (הריצה מסתיימת מיד אחריה).
-  // לא נעזר בדגלי part ('first'/'rest') — הם מוטבעים לכל שורות הצ'אנק
-  // ב-pushLinks ואינם מעידים על מיקום בבלוק (נלכד בניפוי EXT-8: כל 39
-  // שורות הפיצול נשאו part='first' וסימנו כל גבול פנימי כ-widow).
-  const cleanBoundary = (k) => {
-    if (k > 0 && k < n) {
-      const lt = seq[k - 1].meta && seq[k - 1].meta.tokenId;
-      const rt = seq[k].meta && seq[k].meta.tokenId;
-      if (lt != null && lt === rt) { // הבלוק ממשיך מעבר לגבול
-        if (k - 2 < 0 || (seq[k - 2].meta && seq[k - 2].meta.tokenId) !== lt) return false; // widow-bottom
-        if (k + 1 >= n || (seq[k + 1].meta && seq[k + 1].meta.tokenId) !== rt) return false; // widow-top
-      }
-    }
-    return true;
-  };
+  // גבול-תפר נקי — **שלב 5:** constraint-matrix.seamIsClean (מקור יחיד; חילוץ
+  // שורש מ-#16) + escortCleanBoundary (חילוץ שורש מ-#17, דוח 06 פרק 4 —
+  // סתירת ליווי×איזון): גבול "נקי" הוא גם נקי מווידוא/יתום (לפי ריצות tokenId
+  // ב-meta — לא דגלי part, שאינם מעידים על מיקום בבלוק; נלכד בניפוי EXT-8)
+  // וגם אינו מותיר כותרת בתחתית הטור עם <ESCORT_MIN_LINES שורות אחריה —
+  // אחרת האיזון עצמו יוצר הפרת heading-escort שאין לה תיקון.
+  const cleanBoundary = (k) => seamIsClean(seq, k) && escortCleanBoundary(seq, k);
 
   let best = null;
   for (let k = 0; k <= n; k++) {

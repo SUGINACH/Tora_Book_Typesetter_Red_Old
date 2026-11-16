@@ -314,11 +314,23 @@ describe('S70 (R3-M2/M3) — כיול orphan/widow: רק הפרות אמיתיו
     const r = typeset(t, S);
     // **S72/D-106:** הנעילה עודכנה מ-531f2154 — מעבר יישור-התחתיות משנה את הגיאומטריה
     // ⇒ הערת-צד אחת ("שמירתו") הוסטה במפל בין עמ' 119←120 (תוכן נשמר, 2/1335 עמודים).
-    assert(r.layoutHash.startsWith('847f02d3'), `layout unchanged (got ${r.layoutHash.slice(0, 8)})`);
+    // **שלב 5 פרוסה 1:** ננעל מחדש 847f02d3→7c4e9bff — תיקוני FX-1..FX-5 במתכנן:
+    // קיבולת ב-yPx אמיתיים (FX-5) חיסלה עמודים ריקים-פנטום והצבות-יתר (1335→1089
+    // עמודים, ‑18.5%); חלוקת השורות של כל 4536 הבלוקים שקולה לבסיס (מוכח
+    // ב-s5-corpus-comparison: 0 redivision, 0 marker, 0 content-diff, 1 order-restore);
+    // חריגות קיבולת תכנון 7→1; הערות 129/129 ומילים 346,241/346,241 זהות;
+    // flowCol (מונוטוניות טורים) תיקם את היפוך הקריאה הבודד של הבסיס:
+    // reading-order-break 1→0.
+    assert(r.layoutHash.startsWith('7c4e9bff'), `layout unchanged (got ${r.layoutHash.slice(0, 8)})`);
     const count = (kind) => [...r.ledger.issues.values()].filter(x => x.kind === kind && x.status === 'persists').length;
     assertEq(count('widow-bottom'), 0, 'false widow-bottom flood eliminated (was 1176)');
     assertEq(count('orphan-top'), 0, 'false orphan-top flood eliminated (was 791)');
-    assert(count('orphan-bottom') > 0, 'REAL single-line violations still reported (not weakened)');
+    // **שלב 5 פרוסה 1:** orphan-bottom 29→0 — ההפרות האמיתיות **חוסלו בשורש**,
+    // לא הגילוי נחלש: legalSplitWindow (≥2 שורות לכל צד) + קיבולת ב-yPx אמיתיים
+    // מונעים יצירת שורת-פתיחה בודדת בתחתית טור מלכתחילה. הגלאי עדיין חי:
+    // הבדיקות הסינתטיות לעיל (widow-top/orphan-top MUST be flagged) מוכיחות
+    // זיהוי על קלט מלאכותי, ו-widow-top=1 אמיתי עדיין מדווח בקורפוס.
+    assertEq(count('orphan-bottom'), 0, 'REAL single-line violations eliminated at root (was 29; detector alive via synthetic tests)');
     assert(count('column-imbalance') > 0, 'documented imbalance residuals unchanged (D-95)');
     assert(r.contentPreserved === true, 'content preserved');
   });
