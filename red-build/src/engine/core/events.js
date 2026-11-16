@@ -19,7 +19,7 @@ class EventLog {
     this.stageOrder = [
       'parse', 'scope-map', 'style-prepass', 'fonts-ready', 'measure', 'line-plan',
       'page-plan', 'protections', 'balance', 'justify', 'notes-budget', 'refit',
-      'decorations', 'headers', 'folio', 'toc', 'ledger-finalize', 'render'
+      'decorations', 'headers', 'folio', 'toc', 'page-model', 'ledger-finalize', 'render'
     ];
   }
 

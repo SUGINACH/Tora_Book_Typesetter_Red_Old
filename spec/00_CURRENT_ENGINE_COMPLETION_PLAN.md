@@ -544,7 +544,7 @@
 | 4. שבירת שורות | שער 3 | הכנת fixtures טיפוגרפיים |
 | 5. Planner | שער 4 | ניתוח constraints/DP ובדיקות שאינן משנות חוזה |
 | 6. פריטי עמוד והערות | חוזי planner של שלב 5 | מיפוי page items ותיעוד |
-| 7. PageModel | שער 6 | הכנת projection contract |
+| 7. PageModel | שער 6 | **הושלם (stage7/page-model)** — `core/page-model.js`: סכמה pagemodel-v1; buildPageModel (הקרנת fragments חד-פעמית — מקור אחד עם ה-PDF; אפס החלטות עימוד חדשות — נייטרליות layoutHash מוכחת); 11 אינווריאנטים (כיסוי/כפילויות/זהות/גבולות/סדר-קריאה/פערים/עוגנים/הזמנות/נכסים); הקפאה עמוקה; geometryHash+contentHash נפרדים; חשוף ב-result ובאירוע page-model; הפרות → ledger. very_long: 1050 עמודים / 68,844 שורות / 342,284 מילים — 344,639 בדיקות, אפס הפרות (~6% תקורת). החלפת המקרינים לקריאה-מהמודל — שלב 8 | s7-page-model (16) + audits/STAGE7_PAGE_MODEL.md |
 | 8. מקרינים וייצוא | שער 7 | בדיקות export על PageModel קפוא |
 | 9. cutover והסרה | שערים 1–8 | shadow tests, dependency audit |
 | 10. קבלה והרחבה | שער 9 | תיעוד, מדריך הרחבה ותרגיל פריט חדש |
