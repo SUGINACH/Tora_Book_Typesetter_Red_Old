@@ -1,4 +1,6 @@
 # LAYOUT_DEPENDENCY_MAP.md — מפת תלויות חיה · Tora Book Typesetter Red
+
+> **עדכון שלב 4 (מקטף א׳, 16.11.2026):** נוצר מודול שורות קנוני `src/engine/line/` — breaks.js (מקור אמת להזדמנויות שבירה; משם מייבאים הקיצורים ותבנית הסמן גם לנתיב המורשת) → line-items.js (חוזה LineItem מה-DocumentModel + מדידה דרך measureItem) → kp-linebreak.breakItemSequence (הרחבת ה-KP הקיים) → line-model.js (LineModel + הקצאת glue חד-פעמית). תלות חדשה: measureDocumentModel → buildLineSequences → layoutSequence (תשתית; הצריכה בנתיב המוצר — מקטע ב׳).
 > נבנית אוטומטית מה־require-ים בפועל (סקריפט: `node tools/deps.js` או לפי הטבלה). מצב: 03.11.2026 (אחרי S9 — 66 קשתות).
 >
 > **עדכון שלב 1 (15.11.2026, אודיט על main `95e829d`; ענף audit/stage1-engine-state-20261115):** המפה לעיל מתארת את שכבות ה־DP. מיפוי המסלולים האמיתי המלא (כולל המנוע המקביל) מתועד ב־`audits/ENGINE_RUNTIME_PATHS.md`. עובדות מפתח שאינן נראות במפת ה־require-ים: (1) **מנוע המורשת `legacy-imud-flow.js` (3,720 שורות) הוא ברירת המחדל החיה** — הוא מופעל מ־`core/pipeline.js:123-126` כש־`_layout-profile==='imud' && _imudRaw` (מוצב באתחול המוצר דרך `legacy-settings-map.importImudSettings`), ומכיל בתוכו טוקניזציה+שבירה גרידי+תכנון+הערות+TOC+שערים+גיליון עצמאיים — כלומר ענף `layout/legacy-imud-flow.js` הוא למעשה **מנוע שני שלם** ולא מודול בצינור; (2) `geometry-projector`/`legacy-projector` נצרכים רק מ־`output/export-api.js:135-137` (PDF בלבד — לא בנתיב התצוגה החיה); (3) ייצוא PDF מריץ `typeset` שני עם font-metrics (`export-api.js:117-122`); (4) רגיסטר החישובים הכפולים (15 עובדות, D1-D15) — `audits/ENGINE_DUPLICATION_REGISTER.md`. החוזה האחיד העתידי: `spec/03_UNIFIED_ITEM_CONTRACT.md`.
@@ -83,3 +85,28 @@ core/          : pipeline ← כל השכבות (כולל shaar-pages/ornament-p
 - **שלב 5** (Planner): אילוצי תמונה (IMAGE_PLACEMENT) ומידות טבעיות מה-resolver; חית סביבה בכל MeasuredItem לניטרליות בין סביבות.
 - **זהויות:** נכסים `ast-<kind>-<sha256[:14]>` (תוכן) וגופנים `fnt-<sha256[:14]>` (תוכן) — זהות המסמך מהמקור נשמרת במודל ונקשרת בזמן בנייה עם resolver.
 - **Worker:** העברת נכסים בסכמה `asset-transport-v1` בלבד.
+
+## שכבת מנוע השורות הקנוני (שלב 4 מקטע א׳ — 16.11)
+
+`buildLineSequences` (line-items) → `layoutSequence` (line-model) → `breakItemSequence`
+(kp-linebreak) הם מקור הסמכות לשבירת שורות מהמודל הקנוני:
+- **LineItem (חוזה v2):** זהות נגזרת-מקור (`#w@docStart-docEnd`) — יציבה בין בניות;
+  sourceRange מוחלט + blockId; פרגמנטים פר-ריצה למילה מרובת-גופנים; צמידות
+  סמן⇄עוגן מבנית מקושרת לפי noteRef (glue פנימי + penalty אסור).
+- **breaks.js:** מקור אמת אחד להזדמנויות — והוא **משתתף בפועל** בהחלטת החיתוך
+  ב-DP (breakBetweenItems + canStartLineWith/canEndLineWith); קיצורים משותפים
+  עם protectors של המורשת.
+- **תמונות:** inline = תיבה; block/centered = LineModel נפרד; **float = אילוץ
+  אזור בלבד** (extractFloats — אין ספירת רוחב כפולה; זהות/עוגן/צד ב-floats/
+  floatAreas; מיקום עמוד סופי — שלב 5).
+- **justify:** מדיניות מהגדרות המסמך (justifyPolicyOf): גוף stretch (03.11(ד)),
+  שורה אחרונה לפי body-last-line-align; הקצאת glue פעם אחת ב-LineModel —
+  ה-renderer צורך ואינו מותח.
+- **Overflow:** ערוץ דטרמיניסטי אחד; יחידה צמודה אטומית גם בגיבוי
+  (overflow-joined-unit עם noteRef); פריט רחב ⇒ overflow-item-own-line.
+- **wrap/DP:** lineOf אטומי עם cost/parent + אימות שוט-אחרי מול lineWidthAt
+  (אינדקס שורה סופי) — wrap-width-mismatch מדווח מפורש.
+- **שלב 5 (Planner):** יקבל LineModel שלם (fragments, זהויות, מדידות, glue,
+  baseline, semantic, floatAreas) — בלי מדידה מחדש ובלי שינוי גאומטריית שורה.
+- **הגבול:** נתיב המוצר עדיין שובר דרך words[]→breakLines (מקטע ב׳ יחליף);
+  breakLines נשאר למורשת עד שלב 9; אין breaker/MeasureAPI שניים.

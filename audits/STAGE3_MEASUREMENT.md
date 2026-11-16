@@ -1,5 +1,20 @@
 # STAGE3_MEASUREMENT — נכסים, סגנונות ומדידה אחידה (שלב 3)
 
+> **Erratum מפורש (תוקן בשלב 4, 16.11 — הוראת §3.9):** בדוח המקורי נכתב ב-§3.5
+> ש-`measureDocumentModel` "מודד את כל פריטי המודל (כולל גופי הערות בגודל רישון)"
+> וב-§4 סומן "[x] כל סוג פריט במודל מקבל מדידה קנונית". **הצהרה זו לא הייתה
+> מדויקת:** גוף ההערה במודל שלב 2 הוא פריט `noteBody` עם `payload.runs` — לא
+> `note.items` — והלולאה עברה על רשימה ריקה, כלומר **גופי ההערות לא נמדדו
+> כלל** בשלב 3. חשבונאות ה-measured+rejected=items נותרה נכונה רק לפריטים
+> שנספרו בפועל. **מה תוקן בשלב 4** (ענף `stage4/unified-line-engine`):
+> (א) `measureDocumentModel` מודד כעת את ה-noteBody במפורש כפריט טקסט בסגנון
+> רישום; (ב) `buildLineSequences` (מנוע השורות) שובר גופי הערות באותו מנוע
+> (§4.1-2) — כלומר המדידה בפועל של גופי ההערות וצריכתה נעשות בשלב 4, לא בשלב 3.
+> ההבחנה המחייבת: **תשתית המדידה** (measureItem/מפתחות/immutability/resolvers)
+> — נבנתה ונבדקה בשלב 3; **מדידת גופי ההערות בפועל** — תוקנה והוכחה בשלב 4;
+> **צריכת המדידה על ידי מנוע השורות** — נסגרה בשלב 4 מקטע א׳ (הוכחה:
+> `s4-line-engine` — "הערה ארוכה — נשברת לשורות באותו מנוע, בסגנון רישום").
+
 > **תוכנית:** `spec/00_CURRENT_ENGINE_COMPLETION_PLAN.md` §§3.1–3.3.
 > **ענף:** `stage3/assets-styles-measurement` (סונכרן מול main `329cc40` — כולל PR #21/R-03; בסיס שלב 2: `db3ff53`).
 > **מימוש:** `src/engine/assets/` · `src/engine/typography/font-resolver.js` · `src/engine/typography/units.js` · הרחבת `measure-api.js` · `src/engine/measure/measure-model.js` · הרחבת `model/document-model.js` + `model/kinds.js` · הרחבת `ui/worker-protocol.js` + `ui/engine-worker-main.js` + `ui/worker-client.js` + `engine/core/pipeline.js` (קליטת נכסים נצפית בלבד).
@@ -49,7 +64,7 @@
 - **חריג תיעודי:** `measure-api.registerFont` נותר הרישום הגולמי ברמת המנוע (בליווי מעקב זהות-תוכן) — בשימוש החוקי היחיד של החלפה זמנית בייצוא PDF (`export-api`, שחזור בסוף). רישום הגופן של המוצר (UI→Worker) עובר כולו דרך ה-resolver הקנוני.
 
 ### 3.5 מדידת מסמך שלם (`src/engine/measure/measure-model.js`)
-`measureDocumentModel(model, ctx)` מודד את כל פריטי המודל (כולל גופי הערות בגודל רישון). פלט: **מפת itemId→MeasuredItem קריאה-בלבד** (`ReadOnlyMeasuredMap` — `set/delete/clear` זורקים; תיקון ביקורת: `Object.freeze` על Map אינו חוסם) + דחיות וסטטיסטיקה קפואים. **גבול השלב:** אין כאן החלטת שבירה/תכנון — שלב 4 יצרוך.
+`measureDocumentModel(model, ctx)` מודד את פריטי המודל שנספרו בלולאות **בסגנון רישון לגופי ההערות — [תיקון Erratum]: בשלב 3 עצמו גופי ההערות (noteBody עם payload.runs) לא נמדדו — הלולאה עברה על `note.items` הריק; המדידה בפועל תוקנה והוכחה בשלב 4 (ראה ה-Erratum למעלה).** פלט: **מפת itemId→MeasuredItem קריאה-בלבד** (`ReadOnlyMeasuredMap` — `set/delete/clear` זורקים; תיקון ביקורת: `Object.freeze` על Map אינו חוסם) + דחיות וסטטיסטיקה קפואים. **גבול השלב:** אין כאן החלטת שבירה/תכנון — שלב 4 יצרוך.
 
 ### 3.6 יחידות ו-rounding אחידים (`units.js`)
 px CSS פנימי; pt→px=×4/3; mm; מדיניות עיגול יחידה (`none` קנוני, `render` בגבול ההקרנה). נעילת S5.1 במקום אחד.

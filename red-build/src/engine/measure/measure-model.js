@@ -79,11 +79,27 @@ function measureDocumentModel(model, ctx = {}) {
       else rejected.push({ itemId: item.id, kind: item.kind, blockId: blk.id, code: res.code, message: res.message });
     }
   }
-  // גופי הערות — נמדדים כפריטי טקסט בגודל הרישום (אותו זרם, אותו חוזה)
+  // גופי הערות — נמדדים כפריטי טקסט בגודל הרישום (אותו זרם, אותו חוזה).
+  // **תיקון דיוק דוח שלב 3 (2.11 בתיקון שלב 4):** גוף הערה במודל שלב 2 הוא פריט
+  // noteBody עם runs ב-payload שלו עצמו — לא `note.items`. הלולאה שלאותו עברה על רשימה ריקה ולא מדדה כלום; כעת הוא נמדד במפורש
+  // (מוזר לפריט טקסט עם הריצות שלו, בסגנון רישום, עם זיווח אדרתי לשורת ההדרה).
   for (const note of (model.notes || [])) {
+    const noteBase = { bodySize: fnSize, lineHeight: 1.2, fnSize, defaultFamily: settings['f-note-body-font'] || defaultFamily };
+    const noteStyle = resolveStyleFor({ kind: 'noteBody' }, note, noteBase);
+    if (note.kind === 'noteBody' && note.payload && Array.isArray(note.payload.runs) && note.payload.runs.length) {
+      count++;
+      const res = measureItem({ id: note.id, kind: 'text', payload: { runs: note.payload.runs } }, noteStyle, {
+        direction: dir, language: lang,
+        assetResolver: ctx.assetResolver || null,
+        environmentFingerprint: env,
+        constraints, constraintsKey
+      });
+      if (res.ok) measured.set(note.id, res);
+      else rejected.push({ itemId: note.id, kind: 'noteBody', blockId: note.parentId || note.id, code: res.code, message: res.message });
+    }
     for (const item of (note.items || [])) {
       count++;
-      const style = resolveStyleFor(item, note, { bodySize: fnSize, lineHeight: 1.2, fnSize, defaultFamily: settings['f-note-body-font'] || defaultFamily });
+      const style = resolveStyleFor(item, note, noteBase);
       const res = measureItem(item, style, {
         direction: dir, language: lang,
         assetResolver: ctx.assetResolver || null,
@@ -128,4 +144,5 @@ function resolveStyleFor(item, container, base) {
   };
 }
 
-module.exports = { measureDocumentModel };
+/** פתרון סגנון פריט — מיוצא גם לשלב 4 (מנוע השורות משתמש באותו פתרון — מקור אחד, לא שכפול). */
+module.exports = { measureDocumentModel, resolveStyleFor };

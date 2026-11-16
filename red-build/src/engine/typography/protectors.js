@@ -8,6 +8,9 @@
 // סמן הערה = אות עברית **עם גרש** (א׳) או זוג־אותיות עם גרשיים (אב״) — נדרש סימן מפורש.
 // לקח false-positive: לולא דרישת הגרש כל מילה בת אות הייתה נצמדת לשכנתה (הרס טוקניזציה).
 const NOTE_MARKER_RE = /([\u05D0-\u05EA]\u05F3|[\u05D0-\u05EA]{1,2}\u05F4)[ \u00A0]+/g;
+// **שלב 4 (§4.1-4 — מקור אחד):** רשימת הקיצורים גררה ל-breaks.js של מנוע השורות המאוחד;
+// הנתיב המורשת קורא משם — לא עוד העתקים. ערכים זהות ביט.
+const { ABBREVIATIONS } = require('../line/breaks');
 
 function glueNoteMarkers(text) {
   // BRZ-11: סמן הערה אינו נשבר מסוף שורה — סמן + המילה שאחריו הופכים יחידת NBSP.
@@ -20,7 +23,7 @@ function glueGershayim(text) {
   return text;
 }
 
-const ABBREV = ['ר"ת', 'רשב"א', 'תוס\'', 'מרדכי', 'שב"ע', 'רמב"ם', 'רש"י', 'תוספות'];
+const ABBREV = ABBREVIATIONS; // מקור יחיד (breaks.js) — ערכים זהות ביט
 function glueAbbreviations(text) {
   let out = text;
   for (const a of ABBREV) out = out.split(a + ' ').join(a + '\u00A0');
