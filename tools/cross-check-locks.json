@@ -4,12 +4,12 @@
     {
       "name": "canonical (DP)",
       "file": "red-build/tests/fixtures/canonical_corpus.txt",
-      "lockHash": "80f9ed6c"
+      "lockHash": "f6f32c40"
     },
     {
       "name": "very_long (DP)",
       "file": "audits/very_long_test_text.txt",
-      "lockHash": "77d5d5d3"
+      "lockHash": "847f02d3"
     },
     {
       "name": "very_long (legacy, run-ours = corpus-invariants CI)",

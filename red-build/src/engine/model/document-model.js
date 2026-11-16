@@ -160,7 +160,22 @@ function runsToItems(parsed, parentId, baseOffset, ordinalBase, canonicalBase, d
           resolution: { stage: 3, pending: ['naturalWidth', 'naturalHeight', 'aspectRatio', 'fit'] }
         }),
         styleRef: null,
-        constraints: { atomic: true, participates: PARTICIPATION.INLINE, splittable: SPLIT_POLICIES.NEVER, overflow: 'move', placement: IMAGE_PLACEMENT.INLINE },
+        // **שלב 4 מקטע ב׳ (הוראה §12):** מדיניות ההצבה מוסקמת מסיווץ הגובץ (.l/.c/.r) —
+        // מקום קנוני אחד: המודל. l = צד הסיום (שמאל ב-RTL) צף;
+        // r = צד ההתחלה (ימין ב-RTL) צף; c = בלוק ממורכז; ללא סיווות = inline
+        // אטומי. מנוע השורות קורא את האילוצים מכאן (§4.1-7) — אין החלטות גיאומטריה מפוזרות במנוע או ברינדר.
+        constraints: (run.align === 'left' || run.align === 'right' || run.align === 'center')
+          ? {
+              atomic: true,
+              participates: run.align === 'center' ? IMAGE_PLACEMENT.CENTERED : PARTICIPATION.INLINE,
+              ...(run.align === 'left' ? { wrap: 'end' } : {}),
+              ...(run.align === 'right' ? { wrap: 'start' } : {}),
+              splittable: SPLIT_POLICIES.NEVER, overflow: 'move',
+              placement: run.align === 'center' ? IMAGE_PLACEMENT.CENTERED
+                : run.align === 'left' ? IMAGE_PLACEMENT.FLOAT_END
+                : IMAGE_PLACEMENT.FLOAT_START
+            }
+          : { atomic: true, participates: PARTICIPATION.INLINE, splittable: SPLIT_POLICIES.NEVER, overflow: 'move', placement: IMAGE_PLACEMENT.INLINE },
         diagnostics: (assets ? [] : [{ code: 'asset-dimensions-pending-stage3', message: 'מידות הנכס ייפתרו בשלב 3 (AssetResolver); הזהות והמקור כבר קבועים.' }])
       });
       continue;

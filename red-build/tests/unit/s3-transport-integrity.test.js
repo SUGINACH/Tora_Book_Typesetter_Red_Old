@@ -116,13 +116,20 @@ describe('שלב 3 — AssetResolver.fromTransport: אימות שלמות (תי�
     const okSer = r.serializeForTransport();
     assert(okSer.ok && okSer.assets.length === 1);
   });
-  it('אין נתיבים מקומיים בהובלה — מזהים ובתים בלבד', () => {
+  it('אין נתיבים מקומיים בהובלה — מזהים, בתים, סוג ושמות נייוט יחסיים של המסמך (מקטע ב׳, הוראה §6)', () => {
     const r = new AssetResolver();
     r.addBytes('some/relative/path.png', tinyPng(4, 4));
     const t = r.serializeForTransport();
     const keys = Object.keys(t.assets[0]).sort();
-    assertEq(keys.join(','), 'assetId,bytes,kind', 'שדות ההובלה: מזהה, בתים, סוג — בלבד');
-    assert(!JSON.stringify(t).includes('some/relative/path'), 'הנתיב המקורי אינו מועבר');
+    // **מקטע ב׳:** refs הוא חלק מהחוזה התקני — שמות יחסיים של המסמך
+    // (לא נתיבי מערכת): בלי המפה הזו צד העובד אינו יכול לפתור תמונות לפי
+    // מקום העיגון במודל.
+    assertEq(keys.join(','), 'assetId,bytes,kind,refs', 'שדות ההובלה: מזהה, בתים, סוג + שמות נייוט יחסיים');
+    assertEq(t.assets[0].refs.join(','), 'some/relative/path.png', 'השם היחסי נשמר');
+    // אין נתיבים מו׋ליים/\ UNC / פרוטוקולים
+    for (const ref of t.assets[0].refs) {
+      assert(!/^([a-z]:|\\\\|\/\/|[a-z][a-z0-9+.-]*:)/i.test(ref), 'שם יחסי בלבד: ' + ref);
+    }
   });
 });
 

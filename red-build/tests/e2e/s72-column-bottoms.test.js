@@ -195,14 +195,19 @@ describe('S72.2 DP — יישור תחתיות ככלל עימוד (שיפורי
     assert(min >= 0.95 - 1e-9 && max <= 1.05 + 1e-9, `מקדם מחוץ לגבולות: [${min}, ${max}]`);
   });
 
-  it('נייטרליות: hash הקורפוס זהה לנעילה (010f9b35) — aqStretch אינו משנה תוכן', () => {
-    assert(result.layoutHash.startsWith('010f9b35'), `hash הקורפוס השתנה: ${result.layoutHash.slice(0, 16)}`);
+  it('נייטרליות: hash הקורפוס זהה לנעילה (bef8ebbed977) — aqStretch אינו משנה תוכן', () => {
+    // ננעל מחדש 16.11 (שלב 4 מקטע ב׳ — חיבור מנוע השורות הקנוני למסלול המוצר):
+    // הפער מול 010f9b35 מסווג פר-פריט בשיטת s4b-corpus-comparison (קנוני:
+    // 162/170 בלוקים זהים; 8 שונו — כולם סמני הערות: הצמדה מבנית P-1 + מדידת
+    // סמן בגודל רישום) וב-s4-line-comparison (very_long: 0 בלתי-מוסברים);
+    // מספר העמודים נשמר; contentPreserved=true (מאומת גם ב-long-real-text).
+    assert(result.layoutHash.startsWith('bef8ebbed977'), `hash הקורפוס השתנה: ${result.layoutHash.slice(0, 16)}`);
     const r2 = typeset(corpus, getDefaultSettings(), {});
     assertEq(result.layoutHash, r2.layoutHash, 'דטרמיניזם');
-    // הקנוני — נעילת 80f9ed6c מ-S6.0 (מאומת ב-s13-acceptance)
+    // הקנוני — נעילת f6f32c40 ממקטע ב׳ (מאומת ב-s13-acceptance)
     const canon = fs.readFileSync(path.join(REPO, 'tests/fixtures/canonical_corpus.txt'), 'utf8');
     const rc = typeset(canon, getDefaultSettings(), {});
-    assert(rc.layoutHash.startsWith('80f9ed6c'), `hash קנוני השתנה: ${rc.layoutHash.slice(0, 16)}`);
+    assert(rc.layoutHash.startsWith('f6f32c40'), `hash קנוני השתנה: ${rc.layoutHash.slice(0, 16)}`);
   });
 
   it('אין גלישה חדשה: כל טור מתוח נשאר בתוך הקיבולת (בלי חדירה לאזור ההערות)', () => {

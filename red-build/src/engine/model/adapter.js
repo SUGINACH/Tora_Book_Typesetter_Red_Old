@@ -42,20 +42,23 @@ function modelToTokens(model) {
     if (blk.kind === BLOCK_KINDS.HEADING) {
       const raw = rebuildCanonicalLine(blk);
       const text = blk.items.length && blk.items[0].kind === 'text' ? blk.items[0].payload.text : blk.payload.text;
-      tokens.push(mkToken('heading', { level: blk.level, text, raw }));
+      // **שלב 4 מקטע ב׳:** blockId — זיהוי בלוק המודל על הטוקן (הפלט נגזר;
+      // תוספת טהורה — contentHash אינו כולל אותו). ה-pipeline משתמש בו כדי
+      // להזרים את פריטי המודל למנוע השורות הקנוני.
+      tokens.push(mkToken('heading', { level: blk.level, text, raw, blockId: blk.id }));
       continue;
     }
     if (blk.kind === BLOCK_KINDS.ENDNOTE) {
       const raw = rebuildCanonicalLine(blk);
       const text = blk.items.length && blk.items[0].kind === 'text' ? blk.items[0].payload.text : blk.payload.text;
       // סדר השדות זהה לטוקניזר (num?, text, raw) — זהות מלאה כולל סדר מפתחות.
-      const payload = blk.num != null ? { num: blk.num, text, raw } : { text, raw };
+      const payload = blk.num != null ? { num: blk.num, text, raw, blockId: blk.id } : { text, raw, blockId: blk.id };
       tokens.push(mkToken('endnote', payload));
       continue;
     }
     if (blk.kind === BLOCK_KINDS.ENDNOTE_CLASS) {
       const raw = rebuildCanonicalLine(blk);
-      tokens.push(mkToken('endnote-class', { title: blk.payload.title, raw }));
+      tokens.push(mkToken('endnote-class', { title: blk.payload.title, raw, blockId: blk.id }));
       continue;
     }
     if (blk.kind === BLOCK_KINDS.PARAGRAPH) {
@@ -84,7 +87,7 @@ function modelToTokens(model) {
         }
       }
       const raw = rebuildCanonicalLine(blk, model);
-      tokens.push(mkToken('paragraph', { parts, notes, unmatchedClosers: blk.syntax.unmatchedClosers || [], raw }));
+      tokens.push(mkToken('paragraph', { parts, notes, unmatchedClosers: blk.syntax.unmatchedClosers || [], raw, blockId: blk.id }));
       continue;
     }
     throw new Error(`adapter: unsupported block kind ${blk.kind}`);
