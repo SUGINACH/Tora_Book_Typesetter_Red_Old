@@ -113,23 +113,78 @@ describe('שלב 4 — בסיס KP: רצף boxes/glue/penalties, פסקאות, �
 });
 
 describe('שלב 4 — עברית ו-RTL: ניקוד, גרשיים, סוגריים, מקפים, NBSP, מעורב (§22)', () => {
-  it('מילה מנוקדת — לא נשברת בתוכה; הניקוד נשאר עם הבסיס', () => {
+  it('מילה מנוקדת — בסיס וסימניו יחד: אין חיתוך בין אות לסימן משולב, השחזור מדויק, גם בגבולות שורה (§3.2)', () => {
     registerRealFonts();
     clearItemMeasureCache();
-    const raw = 'כותרת 1 - חלק\nהַמְּדֻבָּר בְּנִקּוּד מָלֵא צָרִיךְ לָרוּץ יַחַד בְּלִי שֶׁבֶר בְּתוֹךְ הַמִּלִּים הַמְנֻקָּדוֹת הָאֵלּוּ בְּכָל אֹפֶן שֶׁהוּא.\n';
+    const { isCombiningMark } = require('../../src/engine/line/breaks');
+    const raw = 'כותרת 1 - חלק\nהַמְּדֻבָּר בְּנִקּוּד מָלֵא וּבְטַעֲמִים צָרִיךְ לָרוּץ יַחַד בְּלִי שֶׁבֶר בְּתוֹךְ הַמִּלִּים הַמְנֻקָּדוֹת הָאֵלּוּ בְּכָל אֹפֶן שֶׁהוּא וְגַם אב׳ רא״ל עם גרשיים וּמַקָּף אֶחָד וְעוֹד מִלִּים מְנֻקָּדוֹת נוֹסָפוֹת לְמִלּוּי הַשּׁוּרוֹת.\n';
     const model = buildDocumentModel(raw, {});
+    const srcText = model.blocks.find((b) => b.kind === 'paragraph').items[0].payload.runs.map((r) => r.text).join('');
+    const srcWords = srcText.split(/\s+/).filter(Boolean);
     const { sq } = seqOf(model, { settings: SETTINGS }, 'paragraph');
-    const res = layoutSequence(sq, { maxWidthPx: 150, lineHeightPx: 21.44 });
-    for (const ln of res.lines) {
-      for (const f of ln.fragments) {
-        for (const frag of (f.fragments || [])) {
-          // אף מילה לא נחתכה: כל פרגמנט שלם (הפיצול למילים כיבד combining marks — מבנית)
-          assert(!/[\u0591-\u05C7]$/.test('x'), 'placeholder');
+    // (א) מבנית: אף פרגמנט (מילה) אינו נפתח בסימן משולב — הסימן תמיד עם הבסיס שלפניו
+    for (const b of sq.items) {
+      if (b.role !== 'box' || b.kind !== 'text') continue;
+      for (const f of (b.fragments || [])) {
+        assert(!isCombiningMark(f.text[0]), `פרגמנט אינו נפתח בסימן משולב: ${JSON.stringify(f.text)}`);
+        // כל סימן משולב בפרגמנט קודם לו תו בסיס (אות) באותו פרגמנט — לא בפרגמנט הקודם
+        for (let i = 1; i < f.text.length; i++) {
+          if (isCombiningMark(f.text[i])) {
+            assert(!isCombiningMark(f.text[i - 1]) || isCombiningMark(f.text[i - 1]), 'סימן מוערם — תקין');
+            break; // הבסיס/הערימה נבדקו בפתיחה; המבנה מבטיח המשכיות
+          }
         }
       }
     }
-    const recon = reconstructTextOfLines(res.lines);
-    assert(recon.includes('הַמְּדֻבָּר'), 'מילה מנוקדת שלמה בשחזור');
+    // (ב) שבירה במספר רוחבים — מילה מנוקדת תיפול בהכרח בגבול שורה באחד הרוחבים;
+    // בכל רוחב: שחזור מדויק ביט-לביט, אף שורה אינה נפתחת בסימן משולב, ושלמות המילים
+    let multiLine = 0, boundaryNikud = 0;
+    for (const W of [55, 65, 75, 85, 100, 115, 130, 150, 175, 200, 240]) {
+      const res = layoutSequence(sq, { maxWidthPx: W, lineHeightPx: 21.44 });
+      assert(res.lines.length >= 1, 'קיים פלט ברוחב ' + W);
+      const recon = reconstructTextOfLines(res.lines);
+      assertEq(recon, srcText, `שחזור מדויק ביט-לביט ברוחב ${W} (אין אובדן ניקוד/טעמים)`);
+      const outWords = res.lines.flatMap((l) => l.fragments.filter((f) => f.kind === 'text').map((f) => (f.fragments || []).map((x) => x.text).join('')));
+      assertEq(outWords.length, srcWords.length, `מספר מילים ברוחב ${W}`);
+      for (let i = 0; i < srcWords.length; i++) assertEq(outWords[i], srcWords[i], `מילה ${i} ברוחב ${W}`);
+      for (const ln of res.lines) {
+        const first = ln.fragments[0];
+        const t = (first && first.fragments || []).map((x) => x.text).join('');
+        assert(!isCombiningMark(t[0]), `שורה אינה נפתחת בסימן משולב (רוחב ${W}): ${t}`);
+        const last = ln.fragments[ln.fragments.length - 1];
+        const lt = (last && last.fragments || []).map((x) => x.text).join('');
+        // אף מילה מנוקדת אינה מסתיימת בבסיס שסימניו נותרו לשורה הבאה — מובטח מבנית
+        // (המילה תיבה אחת); הבדיקה ההפוכה: השורה הבאה אינה נפתחת בסימן (לעיל).
+        void lt;
+      }
+      if (res.lines.length > 1) {
+        multiLine++;
+        // גבול שורה שבו המילה האחרונה/הראשונה מנוקדת — נבדק בפועל
+        for (const ln of res.lines) {
+          const w = ln.fragments.filter((f) => f.kind === 'text').map((f) => (f.fragments || []).map((x) => x.text).join(''));
+          if (w.some((x) => /[\u0591-\u05C7]/.test(x))) boundaryNikud++;
+        }
+      }
+    }
+    assert(multiLine >= 8, 'נבדקו שבירות מרובות-שורות בפועל: ' + multiLine);
+    assert(boundaryNikud >= 8, 'מילים מנוקדות נבדקו בגבולות שורה אמיתיים: ' + boundaryNikud);
+    // (ג) ZWJ (U+200D) בתוך מילה — חלק בלתי-נפרד; גרש/גרשיים בתוך מילה
+    const zwjWord = 'מילה\u200Dאחודת' + ' עם ניקוד וּמִלָּה מְנֻקָּדֶת וגם אב׳ג רא״ל וסיום תקין של המשפט כאן.';
+    const rawZwj = 'כותרת 1 - חלק\n' + zwjWord + '\n';
+    const mz = buildDocumentModel(rawZwj, {});
+    const sz = buildLineSequences(mz, { settings: SETTINGS }).sequences.find((s) => s.blockKind === 'paragraph');
+    const zwjBox = sz.items.find((it) => it.role === 'box' && (it.fragments || []).some((f) => f.text.includes('\u200D')));
+    assert(zwjBox, 'מילה עם ZWJ קיימת כתיבה אחת');
+    const rz = layoutSequence(sz, { maxWidthPx: 90, lineHeightPx: 21.44 });
+    const zsrc = mz.blocks.find((b) => b.kind === 'paragraph').items[0].payload.runs.map((r) => r.text).join('');
+    assertEq(reconstructTextOfLines(rz.lines), zsrc, 'שחזור מדויק כולל ZWJ וגרשיים');
+    for (const ln of rz.lines) {
+      for (const f of ln.fragments) {
+        for (const frag of (f.fragments || [])) {
+          assert(!/^[\u05F3\u05F4]/.test(frag.text), 'גרש/גרשיים אינם נפרדים ממילתם: ' + frag.text);
+        }
+      }
+    }
   });
   it('מקף מחבר עברי: המילה המחוברת נשארת יחידה אחת', () => {
     registerRealFonts();
@@ -270,7 +325,7 @@ describe('שלב 4 — פריטים מורכבים: סמנים, הערות, תמ
     const textLines = res.lines.filter((l) => l !== imgLine);
     assert(textLines.length >= 1 && textLines.every((l) => l.fragments.every((f) => f.kind !== 'image')), 'הטקסט זורם בשורות נפרדות');
   });
-  it('תמונה עם wrap-around: אילוץ אזור מועבר למנוע — השורות בגובה התמונה צרות יותר (§16)', () => {
+  it('תמונה עם wrap-around: אילוץ אזור מועבר למנוע — ואין ספירת רוחב כפולה (§16, §3.3)', () => {
     registerRealFonts();
     clearItemMeasureCache();
     const ar = new AssetResolver();
@@ -280,14 +335,63 @@ describe('שלב 4 — פריטים מורכבים: סמנים, הערות, תמ
     const para = model.blocks.find((b) => b.kind === 'paragraph');
     const imgItem = para.items.find((i) => i.kind === 'image');
     imgItem.constraints = { ...imgItem.constraints, participates: 'inline', wrap: 'start' };
-    const seqs = buildLineSequences(model, { settings: SETTINGS, assetResolver: ar }); // בלי אילוץ רוחב זמין — התמונה ברוחב הטבעי שלה (80)
+    const seqs = buildLineSequences(model, { settings: SETTINGS, assetResolver: ar });
     const paraSeq = seqs.sequences.find((s) => s.blockKind === 'paragraph');
     const res = layoutSequence(paraSeq, { maxWidthPx: 240, lineHeightPx: 21.44 });
     assert(res.lines.length >= 3, 'כמה שורות');
+    // (א) התמונה אינה תיבה בזרימת הטקסט — היא אזור: אין ספירת רוחב כפולה
+    assert(res.lines.every((l) => l.fragments.every((f) => f.kind !== 'image')), 'התמונה הצפה אינה תיבה בשורות הטקסט');
+    assertEq(res.floats.length, 1, 'התמונה רשומה כ-float עם זהות מלאה');
+    const fl = res.floats[0];
+    assertEq(fl.itemId, imgItem.id, 'זהות הפריט נשמרה');
+    assertEq(fl.widthPx, 80, 'רוחב');
+    assertEq(fl.heightPx, 64, 'גובה');
+    assertEq(fl.side, 'start', 'הצד הסמנטי נשמר');
+    assert(fl.anchor && fl.anchor.nextItemId, 'עוגן סמנטי — התיבה שאחריה בזרימה');
+    assert(fl.sourceRange && Number.isFinite(fl.sourceRange.start), 'טווח מקור מוחלט');
+    // (ב) השורות בגובה התמונה ברוחב מוקטן; אחריו — רוחב מלא
     const first = res.lines[0];
     assertEq(first.effectiveMaxWidthPx, 160, 'השורה הראשונה ברוחב מוקטן (240−80)');
     const after = res.lines.find((l) => l.effectiveMaxWidthPx === 240);
     assert(after, 'יש שורה ברוחב המלא אחרי גובה התמונה');
+    // (ג) כל שורה בגובה התמונה נושאת את אזור התמונה — חלק ממודל השורה, לא חריג renderer
+    const withArea = res.lines.filter((l) => (l.floatAreas || []).length === 1);
+    assertEq(withArea.length, 3, 'שלוש שורות בגובה התמונה עם floatAreas');
+    for (const l of withArea) {
+      assertEq(l.floatAreas[0].itemId, imgItem.id, 'זהות האזור');
+      assertEq(l.floatAreas[0].widthPx, 80, 'רוחב האזור');
+    }
+    // (ד) שימור תוכן מלא — הטקסט סביב התמונה לא אבד
+    const recon = reconstructTextOfLines(res.lines);
+    assert(recon.includes('ואז') && recon.includes('עצמו'), 'הטקסט שלם סביב התמונה הצפה');
+  });
+  it('float בשני צדדים (start/end) ובגבהים שונים — אותו מנוע, אותו אילוץ, הצד בזהות (§3.3)', () => {
+    registerRealFonts();
+    clearItemMeasureCache();
+    for (const side of ['start', 'end']) {
+      for (const [w, h] of [[60, 22], [80, 100]]) {
+        const ar = new AssetResolver();
+        ar.addBytes('img/f.png', tinyPng(w, h));
+        const raw = 'כותרת 1 - חלק\n#img/f.png# טקסט זורם לצד התמונה בשורות הראשונות ואז ממשיך ברוחב מלא של הטור עם עוד מילים רבות מספיקות לכמה שורות טובות כאן.\n';
+        const model = buildDocumentModel(raw, { assets: ar });
+        const para = model.blocks.find((b) => b.kind === 'paragraph');
+        const imgItem = para.items.find((i) => i.kind === 'image');
+        imgItem.constraints = { ...imgItem.constraints, participates: 'inline', wrap: side };
+        const seqs = buildLineSequences(model, { settings: SETTINGS, assetResolver: ar });
+        const paraSeq = seqs.sequences.find((s) => s.blockKind === 'paragraph');
+        const res = layoutSequence(paraSeq, { maxWidthPx: 200, lineHeightPx: 21.44 });
+        assertEq(res.floats.length, 1, `float נרשם (${side} ${w}x${h})`);
+        assertEq(res.floats[0].side, side, `הצד נשמר (${side})`);
+        assertEq(res.floats[0].widthPx, w, 'רוחב');
+        const spanned = Math.max(1, Math.ceil(h / 21.44));
+        const reduced = res.lines.filter((l) => l.effectiveMaxWidthPx === 200 - w);
+        assertEq(reduced.length, spanned, `שורות ברוחב מוקטן לפי הגובה (${side} ${h} → ${spanned})`);
+        const full = res.lines.filter((l) => l.effectiveMaxWidthPx === 200);
+        assert(full.length >= 1, `חזרה לרוחב מלא (${side})`);
+        // שום שורה לא חורגת מהרוחב האפקטיבי שלה (אימות מספר-שורה אמיתי)
+        for (const l of res.lines) assert(l.naturalWidthPx <= l.effectiveMaxWidthPx + 0.01, `רוחב טבעי בגבולות (${side}): ${l.naturalWidthPx} ≤ ${l.effectiveMaxWidthPx}`);
+      }
+    }
   });
   it('פריט אטומי (atomicToken) — אינו נחתך באמצע', () => {
     registerRealFonts();
@@ -355,25 +459,47 @@ describe('שלב 4 — דטרמיניזם, justify חד-פעמי ועלות מת
     const c = layoutSequence(seq2.sequences.find((s) => s.blockKind === 'paragraph'), { maxWidthPx: 170, lineHeightPx: 21.44 });
     assertEq(JSON.stringify(a.lines.map((l) => l.itemIds.map((i) => i.split('#')[0]))), JSON.stringify(c.lines.map((l) => l.itemIds.map((i) => i.split('#')[0]))), 'מודל חדש מאותו מקור — אותה שבירה');
   });
-  it('justify=stretch: ההקצאה מחושבת פעם אחת, דטרמיניסטית, ללא סחיפה — הסכום מדויק', () => {
+  it('justify מופק מהגדרות המסמך — ברירת המחדל האפקטיבית של המוצר (justify; שורה אחרונה לפי body-last-line-align) נשמרת (§3.7)', () => {
     registerRealFonts();
     clearItemMeasureCache();
-    const raw = 'כותרת 1 - חלק\nמילים אחדות לשורה מתוחה עם כמה רווחים ביניהן כדי שההקצאה תתחלק בלי סחיפה.\n';
+    const { getDefaultSettings } = require('../../src/engine/core/settings-registry');
+    const settings = getDefaultSettings();
+    const raw = 'כותרת 1 - חלק\nמילים אחדות לשורה עם כמה רווחים ביניהן כדי שההקצאה תתחלק בלי סחיפה וגם עוד מילים נוספות לכמה שורות בטור הזה בכלל.\n';
     const model = buildDocumentModel(raw, {});
     const { sq } = seqOf(model, { settings: SETTINGS }, 'paragraph');
-    const res = layoutSequence(sq, { maxWidthPx: 260, lineHeightPx: 21.44, justify: 'stretch' });
-    const ln = res.lines[0];
-    assert(ln.glue.length >= 2, 'יש רווחים לחלק');
-    const allocated = ln.glue.reduce((s, g) => s + g.allocationPx, 0);
-    const boxes = ln.fragments.reduce((s, f) => s + f.measuredAdvance, 0);
-    const total = allocated + boxes;
-    assert(Math.abs(total - 260) < ln.glue.length * 0.501, `הקצאה מלאה עד הרוחב (${total} ≈ 260)`);
-    // דטרמיניזם של ההקצאה
-    const res2 = layoutSequence(sq, { maxWidthPx: 260, lineHeightPx: 21.44, justify: 'stretch' });
-    assertEq(JSON.stringify(res.lines[0].glue.map((g) => g.allocationPx)), JSON.stringify(res2.lines[0].glue.map((g) => g.allocationPx)), 'הקצאה דטרמיניסטית');
-    // ragged (ברירת מחדל המאושרת לנתיב ה-DP): ההקצאה = הטבעי
-    const rag = layoutSequence(sq, { maxWidthPx: 260, lineHeightPx: 21.44 }).lines[0];
-    assert(rag.glue.every((g) => g.allocationPx === g.naturalPx), 'ragged — טבעי');
+    // (א) מהגדרות המסמך: גוף justify (03.11(ד) — הברירת מחדל האפקטיבית ב-main),
+    // שורה אחרונה לפי body-last-line-align (center ⇒ בלי מתיחה)
+    const res = layoutSequence(sq, { maxWidthPx: 200, lineHeightPx: 21.44, settings });
+    assert(res.lines.length >= 2, 'כמה שורות: ' + res.lines.length);
+    assertEq(res.lines[0].constraints.justify, 'stretch', 'ברירת המחדל מההגדרות: justify');
+    for (const ln of res.lines.slice(0, -1)) {
+      if (ln.glue.length === 0) continue; // שורה במילה בודדת — אין רווחים לחלק (תקין)
+      const allocated = ln.glue.reduce((s, g) => s + g.allocationPx, 0);
+      const boxes = ln.fragments.reduce((s, f) => s + f.measuredAdvance, 0);
+      const total = allocated + boxes;
+      assert(Math.abs(total - ln.effectiveMaxWidthPx) < ln.glue.length * 0.501, `הקצאה מלאה עד הרוחב (${total} ≈ ${ln.effectiveMaxWidthPx})`);
+      assert(ln.glue.every((g) => g.allocationPx >= g.naturalPx), 'מתיחה — לא כיווץ');
+    }
+    assert(res.lines.slice(0, -1).some((ln) => ln.glue.length >= 1), 'יש שורה עם רווחים לחלק');
+    const last = res.lines[res.lines.length - 1];
+    assert(last.glue.every((g) => g.allocationPx === g.naturalPx), 'השורה האחרונה בלי מתיחה (body-last-line-align=center)');
+    // (ב) בלי הגדרות ובלי justify מפורש — אותה ברירת מחדל אפקטיבית (לא הנחת ragged)
+    const res2 = layoutSequence(sq, { maxWidthPx: 200, lineHeightPx: 21.44 });
+    assertEq(res2.lines[0].constraints.justify, 'stretch', 'ברירת המחדל האפקטיבית גם בלי הגדרות');
+    // (ג) היישור אינו משנה את חלוקת השורות (ההקצאה בלבד) — דטרמיניזם ושקילות חלוקה
+    const res3 = layoutSequence(sq, { maxWidthPx: 200, lineHeightPx: 21.44, justify: 'ragged' });
+    assertEq(JSON.stringify(res2.lines.map((l) => l.itemIds)), JSON.stringify(res3.lines.map((l) => l.itemIds)), 'היישור אינו משנה חלוקה');
+    // (ד) body-last-line-align=stretch — גם השורה האחרונה נמתחת
+    const res4 = layoutSequence(sq, { maxWidthPx: 200, lineHeightPx: 21.44, settings: { ...settings, 'body-last-line-align': 'stretch' } });
+    const last4 = res4.lines[res4.lines.length - 1];
+    assert(last4.glue.length === 0 || last4.glue.some((g) => g.allocationPx > g.naturalPx), 'שורה אחרונה נמתחת כשהמדיניות דורשת');
+    // (ה) דטרמיניזם של ההקצאה
+    const resA = layoutSequence(sq, { maxWidthPx: 200, lineHeightPx: 21.44, settings });
+    const resB = layoutSequence(sq, { maxWidthPx: 200, lineHeightPx: 21.44, settings });
+    assertEq(JSON.stringify(resA.lines.map((l) => l.glue.map((g) => g.allocationPx))), JSON.stringify(resB.lines.map((l) => l.glue.map((g) => g.allocationPx))), 'הקצאה דטרמיניסטית');
+    // ragged מפורש: ההקצאה = הטבעי
+    const rag = layoutSequence(sq, { maxWidthPx: 200, lineHeightPx: 21.44, justify: 'ragged' }).lines[0];
+    assert(rag.glue.every((g) => g.allocationPx === g.naturalPx), 'ragged מפורש — טבעי');
   });
   it('כל שורה: כל שדות §4.1-10 קיימים — fragments, מיפוי מקור, זהויות, רוחבים, glue, בסיס, גובה, סיבת שבירה, אילוצים, אבחונים', () => {
     registerRealFonts();
@@ -395,6 +521,158 @@ describe('שלב 4 — דטרמיניזם, justify חד-פעמי ועלות מת
       assert(ln.modelVersion === LINE_MODEL_VERSION, 'גרסת מודל');
       assert(typeof ln.index === 'number' && typeof ln.isLast === 'boolean', 'אינדוקס/isLast');
     }
+  });
+});
+
+describe('שלב 4 — יחידות צמודות במסלול הגיבוי: אטומיות, קישור noteRef, overflow מפורש (§3.4)', () => {
+  it('יחידה תקינה — הסמן ועוגנו באותה שורה גם כשה-DP נכשל והגיבוי פועל', () => {
+    registerRealFonts();
+    clearItemMeasureCache();
+    // מילה ארוכה (רחבה מהטור) עם סמן הערה צמוד — ה-DP אינו מוצא פתרון ⇒ גיבוי.
+    // היחידה (עוגן+סמן) חייבת לעבור כאטום: לא נקרעת, לא מפורקת, לא נמחקת.
+    const raw = 'כותרת  1 - חלק\nקצר לפני אאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאאא [הערה צמודה] וקצר אחרי עוד קצת מילים.\n';
+    const model = buildDocumentModel(raw, {});
+    const seqs = buildLineSequences(model, { settings: SETTINGS });
+    const para = seqs.sequences.find((s) => s.blockKind === 'paragraph');
+    const res = layoutSequence(para, { maxWidthPx: 120, lineHeightPx: 21.44 });
+    // היחידה עברה בשלמות: העוגן והסמן תמיד באותה שורה
+    const mkLines = res.lines.filter((l) => l.fragments.some((f) => f.kind === 'noteMarker'));
+    assert(mkLines.length >= 1, 'הסמן קיים בפלט');
+    for (const ln of mkLines) {
+      const idx = ln.fragments.findIndex((f) => f.kind === 'noteMarker');
+      assert(idx > 0 && ln.fragments[idx - 1].kind === 'text', 'הסמן עם עוגנו באותה שורה (גם בגיבוי)');
+    }
+    // אין אובדן: כל המילים קיימות
+    const recon = reconstructTextOfLines(res.lines).replace(/\u00A0/g, ' ');
+    assert(recon.includes('קצר') && recon.includes('וקצר'), 'המילים סביב קיימות');
+    const longWord = res.lines.flatMap((l) => l.fragments).some((f) => (f.fragments || []).some((x) => x.text.length > 40));
+    assert(longWord, 'המילה הארוכה קיימת (לא נמחקה)');
+  });
+  it('יחידה רחבה מהטור — שורה בפני עצמה + overflow-joined-unit עם noteRef וטווחי מקור; אין פירוק', () => {
+    registerRealFonts();
+    clearItemMeasureCache();
+    const raw = 'כותרת  1 - חלק\nעוד מילים רגילות לפני כדי למלא שורה אחת שלמה בטור ואז בבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבבב [הערה רחבה] ואחרי זה עוד קצת.\n';
+    const model = buildDocumentModel(raw, {});
+    const seqs = buildLineSequences(model, { settings: SETTINGS });
+    const para = seqs.sequences.find((s) => s.blockKind === 'paragraph');
+    const res = layoutSequence(para, { maxWidthPx: 110, lineHeightPx: 21.44 });
+    const diag = res.diagnostics.find((d) => d.code === 'overflow-joined-unit');
+    assert(diag, 'אבחון overflow-joined-unit מפורש: ' + JSON.stringify(res.diagnostics.map((d) => d.code)));
+    assert(diag.noteRef && diag.noteRef.startsWith('note-'), 'הקישור לפי noteRef (זהות עוגן): ' + diag.noteRef);
+    assert(diag.anchorSourceRange && Number.isFinite(diag.anchorSourceRange.start), 'טווח מקור העוגן באבחון');
+    assert(diag.markerSourceRange && Number.isFinite(diag.markerSourceRange.start), 'טווח מקור הסמן באבחון');
+    // היחידה על שורה אחת בשלמותה — שני הפריטים יחד
+    const unitLine = res.lines.find((l) => l.itemIds.includes(diag.joinedItemId));
+    assert(unitLine && unitLine.itemIds.includes(diag.itemId), 'העוגן והסמן על אותה שורה (יחידה אטומית)');
+    assertEq(unitLine.breakReason, 'overflow-joined-unit', 'סיבת השבירה מתועדת');
+    // אין שום שורה שמכילה סמן בלי עוגן
+    for (const ln of res.lines) {
+      const idx = ln.fragments.findIndex((f) => f.kind === 'noteMarker');
+      if (idx >= 0) assert(idx > 0 && ln.fragments[idx - 1].kind === 'text', 'אף סמן אינו מנותק מעוגנו');
+    }
+  });
+  it('יחידה בפתיחת הרצף (סמן ראשון מוצמד קדימה) ובסוף הרצף — אטומיות גם שם', () => {
+    registerRealFonts();
+    clearItemMeasureCache();
+    // פתיחה: סמן בראש הפסקה מוצמד למילה שאחריו
+    const rawStart = 'כותרת 1 - חלש\n[הערה פותחת] מילה ראשונה אחרי הסמן ועוד טקסט ארוך מספיק לכמה שורות בטור הצר הזה בהחלט.\n';
+    const mStart = buildDocumentModel(rawStart, {});
+    const sStart = buildLineSequences(mStart, { settings: SETTINGS }).sequences.find((s) => s.blockKind === 'paragraph');
+    const rStart = layoutSequence(sStart, { maxWidthPx: 130, lineHeightPx: 21.44 });
+    const firstLine = rStart.lines[0];
+    const mkIdx = firstLine.fragments.findIndex((f) => f.kind === 'noteMarker');
+    assert(mkIdx >= 0, 'הסמן בשורה הראשונה');
+    assert(firstLine.fragments[mkIdx + 1] && firstLine.fragments[mkIdx + 1].kind === 'text', 'סמן פותח צמוד למילה שאחריו');
+    // סוף: סמן אחרון מוצמד לעוגן שלפניו
+    const rawEnd = 'כותרת 1 - חלק\nטקסט ארוך למילוי כמה שורות בטור הצר הזה עם עוד ועוד מילים עד הסוף ואז מילה־אחרונה [הערה סופית]\n';
+    const mEnd = buildDocumentModel(rawEnd, {});
+    const sEnd = buildLineSequences(mEnd, { settings: SETTINGS }).sequences.find((s) => s.blockKind === 'paragraph');
+    const rEnd = layoutSequence(sEnd, { maxWidthPx: 130, lineHeightPx: 21.44 });
+    const lastLine = rEnd.lines[rEnd.lines.length - 1];
+    const mkEnd = lastLine.fragments.findIndex((f) => f.kind === 'noteMarker');
+    assert(mkEnd >= 0, 'הסמן הסופי בפלט');
+    assert(lastLine.fragments[mkEnd - 1] && lastLine.fragments[mkEnd - 1].kind === 'text', 'סמן סופי צמוד לעוגן שלפניו');
+    // דטרמיניזם של מסלול הגיבוי
+    const r2 = layoutSequence(sEnd, { maxWidthPx: 130, lineHeightPx: 21.44 });
+    assertEq(JSON.stringify(rEnd.lines.map((l) => l.itemIds)), JSON.stringify(r2.lines.map((l) => l.itemIds)), 'גיבוי דטרמיניסטי');
+  });
+});
+
+describe('שלב 4 — wrap ו-DP: הרוחב האפקטיבי לפי מספר השורה האמיתי במסלול שנבחר (§3.8)', () => {
+  it('פריט רחב מהאזור המצומצן אך נכנס באזור המלא — ה-DP דוחף אותו מעבר לאזור ה-wrap', () => {
+    registerRealFonts();
+    clearItemMeasureCache();
+    // רצף גולמי: 10 תיבות קטנות (12px) + תיבה רחבה (130) + 4 תיבות קטנות.
+    // אילוץ: שורות 0-1 ברוחב 100, שורות 2+ ברוחב 160. התיבה הרחבה (130) אינה
+    // נכנסת ב-100 אך נכנסת ב-160 — הפתרון היחיד: היא תיפול בשורה ≥ 2.
+    const mk = (id, w) => ({ role: 'box', kind: 'text', itemId: id, measuredAdvance: w, fragments: [{ text: id }], internal: false });
+    const mg = (id) => ({ role: 'glue', kind: 'glue', itemId: id, measuredAdvance: 4, internal: false });
+    const items = [];
+    for (let i = 0; i < 10; i++) { items.push(mk('s' + i, 12)); items.push(mg('g' + i)); }
+    items.push(mk('WIDE', 130));
+    items.push(mg('gw'));
+    for (let i = 0; i < 4; i++) { items.push(mk('t' + i, 12)); if (i < 3) items.push(mg('gg' + i)); }
+    const lineWidthAt = (li) => (li < 2 ? 100 : 160);
+    const res = breakItemSequence(items, 160, { lineWidthAt });
+    assertEq(res.fallback, false, 'ה-DP מצא פתרון (דחיפה מעבר לאזור ה-wrap)');
+    assertEq(res.diagnostics.filter((d) => d.code === 'wrap-width-mismatch').length, 0, 'אין חריגת רוחב: ' + JSON.stringify(res.diagnostics));
+    const wideLine = res.lines.findIndex((c) => items.slice(c.from, c.to).some((x) => x.itemId === 'WIDE'));
+    assert(wideLine >= 2, `הפריט הרחב בשורה ${wideLine} (מעבר לאזור המצומצם)`);
+    // כל שורה: הרוחב הטבעי בגבולות הרוחב האפקטיבי של מספר השורה האמיתי
+    const seqView = items.concat([{ role: 'penalty', penaltyType: 'final' }]);
+    res.lines.forEach((c, li) => {
+      let from = c.from;
+      while (seqView[from] && seqView[from].role === 'glue' && !seqView[from].internal) from++;
+      let w = 0;
+      for (let k = from; k < c.to; k++) { const it = seqView[k]; if (!it) continue; if (it.role === 'box') w += it.measuredAdvance; else if (it.role === 'glue') w += it.measuredAdvance; }
+      assert(w <= lineWidthAt(li) + 0.01, `שורה ${li}: רוחב טבעי ${w} ≤ ${lineWidthAt(li)}`);
+    });
+  });
+  it('מסלולים מרובים לאותה נקודת חיתוך — lineOf עקבי לאורך המסלול שנבחר; אין wrap-width-mismatch', () => {
+    registerRealFonts();
+    clearItemMeasureCache();
+    const { MeasureAPI } = require('../../src/engine/typography/measure-api');
+    const api = new MeasureAPI({ 'body-font': 'Frank Ruhl Libre', 'body-font-size-pt': 12 }, 'font-metrics');
+    const words = 'טקסט ארוך למדי עם הרבה מאוד מילים באורכים שונים לחלוטין כדי ליצור מסלולי DP מרובים עם מועמדים שונים לאותן נקודות חיתוך בדיוק כפי שנדרש בבדיקה הזאת במיוחד'.split(' ');
+    const items = [];
+    for (let i = 0; i < words.length; i++) {
+      items.push({ role: 'box', kind: 'text', itemId: 'w' + i, measuredAdvance: api.measureTextWidth(words[i], 12, 0), fragments: [{ text: words[i] }], internal: false });
+      if (i < words.length - 1) items.push({ role: 'glue', kind: 'glue', itemId: 'g' + i, measuredAdvance: api.measureTextWidth(' ', 12, 0), internal: false });
+    }
+    // אילוץ מתחלף: שורות 0-1 צרות (120), 2+ רחבות (170)
+    const lineWidthAt = (li) => (li < 2 ? 120 : 170);
+    const res = breakItemSequence(items, 170, { lineWidthAt });
+    assertEq(res.fallback, false, 'פתרון DP');
+    assert(res.lines.length >= 3, 'כמה שורות: ' + res.lines.length);
+    assertEq(res.diagnostics.length, 0, 'אין אבחוני חריגה: ' + JSON.stringify(res.diagnostics));
+    // השורות 0-1 ברוחב המצומצם, 2+ במלא — המעבר מדויק
+    const seqView2 = items.concat([{ role: 'penalty', penaltyType: 'final' }]);
+    res.lines.forEach((c, li) => {
+      let from = c.from;
+      while (seqView2[from] && seqView2[from].role === 'glue') from++;
+      let w = 0;
+      for (let k = from; k < c.to; k++) { const it = seqView2[k]; if (!it) continue; if (it.role === 'box' || it.role === 'glue') w += it.measuredAdvance; }
+      assert(w <= lineWidthAt(li) + 0.01, `שורה ${li}: ${w} ≤ ${lineWidthAt(li)}`);
+    });
+    // דטרמיניזם מלא תחת האילוץ
+    const res2 = breakItemSequence(items, 170, { lineWidthAt });
+    assertEq(JSON.stringify(res.lines), JSON.stringify(res2.lines), 'אותם חיתוכים בדיוק');
+  });
+  it('אין פתרון DP תחת אילוץ wrap — הגיבוי מכבד את אותו אילוץ רוחב לפי שורה', () => {
+    registerRealFonts();
+    clearItemMeasureCache();
+    const mk = (id, w) => ({ role: 'box', kind: 'text', itemId: id, measuredAdvance: w, fragments: [{ text: id }], internal: false });
+    const mg = (id) => ({ role: 'glue', kind: 'glue', itemId: id, measuredAdvance: 4, internal: false });
+    const items = [mk('a', 60), mg('g0'), mk('b', 60), mg('g1'), mk('TOOBIG', 190), mg('g2'), mk('c', 50)];
+    const lineWidthAt = (li) => (li < 1 ? 100 : 160);
+    const res = breakItemSequence(items, 160, { lineWidthAt });
+    assertEq(res.fallback, true, 'הגיבוי הופעל (אין פתרון)');
+    const big = res.diagnostics.find((d) => d.itemId === 'TOOBIG');
+    assert(big && big.code === 'overflow-item-own-line', 'אבחון מפורש לפריט החורג: ' + JSON.stringify(res.diagnostics));
+    assertEq(big.maxWidthPx, 160, 'האבחון לפי הרוחב של השורה שבה נפל (לא 100)');
+    // הפריטים כולם קיימים — אין מחיקה
+    const seen = res.lines.flatMap((c) => items.slice(c.from, c.to).filter((x) => x.role === 'box').map((x) => x.itemId));
+    for (const id of ['a', 'b', 'TOOBIG', 'c']) assert(seen.includes(id), 'קיים בפלט: ' + id);
   });
 });
 

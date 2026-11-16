@@ -149,4 +149,100 @@ describe('שלב 4 — שימור מקור: אין אובדן, כפילות או
   });
 });
 
+describe('שלב 4 — זהות נגזרת-מקור ומיפוי מוחלט (§3.5 בהוראת התיקון)', () => {
+  it('מזהי מילים/glue נגזרים מהמקור — יציבים בין בניות, ללא מונה רץ; שינוי תוכן אינו יוצר התנגשות', () => {
+    registerRealFonts();
+    clearItemMeasureCache();
+    const inlineOptions = { fontMarkers: [{ id: 'david', open: '<<', close: '>>', family: 'David Libre' }] };
+    const raw = 'כותרת 1 - חלק\nמילים רגילות ואז <<גופן אחר>> וחזרה לגוף עם עוד מילים בסוף הפסקה הזאת.\n';
+    const a = buildLineSequences(buildDocumentModel(raw, { inlineOptions }), { settings: SETTINGS });
+    const b = buildLineSequences(buildDocumentModel(raw, { inlineOptions }), { settings: SETTINGS });
+    const sa = a.sequences.find((s) => s.blockKind === 'paragraph');
+    const sb = b.sequences.find((s) => s.blockKind === 'paragraph');
+    assertEq(JSON.stringify(sa.items.map((i) => i.itemId)), JSON.stringify(sb.items.map((i) => i.itemId)), 'זהויות זהות בין שתי בניות של אותו מסמך');
+    // הזהויות נגזרות מטווחי המקור — לא ממונה: אותה מילה באותו מקור ⇒ אותו מזהה גם בין מסמכים שונים לפניה
+    const raw2 = 'כותרת 2 - אחר\nפתיחה שונה לגמרי כאן.\nמילים רגילות ואז <<גופן אחר>> וחזרה לגוף עם עוד מילים בסוף הפסקה הזאת.\n';
+    const c = buildLineSequences(buildDocumentModel(raw2, { inlineOptions }), { settings: SETTINGS });
+    const target = sa.items.find((i) => i.role === 'box' && (i.fragments || []).some((f) => f.text === 'מילים'));
+    const targetC = c.sequences.filter((s) => s.blockKind === 'paragraph').map((s) => s.items.find((i) => i.role === 'box' && (i.fragments || []).some((f) => f.text === 'מילים'))).filter(Boolean);
+    assert(targetC.length >= 1, 'המילה קיימת גם במסמך השני');
+    // מזהים שונים בין המסמכים (טווח מקור שונה) — אך זהים בין בניות של אותו מסמך
+    assert(targetC.every((t) => t.itemId !== target.itemId), 'טווח מקור שונה ⇒ מזהה שונה');
+    // שינוי תוכן באותו מיקום — אין התנגשות מזהים בין מילים שונות של אותו פריט
+    const ids = sa.items.filter((i) => i.role === 'box' && i.kind === 'text').map((i) => i.itemId);
+    assertEq(new Set(ids).size, ids.length, 'מזהי מילים ייחודיים ברצף');
+    // מזהי glue נגזרים מגבולות המקור של המפריד
+    const glues = sa.items.filter((i) => i.role === 'glue' && !i.internal);
+    for (const g of glues) {
+      assert(/#g@\d+-\d+$/.test(g.itemId), 'מזהה glue נגזר מטווח מוחלט: ' + g.itemId);
+      assert(g.sourceRange && Number.isFinite(g.sourceRange.start) && Number.isFinite(g.sourceRange.end), 'טווח מקור מוחלט ל-glue');
+      assert(g.sourceRange.blockId, 'blockId ממולא ל-glue');
+    }
+    const gids = glues.map((g) => g.itemId);
+    assertEq(new Set(gids).size, gids.length, 'מזהי glue ייחודיים');
+  });
+  it('מילה חוצת-ריצות: גבול ריצה בתוך מילה — fragments נפרדים; גבול ריצה ברווח — המילים נפרדות והרווח נשמר (תיקון שורש §3.5)', () => {
+    registerRealFonts();
+    clearItemMeasureCache();
+    const inlineOptions = { fontMarkers: [{ id: 'david', open: '<<', close: '>>', family: 'David Libre' }] };
+    // (א) גבול בתוך מילה: "שלום" בגוף + "ם" בגופן אחר = מילה אחת, שני פרגמנטים
+    const rawMid = 'כותרת 1 - חלק\nמילה מעורבת <<שלום>>ם בפנים ועוד מילה אחרונה.\n';
+    const mMid = buildDocumentModel(rawMid, { inlineOptions });
+    const sMid = buildLineSequences(mMid, { settings: SETTINGS }).sequences.find((s) => s.blockKind === 'paragraph');
+    const multi = sMid.items.find((it) => it.role === 'box' && (it.fragments || []).length > 1);
+    assert(multi, 'מילה מרובת-פרגמנטים קיימת');
+    assertEq(multi.fragments.length, 2, 'שני פרגמנטים');
+    assert(multi.fragments[0].runIndex !== multi.fragments[1].runIndex, 'מיפוי ריצה לכל פרגמנט');
+    // כל פרגמנט שומר את טווח המקור שלו בנפרד (מוחלט)
+    for (const f of multi.fragments) {
+      assert(Number.isFinite(f.docStart) && Number.isFinite(f.docEnd), 'טווח מוחלט פר-פרגמנט');
+      assert(f.docEnd > f.docStart, 'טווח תקין');
+    }
+    assert(multi.fragments[1].docStart >= multi.fragments[0].docEnd, 'טווחי הפרגמנטים רצופים');
+    // (ב) גבול ריצה ברווח: "ואז " בגוף + " בסוף" אחרי גופן — המילים נפרדות, הרווח לא אובד
+    const rawGap = 'כותרת 1 - חלק\nמילים רגילות בתחילת הפסקה ואז <<גופן אחר>> בסוף הפסקה הזאת במיוחד.\n';
+    const mGap = buildDocumentModel(rawGap, { inlineOptions });
+    const sGap = buildLineSequences(mGap, { settings: SETTINGS }).sequences.find((s) => s.blockKind === 'paragraph');
+    const boxes = sGap.items.filter((x) => x.role === 'box' && x.kind === 'text');
+    const texts = boxes.map((b) => b.fragments.map((f) => f.text).join(''));
+    assert(texts.includes('אחר') && texts.includes('בסוף'), 'שתי המילים סביב גבול הריצה קיימות כתיבות נפרדות');
+    assert(!texts.some((t) => t.includes('אחרבסוף')), 'המילים לא התמזגו דרך הרווח (הבאג שתוקן)');
+    const res = layoutSequence(sGap, { maxWidthPx: 500, lineHeightPx: 21.44 });
+    const src = mGap.blocks.find((b) => b.kind === 'paragraph').items[0].payload.runs.map((r) => r.text).join('');
+    assertEq(reconstructTextOfLines(res.lines), src, 'שחזור מדויק — הרווח בין הריצות נשמר');
+  });
+  it('מפרידים מרובים, ניקוד, הערות ומזהי פריטים חוזרים — דיוק והיעדר התנגשויות', () => {
+    registerRealFonts();
+    clearItemMeasureCache();
+    // רווח כפול במקור — נשמר כמפריד מדויק (מחרוזת בת 2 תווים) ולא מתמזג
+    const raw = 'כותרת 1 - חלק\nמילה  רווח־כפול וגם הַמְּדֻבָּר מְנֻקָּד והערה [תוכן קצר] באמצע וסיום.\n';
+    const model = buildDocumentModel(raw, {});
+    const seqs = buildLineSequences(model, { settings: SETTINGS });
+    const para = seqs.sequences.find((s) => s.blockKind === 'paragraph');
+    const dbl = para.items.find((g) => g.role === 'glue' && !g.internal && (g.gapChars || g.sep) === '  ');
+    assert(dbl, 'רווח כפול נשמר כמפריד מדויק (שני תווים)');
+    // ניקוד: המילה המנוקדת תיבה אחת שלמה
+    const nikud = para.items.find((b) => b.role === 'box' && (b.fragments || []).some((f) => /[\u0591-\u05C7]/.test(f.text)));
+    assert(nikud && (nikud.fragments || []).length === 1, 'מילה מנוקדת — תיבה אחת');
+    // הערה: סמן עם noteRef + יחידה צמודה
+    const mk = para.items.find((x) => x.kind === 'noteMarker');
+    assert(mk && mk.noteRef && mk.noteRef.startsWith('note-'), 'זהות עוגן על תיבת הסמן');
+    // מזהי פריטים חוזרים (מודל חריג — אותו id לשני פריטים): המילים עדיין ייחודיות (טווח שונה)
+    const hacked = buildDocumentModel('כותרת 1 - חלק\nאחת שתיים שלוש.\n', {});
+    const blk = hacked.blocks.find((b) => b.kind === 'paragraph');
+    const idA = blk.items[0].id;
+    blk.items.push({ ...blk.items[0], id: idA, payload: { runs: [{ text: 'ארבע חמש שש.', fontFamily: null, sourceStart: 0, sourceEnd: 11 }] }, sourceRange: { start: 1000, end: 1011 } });
+    const seqs2 = buildLineSequences(hacked, { settings: SETTINGS });
+    const para2 = seqs2.sequences.find((s) => s.blockKind === 'paragraph');
+    const wordIds = para2.items.filter((i) => i.role === 'box' && i.kind === 'text').map((i) => i.itemId);
+    assertEq(new Set(wordIds).size, wordIds.length, 'גם עם מזהה פריט כפול — מזהי המילים ייחודיים (נגזרים מהטווח)');
+    // blockId אינו null כשהוא ידוע — בכל תיבה ובכל glue
+    for (const it of para2.items) {
+      if (it.role === 'penalty') continue;
+      assert(it.sourceRange && it.sourceRange.blockId === para2.blockId, 'blockId ממולא: ' + it.itemId);
+      assert(Number.isFinite(it.sourceRange.start) && Number.isFinite(it.sourceRange.end), 'טווח מוחלט: ' + it.itemId);
+    }
+  });
+});
+
 report('s4-line-items');

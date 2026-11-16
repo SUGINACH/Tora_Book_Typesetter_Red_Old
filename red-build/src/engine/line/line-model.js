@@ -11,33 +11,67 @@
  * ומחזיר LineModel[]. ה-DP עצמו חי ב-kp-linebreak (המנוע הקיים, מורחב); כאן
  * ההרכבה, אילוצי האזור (wrap-around), תמונות ממורכזות, הקצאת glue חד-פעמית
  * ושחזור המקור.
+ *
+ * **תמונות צפות (§3.3 בהוראה — תיקון ספירה כפולה):** תמונת float אינה תיבה
+ * בזרם השורה. היא מוצאת מהזרימה לפני השבירה, משתתפת דרך אילוץ האזור בלבד
+ * (הרוחב האפקטיבי של השורות שבגובהה קטן ברוחב התמונה), וזהותה, ממדיה,
+ * עוגנה וצדה נשמרים ב-LineModel (floatAreas) ובתוצאת הרצף (floats) — לא
+ * בחריג renderer. מיקום צף סופי בעמוד שייך ל-Planner (שלב 5), אך כבר כאן
+ * אין מדידת רוחב כפולה.
  */
 
 const { breakItemSequence, STRETCH_RATIO, SHRINK_RATIO } = require('../typography/kp-linebreak');
 
 /** גרסת חוזה מודל השורה. */
-const LINE_MODEL_VERSION = 'line-model-v1(fragments+glue+source)';
+const LINE_MODEL_VERSION = 'line-model-v2(floats+justify-policy+gap-chars)';
+
+/**
+ * מדיניות יישור מופקת מהגדרות המסמך — מקור יחיד להחלטה (§3.7 בהוראה).
+ * **ברירת המחדל האפקטיבית של המוצר (נבדקה ב-main):** גוף מיושר —
+ * `text-align:justify; text-justify:inter-word` ב-DOM (החלטת 03.11(ד), "טורים
+ * מיושרים באופן מושלם") ו־'justify' לכל שורה שאינה אחרונה במקרן ה-PDF
+ * (`lastAlignOf`). השורה האחרונה לפי `body-last-line-align` (ברירת מחדל
+ * center — בלי מתיחה). המנוע מקבל את המדיניות **במפורש מהגדרות המסמך** —
+ * אין הנחת ragged; ההקצאה נעשית פעם אחת כאן וה-renderer צורך ואינו מותח.
+ */
+function justifyPolicyOf(settings) {
+  const s = settings || {};
+  const last = String(s['body-last-line-align'] || 'center');
+  return {
+    body: 'stretch',
+    lastLine: last === 'stretch' ? 'stretch' : last,
+    source: 'effective-product-default (03.11(ד) justify + body-last-line-align)'
+  };
+}
 
 /**
  * layoutSequence — הכניסה היחידה של מנוע השורות המאוחד.
  * @param {{blockId, blockKind, semantic, items:Array}} sequence — מ-buildLineSequences
- * @param {{maxWidthPx:number, justify?:'ragged'|'stretch', runts?:number, raggedEnd?:boolean}} opts
- * @returns {{ok, lines:LineModel[], diagnostics, blockId, blockKind, semantic, stats}}
+ * @param {{maxWidthPx:number, justify?:'ragged'|'stretch', settings?:object, runts?:number, raggedEnd?:boolean, lineHeightPx?:number}} opts
+ *   justify: דורס מפורש; settings: מקור המדיניות הקנוני; ללא שניהם — ברירת
+ *   המחדל האפקטיבית של המוצר (justify).
+ * @returns {{ok, lines:LineModel[], diagnostics, blockId, blockKind, semantic, floats, stats}}
  */
 function layoutSequence(sequence, opts = {}) {
   const maxWidthPx = Number(opts.maxWidthPx);
   if (!sequence || !Array.isArray(sequence.items) || !sequence.items.length) {
-    return { ok: false, lines: [], diagnostics: [{ code: 'empty-sequence', message: 'layoutSequence: רצף ריק' }], blockId: sequence && sequence.blockId, blockKind: sequence && sequence.blockKind, semantic: sequence && sequence.semantic, stats: { lines: 0 } };
+    return { ok: false, lines: [], diagnostics: [{ code: 'empty-sequence', message: 'layoutSequence: רצף ריק' }], blockId: sequence && sequence.blockId, blockKind: sequence && sequence.blockKind, semantic: sequence && sequence.semantic, floats: [], stats: { lines: 0 } };
   }
   if (!Number.isFinite(maxWidthPx) || maxWidthPx <= 0) {
-    return { ok: false, lines: [], diagnostics: [{ code: 'bad-max-width', message: `layoutSequence: רוחב שורה שגוי (${maxWidthPx})` }], blockId: sequence.blockId, blockKind: sequence.blockKind, semantic: sequence.semantic, stats: { lines: 0 } };
+    return { ok: false, lines: [], diagnostics: [{ code: 'bad-max-width', message: `layoutSequence: רוחב שורה שגוי (${maxWidthPx})` }], blockId: sequence.blockId, blockKind: sequence.blockKind, semantic: sequence.semantic, floats: [], stats: { lines: 0 } };
   }
   const diagnostics = [];
   const items = sequence.items;
 
+  // ── מדיניות יישור (§3.7): מפורש מ-opts.justify, או מופק מהגדרות המסמך,
+  //    או ברירת המחדל האפקטיבית של המוצר. לעולם לא הנחת ragged שקטה.
+  const policy = opts.justify != null
+    ? { body: opts.justify === 'stretch' ? 'stretch' : 'ragged', lastLine: opts.justify === 'stretch' ? 'stretch' : 'ragged', source: 'opts.justify (מפורש)' }
+    : justifyPolicyOf(opts.settings);
+
   // ── תמונות בלוק/ממורכזות (§4.1-7): פריט פריסה בפני עצמו — לפי כלל הפריסה
   // שבאילוצי הפריט, לא הזזה על ידי renderer אחרי השבירה. תמונת inline נשארת
-  // בזרימה; תמונת float מגדירה אילוץ אזור (להלן).
+  // בזרימה; תמונת float מוצאת לאילוץ האזור (להלן).
   const centeredIdx = new Set();
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
@@ -61,15 +95,21 @@ function layoutSequence(sequence, opts = {}) {
   if (flow.length) segments.push({ type: 'flow', items: flow });
 
   const lines = [];
+  const floats = [];
   for (const seg of segments) {
     if (seg.type === 'centered-image') {
       lines.push(centeredImageLine(seg.item, maxWidthPx, sequence));
       continue;
     }
-    // ── אילוץ אזור לתמונה צפה (§4.1-7): wrap-start/wrap-end מקטינים את הרוחב
-    // האפקטיבי של השורות שבגובה התמונה — אותו DP, אילוץ אחד; אין breaker שני.
-    const wrap = wrapConstraintOf(seg.items, maxWidthPx, opts);
-    const res = breakItemSequence(seg.items, maxWidthPx, {
+    // ── תמונות צפות (§3.3): חילוץ מהזרימה לפני השבירה — התמונה משתתפת
+    // באילוץ האזור בלבד; רוחבה אינו נספר שוב בתוך רוחב השורה.
+    const ex = extractFloats(seg.items);
+    for (const f of ex.floats) floats.push(f);
+    if (!ex.kept.length) continue;
+    // ── אילוץ אזור לתמונה הצפה (§4.1-7): wrap-start/wrap-end מקטינים את
+    // הרוחב האפקטיבי של השורות שבגובה התמונה — אותו DP, אילוץ אחד.
+    const wrap = wrapConstraintOf(ex.floats, maxWidthPx, opts);
+    const res = breakItemSequence(ex.kept, maxWidthPx, {
       runts: opts.runts,
       raggedEnd: opts.raggedEnd,
       lineWidthAt: wrap ? (li) => wrap.widthAt(li) : null
@@ -77,7 +117,7 @@ function layoutSequence(sequence, opts = {}) {
     for (const d of res.diagnostics) diagnostics.push(d);
     let lineIdxInSeg = 0;
     for (const cut of res.lines) {
-      const lm = assembleLine(seg.items, cut, maxWidthPx, wrap, opts, sequence, lineIdxInSeg);
+      const lm = assembleLine(ex.kept, cut, maxWidthPx, wrap, opts, policy, sequence, lineIdxInSeg, ex.floats);
       if (lm) { lines.push(lm); lineIdxInSeg++; }
     }
   }
@@ -98,13 +138,14 @@ function layoutSequence(sequence, opts = {}) {
   return {
     ok: true, lines, diagnostics,
     blockId: sequence.blockId, blockKind: sequence.blockKind, semantic: sequence.semantic || null,
-    stats: { lines: lines.length, modelVersion: LINE_MODEL_VERSION }
+    floats,
+    stats: { lines: lines.length, floats: floats.length, modelVersion: LINE_MODEL_VERSION }
   };
 }
 
 // ─── הרכבת שורה אחת ─────────────────────────────────────────────────────────
 
-function assembleLine(items, cut, maxWidthPx, wrap, opts, sequence, lineIdxInSeg) {
+function assembleLine(items, cut, maxWidthPx, wrap, opts, policy, sequence, lineIdxInSeg, segFloats) {
   // הגלישה מעל glue פותח (שבירת השורה): הקטע מתחיל בתיבה הראשונה — ה-glue של
   // השבירה שייך למרווח הבין-שורות ואינו חלק מרוחב השורה (הוא נשמר ב-flow הקודם
   // כ-breakGlue לשחזור המקור — בלי ספירה כפולה).
@@ -114,15 +155,16 @@ function assembleLine(items, cut, maxWidthPx, wrap, opts, sequence, lineIdxInSeg
   const boxes = seg.filter((x) => x.role === 'box');
   if (!boxes.length) return null; // אין שורות ריקות — תוצר לוואי אסור (§19)
   const effMax = wrap ? wrap.widthAt(lineIdxInSeg) : maxWidthPx;
-  // עמות-השדה של המקור: סדר הפריטים והמפרידים כפי שנוצרו — לשחזור מדויק ולמיפוי מקור לכל פרגמנט
+  const isLastLine = cut.reason === 'final' || cut.reason === 'overflow-final';
+  // עמודת השדה של המקור: סדר הפריטים והמפרידים כפי שנוצרו — לשחזור מדויק ולמיפוי מקור לכל פרגמנט
   const flow = seg.map((it) => it.role === 'glue'
-    ? { type: 'glue', itemId: it.itemId, sep: it.sep != null ? it.sep : ' ', internal: !!it.internal }
+    ? { type: 'glue', itemId: it.itemId, sep: it.sep != null ? it.sep : ' ', gapChars: it.gapChars != null ? it.gapChars : (it.sep != null ? it.sep : ' '), internal: !!it.internal, noteRef: it.noteRef || null }
     : { type: 'box', itemId: it.itemId, kind: it.kind });
-  // ה-glue שעל נקודת החיתוך שייך למקור בין שתי השורות — נשמר בעמות-השדה לשחזור מדויק
+  // ה-glue שעל נקודת החיתוך שייך למקור בין שתי השורות — נשמר בעמודת השדה לשחזור מדויק
   // (שימור מקור §22), מסומן breakGlue ואינו נכנס לרוחב השורה או להקצאת ה-glue.
   const atCut = items[cut.to];
   if (atCut && atCut.role === 'glue' && !atCut.internal) {
-    flow.push({ type: 'glue', itemId: atCut.itemId, sep: atCut.sep != null ? atCut.sep : ' ', internal: false, breakGlue: true });
+    flow.push({ type: 'glue', itemId: atCut.itemId, sep: atCut.sep != null ? atCut.sep : ' ', gapChars: atCut.gapChars != null ? atCut.gapChars : (atCut.sep != null ? atCut.sep : ' '), internal: false, breakGlue: true });
   }
 
   // פרגמנטים מסודרים עם זהות ומקור (§4.1-10)
@@ -138,6 +180,7 @@ function assembleLine(items, cut, maxWidthPx, wrap, opts, sequence, lineIdxInSeg
       measuredAdvance: it.measuredAdvance,
       inkBounds: it.inkBounds,
       constraints: it.constraints,
+      sourceRange: it.sourceRange || null,
       sourceAnchor: it.sourceAnchor || null,
       diagnostics: it.diagnostics || []
     });
@@ -154,7 +197,10 @@ function assembleLine(items, cut, maxWidthPx, wrap, opts, sequence, lineIdxInSeg
     }
   }
 
-  // הקצאת glue — פעם אחת כאן (§4.1-11): הרינדרר צורך allocationPx ואינו מותח מחדש
+  // הקצאת glue — פעם אחת כאן (§4.1-11): הרינדרר צורך allocationPx ואינו מותח מחדש.
+  // מתיחה חלה רק כשמדיניות היישור stretch ואין זו השורה האחרונה (או שהמדיניות
+  // מותחת גם אחרונה — body-last-line-align=stretch).
+  const stretchThisLine = policy.body === 'stretch' && (!isLastLine || policy.lastLine === 'stretch');
   const glue = [];
   let natural = 0;
   for (const it of seg) {
@@ -162,15 +208,15 @@ function assembleLine(items, cut, maxWidthPx, wrap, opts, sequence, lineIdxInSeg
     else if (it.role === 'glue') {
       const g = it.measured && it.measured.ok ? it.measured.advance : 0;
       glue.push({
-        itemId: it.itemId, sep: it.sep != null ? it.sep : ' ', internal: !!it.internal,
+        itemId: it.itemId, sep: it.sep != null ? it.sep : ' ', gapChars: it.gapChars != null ? it.gapChars : (it.sep != null ? it.sep : ' '), internal: !!it.internal, noteRef: it.noteRef || null,
         naturalPx: g, stretchPx: g * STRETCH_RATIO, shrinkPx: g * SHRINK_RATIO,
-        allocationPx: g // יתעדכן בהקצאה אם justify=stretch
+        allocationPx: g // יתעדכן בהקצאה אם מדיניות היישור מותחת שורה זו
       });
       natural += g;
     }
   }
   const slack = effMax - natural;
-  if (opts.justify === 'stretch' && slack > 0 && glue.length) {
+  if (stretchThisLine && slack > 0 && glue.length) {
     // חלוקה דטרמיניסטית לפי משקלי מתיחה + השלמת שארית הגדולה (אין סחיפה)
     const totalStretch = glue.reduce((s, g) => s + g.stretchPx, 0);
     if (totalStretch > 0) {
@@ -183,6 +229,18 @@ function assembleLine(items, cut, maxWidthPx, wrap, opts, sequence, lineIdxInSeg
     }
   }
 
+  // ── אזורי תמונה צפה לשורה זו (§3.3): זהות, צד, ממדים ועוגן — חלק ממודל
+  // השורה והאילוצים שלה; הפרדה מפורשת בין תיבת הטקסט לאזור התמונה.
+  const floatAreas = [];
+  if (wrap && lineIdxInSeg < wrap.linesSpanned) {
+    const f = wrap.float;
+    floatAreas.push({
+      itemId: f.itemId, sourceItemId: f.sourceItemId, side: f.side,
+      widthPx: round3(f.widthPx), heightPx: round3(f.heightPx),
+      lines: wrap.linesSpanned, anchor: f.anchor
+    });
+  }
+
   return {
     modelVersion: LINE_MODEL_VERSION,
     index: 0, isLast: false,
@@ -192,12 +250,18 @@ function assembleLine(items, cut, maxWidthPx, wrap, opts, sequence, lineIdxInSeg
     flow,
     naturalWidthPx: round3(natural),
     effectiveMaxWidthPx: round3(effMax),
+    floatAreas,
     glue,
     baseline: { ascentPx: round3(ascent), descentPx: round3(descent) },
     lineHeightPx: round3(height),
     breakReason: cut.reason || 'legal-cut',
     badness: cut.badness || 0,
-    constraints: { maxWidthPx: round3(effMax), justify: opts.justify === 'stretch' ? 'stretch' : 'ragged' },
+    constraints: {
+      maxWidthPx: round3(effMax),
+      justify: policy.body,
+      justifyLastLine: policy.lastLine,
+      justifySource: policy.source
+    },
     semantic: null,
     diagnostics: []
   };
@@ -205,7 +269,7 @@ function assembleLine(items, cut, maxWidthPx, wrap, opts, sequence, lineIdxInSeg
 
 // ─── תמונות ──────────────────────────────────────────────────────────────────
 
-/** תמונה בלוק/ממורכזת — שורה בפני עצמה לפי כלל הפריסה שבאילוצי הפריט (§4.1-7). */
+/** תמונה בלוק/ממורכזת — שורה בפני עצמה לפי כלל הפריסה שבאילוצים (§4.1-7). */
 function centeredImageLine(item, maxWidthPx, sequence) {
   const m = item.measured;
   const w = m && m.ok ? m.advance : 0;
@@ -217,11 +281,12 @@ function centeredImageLine(item, maxWidthPx, sequence) {
     fragments: [{
       itemId: item.itemId, sourceItemId: item.sourceItemId, kind: 'image',
       fontId: null, fragments: [], measuredAdvance: w, inkBounds: m && m.inkBounds,
-      constraints: item.constraints, sourceAnchor: null, diagnostics: []
+      constraints: item.constraints, sourceRange: item.sourceRange || null, sourceAnchor: null, diagnostics: []
     }],
     itemIds: [item.itemId],
     naturalWidthPx: round3(w),
     effectiveMaxWidthPx: round3(maxWidthPx),
+    floatAreas: [],
     glue: [],
     baseline: { ascentPx: round3(h), descentPx: 0 },
     lineHeightPx: round3(h),
@@ -234,34 +299,68 @@ function centeredImageLine(item, maxWidthPx, sequence) {
 }
 
 /**
- * אילוץ אזור לתמונה צפה ברצף: התמונה הצפה הראשונה (wrap start/end) מקטינה
- * את הרוחב לשורות 0..K-1 כאשר K = ceil(displayH / lineHeight). דטרמיניסטי,
- * מנוסח פעם אחת; מיקום צף מלא בעמוד הוא תכנון (שלב 5) — כאן אילוץ הזרימה.
+ * חילוץ תמונות float מזרימת הטקסט (§3.3 — תיקון ספירה כפולה):
+ * התמונה משתתפת באילוץ האזור ובחישוב רוחב הטקסט, ואינה נספרת שוב כתיבה
+ * בתוך רוחב השורה. זהות התמונה, המיקום הסמנטי (עוגן שכן), הממדים והצד
+ * נשמרים ומוחזרים — המיקום הצף הסופי בעמוד שייך ל-Planner (שלב 5).
  */
-function wrapConstraintOf(items, maxWidthPx, opts) {
-  let floatImg = null;
-  for (const it of items) {
-    if (it.kind === 'image' && it.constraints && (it.constraints.wrap === 'start' || it.constraints.wrap === 'end')
-      && String(it.constraints.participates || 'inline') === 'inline' && it.measured && it.measured.ok) {
-      floatImg = it; break;
+function extractFloats(items) {
+  const floats = [];
+  const kept = [];
+  let lastKeptBox = null;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (it.role === 'box' && it.kind === 'image' && it.constraints
+      && (it.constraints.wrap === 'start' || it.constraints.wrap === 'end')
+      && String(it.constraints.participates || 'inline') === 'inline') {
+      let nextBox = null;
+      for (let k = i + 1; k < items.length && !nextBox; k++) {
+        if (items[k].role === 'box') nextBox = items[k];
+      }
+      floats.push({
+        itemId: it.itemId, sourceItemId: it.sourceItemId, kind: 'image',
+        side: it.constraints.wrap,
+        widthPx: it.measuredAdvance,
+        heightPx: (it.measured && it.measured.ok && it.measured.height) || 0,
+        inkBounds: it.inkBounds, constraints: it.constraints,
+        sourceRange: it.sourceRange || null,
+        anchor: {
+          prevItemId: lastKeptBox ? lastKeptBox.itemId : null,
+          nextItemId: nextBox ? nextBox.itemId : null
+        }
+      });
+      continue; // התמונה אינה ממשיכה בזרימת הטקסט — היא אילוץ אזור בלבד
     }
+    kept.push(it);
+    if (it.role === 'box') lastKeptBox = it;
   }
-  if (!floatImg) return null;
-  const imgH = floatImg.measured.height || 0;
+  return { floats, kept };
+}
+
+/**
+ * אילוץ אזור לתמונות הצפות של מקטע: הצפה הראשונה קובעת את הרוחב לשורות
+ * 0..K-1 כאשר K = ceil(displayH / lineHeight). דטרמיניסטי, מנוסח פעם אחת;
+ * אילוץ הזרימה בלבד — אין מנגנון שבירה שני. צדדים שונים (start/end) אינם
+ * משנים את הפחתת הרוחב (אותו אזור מוקטן); הצד נשמר בזהות ה-float לתכנון.
+ */
+function wrapConstraintOf(floats, maxWidthPx, opts) {
+  if (!floats.length) return null;
+  const f = floats[0];
+  const imgH = f.heightPx || 0;
   const lineH = Number(opts.lineHeightPx) > 0 ? Number(opts.lineHeightPx) : (imgH || 1);
   const linesSpanned = Math.max(1, Math.ceil(imgH / lineH));
-  const reduced = Math.max(0, maxWidthPx - (floatImg.measured.advance || 0));
+  const reduced = Math.max(0, maxWidthPx - (f.widthPx || 0));
   return {
-    linesSpanned,
+    float: f, linesSpanned,
     widthAt: (li) => (li < linesSpanned ? reduced : maxWidthPx)
   };
 }
 
 // ─── שחזור מקור (§22: אין אובדן/כפילות/שינוי סדר) ───────────────────────────
 
-/** שחזור טקסט הרצף מתוך השורות — לפי עמות-השדה (flow):
- * סדר הפריטים והמפרידים המדויקיים (sep) משחזרים את המקור
- * מוות אובדן, כפילות או שינוי סדר. יחידות צמודות — ה-sep הפנימי (NBSP) משוחזר אף הוא. */
+/** שחזור טקסט הרצף מתוך השורות — לפי עמודת השדה (flow):
+ * סדר הפריטים והמפרידים המדויקים (gapChars — המקור עצמו; sep ליחידות צמודות
+ * מוצג כרווח ההצמדה) משחזרים את המקור מוות אובדן, כפילות או שינוי סדר. */
 function reconstructTextOfLines(lines) {
   let out = '';
   const textOf = (ln, itemId) => {
@@ -274,7 +373,7 @@ function reconstructTextOfLines(lines) {
   };
   for (const ln of lines) {
     for (const step of (ln.flow || [])) {
-      if (step.type === 'glue') out += step.sep;
+      if (step.type === 'glue') out += step.gapChars != null ? step.gapChars : step.sep;
       else out += (textOf(ln, step.itemId) || '');
     }
   }
@@ -283,4 +382,4 @@ function reconstructTextOfLines(lines) {
 
 function round3(x) { return Math.round((Number(x) || 0) * 1000) / 1000; }
 
-module.exports = { layoutSequence, reconstructTextOfLines, LINE_MODEL_VERSION };
+module.exports = { layoutSequence, reconstructTextOfLines, justifyPolicyOf, LINE_MODEL_VERSION };

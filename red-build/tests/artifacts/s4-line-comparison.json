@@ -1,151 +1,1477 @@
 {
-  "schema": "s4-line-comparison-v1",
+  "schema": "s4-line-comparison-v2",
   "corpus": "canonical_corpus.txt",
   "columnWidthPx": 248.06,
   "measureImpl": "table (כמו הנתיב החי ללא גופנים רשומים)",
+  "comparisonBasis": "מערכי מילים מדויקים בכל שורה + סדר + מיפוי מקור + מפרידים + שחזור ביט-לביט",
   "paragraphs": 97,
-  "identicalLineDivision": 89,
-  "differingLineDivision": 8,
-  "paragraphsWithNotes": 8,
-  "summary": "פסקאות טהורות (ללא הערות): 89; פערים בלתי-מוסברים (ללא הערה): 0",
-  "classifications": {
-    "marker-handling": "הבדלי טיפול סמן: P-1 הידוע בנתיב החי (הצמדה מתפרקת) מול הצמדה מבנית במנוע המאוחד + מדידת סמן בגודל רישום לפי חוזה שלב 3 — שינוי מכוון ומתועד"
+  "pure": {
+    "total": 89,
+    "identicalLineDivision": 89,
+    "wordArraysExact": true
   },
-  "diffs": [
+  "withNotes": {
+    "total": 8,
+    "explained": 8,
+    "unexplained": 0
+  },
+  "sourceMapping": {
+    "textRanges": 2249,
+    "ordered": true,
+    "withinBlock": true
+  },
+  "separators": {
+    "exactReconstructionPure": true
+  },
+  "perParagraph": [
+    {
+      "blockId": "blk-00ef625d4db7c",
+      "hasNote": false,
+      "linesLive": 4,
+      "linesUnified": 4,
+      "sameDivision": true,
+      "words": 17
+    },
+    {
+      "blockId": "blk-f76336e18b5ed",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-01234234a913c",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-95996036595e7",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
     {
       "blockId": "blk-59de7cefd7b5a",
       "hasNote": true,
-      "classification": "marker-handling",
-      "reason": "נתיב חי: הסמן מודבק ב-NBSP אך protectWords מפרק את ההצמדה (P-1 הידוע, תיקון שהוחזר) והסמן נמדד בגודל הגוף; מנוע מאוחד: הסמן פריט אטום מוצמד לעוגנו (BRZ-11) ונמדד בגודל רישום (חוזה שלב 3)",
-      "live": [
-        5,
-        5,
-        5
-      ],
-      "unified": [
-        1,
-        5,
-        6,
-        4
-      ]
+      "linesLive": 3,
+      "linesUnified": 4,
+      "sameDivision": false,
+      "words": 15
+    },
+    {
+      "blockId": "blk-9ecacc64f8ff4",
+      "hasNote": false,
+      "linesLive": 6,
+      "linesUnified": 6,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-5cc6395faae48",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-619479fc803a1",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-2e9b76cc300d5",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-219ea13a21816",
+      "hasNote": false,
+      "linesLive": 6,
+      "linesUnified": 6,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-ec591081c5c74",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-8b7ba64d5079c",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-5f06ea8622ce3",
+      "hasNote": false,
+      "linesLive": 3,
+      "linesUnified": 3,
+      "sameDivision": true,
+      "words": 14
+    },
+    {
+      "blockId": "blk-576e5804e85e1",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-d303d44de015d",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-d19fac9099805",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
     },
     {
       "blockId": "blk-ad365d58289cb",
       "hasNote": true,
-      "classification": "marker-handling",
-      "reason": "נתיב חי: הסמן מודבק ב-NBSP אך protectWords מפרק את ההצמדה (P-1 הידוע, תיקון שהוחזר) והסמן נמדד בגודל הגוף; מנוע מאוחד: הסמן פריט אטום מוצמד לעוגנו (BRZ-11) ונמדד בגודל רישום (חוזה שלב 3)",
-      "live": [
-        5,
-        5,
-        5
-      ],
-      "unified": [
-        1,
-        5,
-        6,
-        4
-      ]
+      "linesLive": 3,
+      "linesUnified": 4,
+      "sameDivision": false,
+      "words": 15
+    },
+    {
+      "blockId": "blk-731ecd346499d",
+      "hasNote": false,
+      "linesLive": 6,
+      "linesUnified": 6,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-27f8e28e080b0",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-bf37f695ed633",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-268d6458ca935",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-ce7028b500a4b",
+      "hasNote": false,
+      "linesLive": 6,
+      "linesUnified": 6,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-ff8753ebe51c2",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-e63c8642b5891",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-457a6d8c0f351",
+      "hasNote": false,
+      "linesLive": 3,
+      "linesUnified": 3,
+      "sameDivision": true,
+      "words": 14
+    },
+    {
+      "blockId": "blk-25bbaf7366f50",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-8ef6b53a1c6c9",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-01a89c7032b63",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
     },
     {
       "blockId": "blk-dea6ba81261fc",
       "hasNote": true,
-      "classification": "marker-handling",
-      "reason": "נתיב חי: הסמן מודבק ב-NBSP אך protectWords מפרק את ההצמדה (P-1 הידוע, תיקון שהוחזר) והסמן נמדד בגודל הגוף; מנוע מאוחד: הסמן פריט אטום מוצמד לעוגנו (BRZ-11) ונמדד בגודל רישום (חוזה שלב 3)",
-      "live": [
-        5,
-        5,
-        5
-      ],
-      "unified": [
-        1,
-        5,
-        6,
-        4
-      ]
+      "linesLive": 3,
+      "linesUnified": 4,
+      "sameDivision": false,
+      "words": 15
+    },
+    {
+      "blockId": "blk-76198f36b08eb",
+      "hasNote": false,
+      "linesLive": 6,
+      "linesUnified": 6,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-4f48efc178cc4",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-826e7e2fc1c53",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-c02a8af3c24b1",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-b01b3945c4a59",
+      "hasNote": false,
+      "linesLive": 6,
+      "linesUnified": 6,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-78a30885b51ff",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-c8b0ff42d947a",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-cab6a32289be3",
+      "hasNote": false,
+      "linesLive": 3,
+      "linesUnified": 3,
+      "sameDivision": true,
+      "words": 14
+    },
+    {
+      "blockId": "blk-ff2bd99892615",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-fadaf536096c3",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-671d02c684cd8",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
     },
     {
       "blockId": "blk-a1e6188448c15",
       "hasNote": true,
-      "classification": "marker-handling",
-      "reason": "נתיב חי: הסמן מודבק ב-NBSP אך protectWords מפרק את ההצמדה (P-1 הידוע, תיקון שהוחזר) והסמן נמדד בגודל הגוף; מנוע מאוחד: הסמן פריט אטום מוצמד לעוגנו (BRZ-11) ונמדד בגודל רישום (חוזה שלב 3)",
-      "live": [
-        5,
-        5,
-        5
-      ],
-      "unified": [
-        1,
-        5,
-        6,
-        4
-      ]
+      "linesLive": 3,
+      "linesUnified": 4,
+      "sameDivision": false,
+      "words": 15
+    },
+    {
+      "blockId": "blk-585052b88d451",
+      "hasNote": false,
+      "linesLive": 6,
+      "linesUnified": 6,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-903b0a174d722",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-1498a08e9e09e",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-0fe95c6f760d2",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-5d7bbf50ed83e",
+      "hasNote": false,
+      "linesLive": 6,
+      "linesUnified": 6,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-164af79b431c6",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-2633570bf64cd",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-b4632a8d0501b",
+      "hasNote": false,
+      "linesLive": 3,
+      "linesUnified": 3,
+      "sameDivision": true,
+      "words": 14
+    },
+    {
+      "blockId": "blk-2a734529e273e",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-5a8b8e6718ab1",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-67795ce54a775",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
     },
     {
       "blockId": "blk-22f32107bab4a",
       "hasNote": true,
-      "classification": "marker-handling",
-      "reason": "נתיב חי: הסמן מודבק ב-NBSP אך protectWords מפרק את ההצמדה (P-1 הידוע, תיקון שהוחזר) והסמן נמדד בגודל הגוף; מנוע מאוחד: הסמן פריט אטום מוצמד לעוגנו (BRZ-11) ונמדד בגודל רישום (חוזה שלב 3)",
-      "live": [
-        5,
-        5,
-        5
-      ],
-      "unified": [
-        1,
-        5,
-        6,
-        4
-      ]
+      "linesLive": 3,
+      "linesUnified": 4,
+      "sameDivision": false,
+      "words": 15
+    },
+    {
+      "blockId": "blk-4207b9ca4bde7",
+      "hasNote": false,
+      "linesLive": 6,
+      "linesUnified": 6,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-195edcb12a7e9",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-05e94a0222aa7",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-e53f08939861a",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-ce671cb77b567",
+      "hasNote": false,
+      "linesLive": 6,
+      "linesUnified": 6,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-5dc2bf74b98af",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-fa1a50a88b189",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-1cc44e78c5042",
+      "hasNote": false,
+      "linesLive": 3,
+      "linesUnified": 3,
+      "sameDivision": true,
+      "words": 14
+    },
+    {
+      "blockId": "blk-d79a29f729335",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-f05a9a0bb19a6",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-feb5e83e445a3",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
     },
     {
       "blockId": "blk-90e244329924c",
       "hasNote": true,
-      "classification": "marker-handling",
-      "reason": "נתיב חי: הסמן מודבק ב-NBSP אך protectWords מפרק את ההצמדה (P-1 הידוע, תיקון שהוחזר) והסמן נמדד בגודל הגוף; מנוע מאוחד: הסמן פריט אטום מוצמד לעוגנו (BRZ-11) ונמדד בגודל רישום (חוזה שלב 3)",
-      "live": [
-        5,
-        5,
-        5
-      ],
-      "unified": [
-        1,
-        5,
-        6,
-        4
-      ]
+      "linesLive": 3,
+      "linesUnified": 4,
+      "sameDivision": false,
+      "words": 15
+    },
+    {
+      "blockId": "blk-f7af01a0a9e55",
+      "hasNote": false,
+      "linesLive": 6,
+      "linesUnified": 6,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-de3d7117ef4cb",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-12677816af544",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-7a7b921f2cc6d",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-31352ccc0e3ff",
+      "hasNote": false,
+      "linesLive": 6,
+      "linesUnified": 6,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-a402472cb6fa9",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-7511757ae2954",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-5376a0822a9e1",
+      "hasNote": false,
+      "linesLive": 3,
+      "linesUnified": 3,
+      "sameDivision": true,
+      "words": 14
+    },
+    {
+      "blockId": "blk-17431ac57110b",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-ff6889e1a525a",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-cf1e96b7ed114",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
     },
     {
       "blockId": "blk-c55573f494fbc",
       "hasNote": true,
-      "classification": "marker-handling",
-      "reason": "נתיב חי: הסמן מודבק ב-NBSP אך protectWords מפרק את ההצמדה (P-1 הידוע, תיקון שהוחזר) והסמן נמדד בגודל הגוף; מנוע מאוחד: הסמן פריט אטום מוצמד לעוגנו (BRZ-11) ונמדד בגודל רישום (חוזה שלב 3)",
-      "live": [
-        5,
-        5,
-        5
-      ],
-      "unified": [
-        1,
-        5,
-        6,
-        4
-      ]
+      "linesLive": 3,
+      "linesUnified": 4,
+      "sameDivision": false,
+      "words": 15
+    },
+    {
+      "blockId": "blk-c1f9fee198f1e",
+      "hasNote": false,
+      "linesLive": 6,
+      "linesUnified": 6,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-072ced441c209",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-6d65f7ad54543",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-bf086fc9ed5a5",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-7862da0eb7f68",
+      "hasNote": false,
+      "linesLive": 6,
+      "linesUnified": 6,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-2f8b7f8c8ecb3",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-1a7fa03f1ac0a",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-7f4466db3d25f",
+      "hasNote": false,
+      "linesLive": 3,
+      "linesUnified": 3,
+      "sameDivision": true,
+      "words": 14
+    },
+    {
+      "blockId": "blk-9643a6d893910",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-31dd9484345ee",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-13f2740327e05",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
     },
     {
       "blockId": "blk-c821171430616",
       "hasNote": true,
-      "classification": "marker-handling",
-      "reason": "נתיב חי: הסמן מודבק ב-NBSP אך protectWords מפרק את ההצמדה (P-1 הידוע, תיקון שהוחזר) והסמן נמדד בגודל הגוף; מנוע מאוחד: הסמן פריט אטום מוצמד לעוגנו (BRZ-11) ונמדד בגודל רישום (חוזה שלב 3)",
-      "live": [
-        5,
-        5,
-        5
+      "linesLive": 3,
+      "linesUnified": 4,
+      "sameDivision": false,
+      "words": 15
+    },
+    {
+      "blockId": "blk-e1bec3d612338",
+      "hasNote": false,
+      "linesLive": 6,
+      "linesUnified": 6,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-b85480f23d372",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-c20518cb99dcc",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-f2dac40038ee5",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-c13d229990bd0",
+      "hasNote": false,
+      "linesLive": 6,
+      "linesUnified": 6,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-bfc2e12977d21",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-ffc93d01d71ee",
+      "hasNote": false,
+      "linesLive": 5,
+      "linesUnified": 5,
+      "sameDivision": true,
+      "words": 25
+    },
+    {
+      "blockId": "blk-c84f268f1a4b0",
+      "hasNote": false,
+      "linesLive": 3,
+      "linesUnified": 3,
+      "sameDivision": true,
+      "words": 14
+    }
+  ],
+  "noteHunks": [
+    {
+      "blockId": "blk-59de7cefd7b5a",
+      "isolationProof": "הפסקה ללא תיבות סמן — חלוקה זהה לנתיב החי (מקור ההבדל: הסמנים בלבד)",
+      "cause": "צמידה מבנית BRZ-11 במנוע המאוחד: הסמן נצמד לעוגן שלפניו (internal glue + forbidden penalty) — בנתיב החי הסמן מילה חופשית (P-1: protectWords מפרק הצמדות) · מדידת סמן בגודל רישון לפי חוזה שלב 3 (fnSize) — בנתיב החי הסמן נמדד בגודל הגוף · תיבת הסמן מוסיפה רוחב לשורת העוגן — מספר השורות עשוי לגדול",
+      "markers": [
+        {
+          "lineIndex": 2,
+          "noteRef": "note-7e19c356e89f8",
+          "markerText": "א.",
+          "markerSourceRange": {
+            "blockId": "blk-59de7cefd7b5a",
+            "itemId": "itm-ec05234f185a6",
+            "runIndex": 0,
+            "start": 657,
+            "end": 684
+          },
+          "anchorItemId": "itm-adcef69a9b036#w@652-656",
+          "anchorText": "חסד.",
+          "anchorSourceRange": {
+            "blockId": "blk-59de7cefd7b5a",
+            "itemId": "itm-adcef69a9b036",
+            "runIndex": 0,
+            "start": 652,
+            "end": 656,
+            "runLocal": {
+              "start": 44,
+              "end": 48
+            }
+          },
+          "joinedToAnchor": true
+        }
       ],
-      "unified": [
-        1,
-        5,
-        6,
-        4
+      "liveLineCount": 3,
+      "unifiedLineCount": 4,
+      "liveWords": [
+        [
+          "פסקה",
+          "עם",
+          "הערת",
+          "גוף",
+          "שלום"
+        ],
+        [
+          "הלכה",
+          "רמז",
+          "עמל",
+          "תורה",
+          "דעת"
+        ],
+        [
+          "חסד.",
+          "והמשך",
+          "הפסקה",
+          "עוד",
+          "קצת."
+        ]
+      ],
+      "unifiedWords": [
+        [
+          "פסקה"
+        ],
+        [
+          "עם",
+          "הערת",
+          "גוף",
+          "שלום",
+          "הלכה"
+        ],
+        [
+          "רמז",
+          "עמל",
+          "תורה",
+          "דעת",
+          "חסד.",
+          "א."
+        ],
+        [
+          "והמשך",
+          "הפסקה",
+          "עוד",
+          "קצת."
+        ]
+      ]
+    },
+    {
+      "blockId": "blk-ad365d58289cb",
+      "isolationProof": "הפסקה ללא תיבות סמן — חלוקה זהה לנתיב החי (מקור ההבדל: הסמנים בלבד)",
+      "cause": "צמידה מבנית BRZ-11 במנוע המאוחד: הסמן נצמד לעוגן שלפניו (internal glue + forbidden penalty) — בנתיב החי הסמן מילה חופשית (P-1: protectWords מפרק הצמדות) · מדידת סמן בגודל רישון לפי חוזה שלב 3 (fnSize) — בנתיב החי הסמן נמדד בגודל הגוף · תיבת הסמן מוסיפה רוחב לשורת העוגן — מספר השורות עשוי לגדול",
+      "markers": [
+        {
+          "lineIndex": 2,
+          "noteRef": "note-663222ea0992b",
+          "markerText": "א.",
+          "markerSourceRange": {
+            "blockId": "blk-ad365d58289cb",
+            "itemId": "itm-8062663e1f848",
+            "runIndex": 0,
+            "start": 2588,
+            "end": 2615
+          },
+          "anchorItemId": "itm-f23c4be9a7cff#w@2583-2587",
+          "anchorText": "חסד.",
+          "anchorSourceRange": {
+            "blockId": "blk-ad365d58289cb",
+            "itemId": "itm-f23c4be9a7cff",
+            "runIndex": 0,
+            "start": 2583,
+            "end": 2587,
+            "runLocal": {
+              "start": 44,
+              "end": 48
+            }
+          },
+          "joinedToAnchor": true
+        }
+      ],
+      "liveLineCount": 3,
+      "unifiedLineCount": 4,
+      "liveWords": [
+        [
+          "פסקה",
+          "עם",
+          "הערת",
+          "גוף",
+          "שלום"
+        ],
+        [
+          "הלכה",
+          "רמז",
+          "עמל",
+          "תורה",
+          "דעת"
+        ],
+        [
+          "חסד.",
+          "והמשך",
+          "הפסקה",
+          "עוד",
+          "קצת."
+        ]
+      ],
+      "unifiedWords": [
+        [
+          "פסקה"
+        ],
+        [
+          "עם",
+          "הערת",
+          "גוף",
+          "שלום",
+          "הלכה"
+        ],
+        [
+          "רמז",
+          "עמל",
+          "תורה",
+          "דעת",
+          "חסד.",
+          "א."
+        ],
+        [
+          "והמשך",
+          "הפסקה",
+          "עוד",
+          "קצת."
+        ]
+      ]
+    },
+    {
+      "blockId": "blk-dea6ba81261fc",
+      "isolationProof": "הפסקה ללא תיבות סמן — חלוקה זהה לנתיב החי (מקור ההבדל: הסמנים בלבד)",
+      "cause": "צמידה מבנית BRZ-11 במנוע המאוחד: הסמן נצמד לעוגן שלפניו (internal glue + forbidden penalty) — בנתיב החי הסמן מילה חופשית (P-1: protectWords מפרק הצמדות) · מדידת סמן בגודל רישון לפי חוזה שלב 3 (fnSize) — בנתיב החי הסמן נמדד בגודל הגוף · תיבת הסמן מוסיפה רוחב לשורת העוגן — מספר השורות עשוי לגדול",
+      "markers": [
+        {
+          "lineIndex": 2,
+          "noteRef": "note-591352b978461",
+          "markerText": "א.",
+          "markerSourceRange": {
+            "blockId": "blk-dea6ba81261fc",
+            "itemId": "itm-3b02dd09e8d54",
+            "runIndex": 0,
+            "start": 4519,
+            "end": 4546
+          },
+          "anchorItemId": "itm-2075b68465f3d#w@4514-4518",
+          "anchorText": "חסד.",
+          "anchorSourceRange": {
+            "blockId": "blk-dea6ba81261fc",
+            "itemId": "itm-2075b68465f3d",
+            "runIndex": 0,
+            "start": 4514,
+            "end": 4518,
+            "runLocal": {
+              "start": 44,
+              "end": 48
+            }
+          },
+          "joinedToAnchor": true
+        }
+      ],
+      "liveLineCount": 3,
+      "unifiedLineCount": 4,
+      "liveWords": [
+        [
+          "פסקה",
+          "עם",
+          "הערת",
+          "גוף",
+          "שלום"
+        ],
+        [
+          "הלכה",
+          "רמז",
+          "עמל",
+          "תורה",
+          "דעת"
+        ],
+        [
+          "חסד.",
+          "והמשך",
+          "הפסקה",
+          "עוד",
+          "קצת."
+        ]
+      ],
+      "unifiedWords": [
+        [
+          "פסקה"
+        ],
+        [
+          "עם",
+          "הערת",
+          "גוף",
+          "שלום",
+          "הלכה"
+        ],
+        [
+          "רמז",
+          "עמל",
+          "תורה",
+          "דעת",
+          "חסד.",
+          "א."
+        ],
+        [
+          "והמשך",
+          "הפסקה",
+          "עוד",
+          "קצת."
+        ]
+      ]
+    },
+    {
+      "blockId": "blk-a1e6188448c15",
+      "isolationProof": "הפסקה ללא תיבות סמן — חלוקה זהה לנתיב החי (מקור ההבדל: הסמנים בלבד)",
+      "cause": "צמידה מבנית BRZ-11 במנוע המאוחד: הסמן נצמד לעוגן שלפניו (internal glue + forbidden penalty) — בנתיב החי הסמן מילה חופשית (P-1: protectWords מפרק הצמדות) · מדידת סמן בגודל רישון לפי חוזה שלב 3 (fnSize) — בנתיב החי הסמן נמדד בגודל הגוף · תיבת הסמן מוסיפה רוחב לשורת העוגן — מספר השורות עשוי לגדול",
+      "markers": [
+        {
+          "lineIndex": 2,
+          "noteRef": "note-d5f2e2140635f",
+          "markerText": "א.",
+          "markerSourceRange": {
+            "blockId": "blk-a1e6188448c15",
+            "itemId": "itm-709eb30e8808e",
+            "runIndex": 0,
+            "start": 6450,
+            "end": 6477
+          },
+          "anchorItemId": "itm-97c96ce6f3416#w@6445-6449",
+          "anchorText": "חסד.",
+          "anchorSourceRange": {
+            "blockId": "blk-a1e6188448c15",
+            "itemId": "itm-97c96ce6f3416",
+            "runIndex": 0,
+            "start": 6445,
+            "end": 6449,
+            "runLocal": {
+              "start": 44,
+              "end": 48
+            }
+          },
+          "joinedToAnchor": true
+        }
+      ],
+      "liveLineCount": 3,
+      "unifiedLineCount": 4,
+      "liveWords": [
+        [
+          "פסקה",
+          "עם",
+          "הערת",
+          "גוף",
+          "שלום"
+        ],
+        [
+          "הלכה",
+          "רמז",
+          "עמל",
+          "תורה",
+          "דעת"
+        ],
+        [
+          "חסד.",
+          "והמשך",
+          "הפסקה",
+          "עוד",
+          "קצת."
+        ]
+      ],
+      "unifiedWords": [
+        [
+          "פסקה"
+        ],
+        [
+          "עם",
+          "הערת",
+          "גוף",
+          "שלום",
+          "הלכה"
+        ],
+        [
+          "רמז",
+          "עמל",
+          "תורה",
+          "דעת",
+          "חסד.",
+          "א."
+        ],
+        [
+          "והמשך",
+          "הפסקה",
+          "עוד",
+          "קצת."
+        ]
+      ]
+    },
+    {
+      "blockId": "blk-22f32107bab4a",
+      "isolationProof": "הפסקה ללא תיבות סמן — חלוקה זהה לנתיב החי (מקור ההבדל: הסמנים בלבד)",
+      "cause": "צמידה מבנית BRZ-11 במנוע המאוחד: הסמן נצמד לעוגן שלפניו (internal glue + forbidden penalty) — בנתיב החי הסמן מילה חופשית (P-1: protectWords מפרק הצמדות) · מדידת סמן בגודל רישון לפי חוזה שלב 3 (fnSize) — בנתיב החי הסמן נמדד בגודל הגוף · תיבת הסמן מוסיפה רוחב לשורת העוגן — מספר השורות עשוי לגדול",
+      "markers": [
+        {
+          "lineIndex": 2,
+          "noteRef": "note-4cd981c656f09",
+          "markerText": "א.",
+          "markerSourceRange": {
+            "blockId": "blk-22f32107bab4a",
+            "itemId": "itm-7d9656bb1772c",
+            "runIndex": 0,
+            "start": 8381,
+            "end": 8408
+          },
+          "anchorItemId": "itm-4666d4ec96129#w@8376-8380",
+          "anchorText": "חסד.",
+          "anchorSourceRange": {
+            "blockId": "blk-22f32107bab4a",
+            "itemId": "itm-4666d4ec96129",
+            "runIndex": 0,
+            "start": 8376,
+            "end": 8380,
+            "runLocal": {
+              "start": 44,
+              "end": 48
+            }
+          },
+          "joinedToAnchor": true
+        }
+      ],
+      "liveLineCount": 3,
+      "unifiedLineCount": 4,
+      "liveWords": [
+        [
+          "פסקה",
+          "עם",
+          "הערת",
+          "גוף",
+          "שלום"
+        ],
+        [
+          "הלכה",
+          "רמז",
+          "עמל",
+          "תורה",
+          "דעת"
+        ],
+        [
+          "חסד.",
+          "והמשך",
+          "הפסקה",
+          "עוד",
+          "קצת."
+        ]
+      ],
+      "unifiedWords": [
+        [
+          "פסקה"
+        ],
+        [
+          "עם",
+          "הערת",
+          "גוף",
+          "שלום",
+          "הלכה"
+        ],
+        [
+          "רמז",
+          "עמל",
+          "תורה",
+          "דעת",
+          "חסד.",
+          "א."
+        ],
+        [
+          "והמשך",
+          "הפסקה",
+          "עוד",
+          "קצת."
+        ]
+      ]
+    },
+    {
+      "blockId": "blk-90e244329924c",
+      "isolationProof": "הפסקה ללא תיבות סמן — חלוקה זהה לנתיב החי (מקור ההבדל: הסמנים בלבד)",
+      "cause": "צמידה מבנית BRZ-11 במנוע המאוחד: הסמן נצמד לעוגן שלפניו (internal glue + forbidden penalty) — בנתיב החי הסמן מילה חופשית (P-1: protectWords מפרק הצמדות) · מדידת סמן בגודל רישון לפי חוזה שלב 3 (fnSize) — בנתיב החי הסמן נמדד בגודל הגוף · תיבת הסמן מוסיפה רוחב לשורת העוגן — מספר השורות עשוי לגדול",
+      "markers": [
+        {
+          "lineIndex": 2,
+          "noteRef": "note-f09d5a15e41c2",
+          "markerText": "א.",
+          "markerSourceRange": {
+            "blockId": "blk-90e244329924c",
+            "itemId": "itm-1f8d5bba261f5",
+            "runIndex": 0,
+            "start": 10312,
+            "end": 10339
+          },
+          "anchorItemId": "itm-2e3cf277e4d22#w@10307-10311",
+          "anchorText": "חסד.",
+          "anchorSourceRange": {
+            "blockId": "blk-90e244329924c",
+            "itemId": "itm-2e3cf277e4d22",
+            "runIndex": 0,
+            "start": 10307,
+            "end": 10311,
+            "runLocal": {
+              "start": 44,
+              "end": 48
+            }
+          },
+          "joinedToAnchor": true
+        }
+      ],
+      "liveLineCount": 3,
+      "unifiedLineCount": 4,
+      "liveWords": [
+        [
+          "פסקה",
+          "עם",
+          "הערת",
+          "גוף",
+          "שלום"
+        ],
+        [
+          "הלכה",
+          "רמז",
+          "עמל",
+          "תורה",
+          "דעת"
+        ],
+        [
+          "חסד.",
+          "והמשך",
+          "הפסקה",
+          "עוד",
+          "קצת."
+        ]
+      ],
+      "unifiedWords": [
+        [
+          "פסקה"
+        ],
+        [
+          "עם",
+          "הערת",
+          "גוף",
+          "שלום",
+          "הלכה"
+        ],
+        [
+          "רמז",
+          "עמל",
+          "תורה",
+          "דעת",
+          "חסד.",
+          "א."
+        ],
+        [
+          "והמשך",
+          "הפסקה",
+          "עוד",
+          "קצת."
+        ]
+      ]
+    },
+    {
+      "blockId": "blk-c55573f494fbc",
+      "isolationProof": "הפסקה ללא תיבות סמן — חלוקה זהה לנתיב החי (מקור ההבדל: הסמנים בלבד)",
+      "cause": "צמידה מבנית BRZ-11 במנוע המאוחד: הסמן נצמד לעוגן שלפניו (internal glue + forbidden penalty) — בנתיב החי הסמן מילה חופשית (P-1: protectWords מפרק הצמדות) · מדידת סמן בגודל רישון לפי חוזה שלב 3 (fnSize) — בנתיב החי הסמן נמדד בגודל הגוף · תיבת הסמן מוסיפה רוחב לשורת העוגן — מספר השורות עשוי לגדול",
+      "markers": [
+        {
+          "lineIndex": 2,
+          "noteRef": "note-a0a7580e6ff1c",
+          "markerText": "א.",
+          "markerSourceRange": {
+            "blockId": "blk-c55573f494fbc",
+            "itemId": "itm-78052e9072f6b",
+            "runIndex": 0,
+            "start": 12243,
+            "end": 12270
+          },
+          "anchorItemId": "itm-4efe400ca2839#w@12238-12242",
+          "anchorText": "חסד.",
+          "anchorSourceRange": {
+            "blockId": "blk-c55573f494fbc",
+            "itemId": "itm-4efe400ca2839",
+            "runIndex": 0,
+            "start": 12238,
+            "end": 12242,
+            "runLocal": {
+              "start": 44,
+              "end": 48
+            }
+          },
+          "joinedToAnchor": true
+        }
+      ],
+      "liveLineCount": 3,
+      "unifiedLineCount": 4,
+      "liveWords": [
+        [
+          "פסקה",
+          "עם",
+          "הערת",
+          "גוף",
+          "שלום"
+        ],
+        [
+          "הלכה",
+          "רמז",
+          "עמל",
+          "תורה",
+          "דעת"
+        ],
+        [
+          "חסד.",
+          "והמשך",
+          "הפסקה",
+          "עוד",
+          "קצת."
+        ]
+      ],
+      "unifiedWords": [
+        [
+          "פסקה"
+        ],
+        [
+          "עם",
+          "הערת",
+          "גוף",
+          "שלום",
+          "הלכה"
+        ],
+        [
+          "רמז",
+          "עמל",
+          "תורה",
+          "דעת",
+          "חסד.",
+          "א."
+        ],
+        [
+          "והמשך",
+          "הפסקה",
+          "עוד",
+          "קצת."
+        ]
+      ]
+    },
+    {
+      "blockId": "blk-c821171430616",
+      "isolationProof": "הפסקה ללא תיבות סמן — חלוקה זהה לנתיב החי (מקור ההבדל: הסמנים בלבד)",
+      "cause": "צמידה מבנית BRZ-11 במנוע המאוחד: הסמן נצמד לעוגן שלפניו (internal glue + forbidden penalty) — בנתיב החי הסמן מילה חופשית (P-1: protectWords מפרק הצמדות) · מדידת סמן בגודל רישון לפי חוזה שלב 3 (fnSize) — בנתיב החי הסמן נמדד בגודל הגוף · תיבת הסמן מוסיפה רוחב לשורת העוגן — מספר השורות עשוי לגדול",
+      "markers": [
+        {
+          "lineIndex": 2,
+          "noteRef": "note-2ff05428b59f2",
+          "markerText": "א.",
+          "markerSourceRange": {
+            "blockId": "blk-c821171430616",
+            "itemId": "itm-8b344c1b8fde5",
+            "runIndex": 0,
+            "start": 14174,
+            "end": 14201
+          },
+          "anchorItemId": "itm-f59066ce6a78c#w@14169-14173",
+          "anchorText": "חסד.",
+          "anchorSourceRange": {
+            "blockId": "blk-c821171430616",
+            "itemId": "itm-f59066ce6a78c",
+            "runIndex": 0,
+            "start": 14169,
+            "end": 14173,
+            "runLocal": {
+              "start": 44,
+              "end": 48
+            }
+          },
+          "joinedToAnchor": true
+        }
+      ],
+      "liveLineCount": 3,
+      "unifiedLineCount": 4,
+      "liveWords": [
+        [
+          "פסקה",
+          "עם",
+          "הערת",
+          "גוף",
+          "שלום"
+        ],
+        [
+          "הלכה",
+          "רמז",
+          "עמל",
+          "תורה",
+          "דעת"
+        ],
+        [
+          "חסד.",
+          "והמשך",
+          "הפסקה",
+          "עוד",
+          "קצת."
+        ]
+      ],
+      "unifiedWords": [
+        [
+          "פסקה"
+        ],
+        [
+          "עם",
+          "הערת",
+          "גוף",
+          "שלום",
+          "הלכה"
+        ],
+        [
+          "רמז",
+          "עמל",
+          "תורה",
+          "דעת",
+          "חסד.",
+          "א."
+        ],
+        [
+          "והמשך",
+          "הפסקה",
+          "עוד",
+          "קצת."
+        ]
       ]
     }
   ]

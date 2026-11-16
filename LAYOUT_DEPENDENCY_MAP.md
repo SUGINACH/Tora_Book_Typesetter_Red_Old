@@ -85,3 +85,28 @@ core/          : pipeline ← כל השכבות (כולל shaar-pages/ornament-p
 - **שלב 5** (Planner): אילוצי תמונה (IMAGE_PLACEMENT) ומידות טבעיות מה-resolver; חית סביבה בכל MeasuredItem לניטרליות בין סביבות.
 - **זהויות:** נכסים `ast-<kind>-<sha256[:14]>` (תוכן) וגופנים `fnt-<sha256[:14]>` (תוכן) — זהות המסמך מהמקור נשמרת במודל ונקשרת בזמן בנייה עם resolver.
 - **Worker:** העברת נכסים בסכמה `asset-transport-v1` בלבד.
+
+## שכבת מנוע השורות הקנוני (שלב 4 מקטע א׳ — 16.11)
+
+`buildLineSequences` (line-items) → `layoutSequence` (line-model) → `breakItemSequence`
+(kp-linebreak) הם מקור הסמכות לשבירת שורות מהמודל הקנוני:
+- **LineItem (חוזה v2):** זהות נגזרת-מקור (`#w@docStart-docEnd`) — יציבה בין בניות;
+  sourceRange מוחלט + blockId; פרגמנטים פר-ריצה למילה מרובת-גופנים; צמידות
+  סמן⇄עוגן מבנית מקושרת לפי noteRef (glue פנימי + penalty אסור).
+- **breaks.js:** מקור אמת אחד להזדמנויות — והוא **משתתף בפועל** בהחלטת החיתוך
+  ב-DP (breakBetweenItems + canStartLineWith/canEndLineWith); קיצורים משותפים
+  עם protectors של המורשת.
+- **תמונות:** inline = תיבה; block/centered = LineModel נפרד; **float = אילוץ
+  אזור בלבד** (extractFloats — אין ספירת רוחב כפולה; זהות/עוגן/צד ב-floats/
+  floatAreas; מיקום עמוד סופי — שלב 5).
+- **justify:** מדיניות מהגדרות המסמך (justifyPolicyOf): גוף stretch (03.11(ד)),
+  שורה אחרונה לפי body-last-line-align; הקצאת glue פעם אחת ב-LineModel —
+  ה-renderer צורך ואינו מותח.
+- **Overflow:** ערוץ דטרמיניסטי אחד; יחידה צמודה אטומית גם בגיבוי
+  (overflow-joined-unit עם noteRef); פריט רחב ⇒ overflow-item-own-line.
+- **wrap/DP:** lineOf אטומי עם cost/parent + אימות שוט-אחרי מול lineWidthAt
+  (אינדקס שורה סופי) — wrap-width-mismatch מדווח מפורש.
+- **שלב 5 (Planner):** יקבל LineModel שלם (fragments, זהויות, מדידות, glue,
+  baseline, semantic, floatAreas) — בלי מדידה מחדש ובלי שינוי גאומטריית שורה.
+- **הגבול:** נתיב המוצר עדיין שובר דרך words[]→breakLines (מקטע ב׳ יחליף);
+  breakLines נשאר למורשת עד שלב 9; אין breaker/MeasureAPI שניים.
