@@ -7,12 +7,12 @@
   },
   "hash": {
     "was": "7c4e9bff867145df",
-    "now": "e68e1f0b923bd405"
+    "now": "40d587a0e675f60d"
   },
   "blocks": {
     "total": 4536,
-    "identical": 4536,
-    "redivision": 0,
+    "identical": 4523,
+    "redivision": 13,
     "marker": 0,
     "orderRestore": 0,
     "unexplained": 0,

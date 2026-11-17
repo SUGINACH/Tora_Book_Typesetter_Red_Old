@@ -177,6 +177,21 @@ class MeasureAPI {
       && fm.advanceUnitsOf(this.fontProfile, ch) === 0;
   }
 
+  /**
+   * **פרוסה 3 (RLM — שורש פער דיו במקרין ה-PageModel, 17.11):** תווי בקרת
+   * bidi/פורמט (U+200B..200F, U+202A..202E, U+FEFF) הם **אפס-רוחב לפי
+   * הגדרת יוניקוד** וכך מציגים אותם כל מנועי התצוגה (דפדפנים, מציגי PDF).
+   * חלק מהגופנים נותנים להם advance ב-hmtx (נמדד: 6.4px ל-RLM ב-12pt) —
+   * המדידה ספרה אותם והתצוגה לא ⇒ פער דיו של ~7px בכל מילה מסומנת-RLM
+   * (INK_NOT_JUSTIFIED באודיט החי; 230 מופעי RLM ב-very_long — תוכן המקור).
+   * תיקון השורש בסמכות המדידה: אפס advance גם כשהגופן טוען אחרת —
+   * מילה, מודל, PDF ו-DOM מסכימים ביט-לביט.
+   */
+  _isZeroWidthControl(ch) {
+    const c = ch.codePointAt(0);
+    return (c >= 0x200B && c <= 0x200F) || (c >= 0x202A && c <= 0x202E) || c === 0xFEFF;
+  }
+
   /** קרנינג בין תווים סמוכים ב־em (מימוש A: 0 תמיד — כמו S1–S11). */
   _kernEm(a, b) {
     if (this.impl === 'font-metrics' && this.fontProfile) {
@@ -203,6 +218,7 @@ class MeasureAPI {
       // (הסימן נצמד לבסיס שלו; letter-spacing אינו חל על סימנים משולבים במדידת
       // הדפדפן). prev נשאר הבסיס האחרון — קרנינג בין בסיסים דרך הניקוד נשמר.
       if (this._isMappedMark(ch)) continue;
+      if (this._isZeroWidthControl(ch)) continue; // RLM/bidi — אפס-רוחב בכל מנוע תצוגה
       if (prev !== null) w += this._kernEm(prev, ch);
       w += this._charEm(ch) + trackingEm;
       prev = ch;

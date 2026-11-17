@@ -89,6 +89,17 @@ function projectPage(page, settings, apiOrOpts) {
     out.spanning = band;
   }
 
+  // **פרוסה 3 (§2.4 — כיסוי מלא):** עמודים מותאמים — התיבות והתמונות בגיאומטריה
+  // סופית מהתוכנית (page.custom; הוחלטו בתכנון העמוד) עוברות כמו שהן להקרנה.
+  // מעבר נתונים טהור — אין כאן מדידה ואין החלטה; המקרין של ה-PageModel מצייר
+  // והמקרין הישן ממשיך בנתיב שלו (עד שלב 9).
+  if (page.type === 'custom' && page.custom) {
+    out.custom = {
+      boxes: (page.custom.boxes || []).map(b => ({ x: b.x, y: b.y, w: b.w, h: b.h, text: b.text || '' })),
+      images: (page.custom.images || []).map(im => ({ x: im.x, y: im.y, w: im.w, h: im.h, src: im.src || null }))
+    };
+  }
+
   // **S12 (REQ-EXP-03) + שלב 8 (§4.1):** עמודי תוכן־העניינים — השורות מהחותמת
   // שהוטבעה בזמן התכנון (structural-stamps: מילים נמדדות פעם אחת); ההקרנה
   // ממקמת את המילים החותמות ואינה מודדת. חותמה חסרה — נפילה מדווחת.
@@ -131,12 +142,30 @@ function projectPage(page, settings, apiOrOpts) {
   // אנכי). ההקרנה ממקמת מילים חותמות — אין שבירה ואין מדידה כאן.
   if (/^shaar-/.test(page.type) && page.shaarLayout && page.shaarLayout.blocks) {
     for (const bl of page.shaarLayout.blocks) {
+      // **פרוסה 3 (§2.2/§2.4):** כתרי השער — דיו SVG ממקור יחיד (shaar-content),
+      // מוקרן כעיטור בגיאומטריה הסופית מהחותמת; המקרינים קוראים ואינם
+      // מטמיעים את הנתיבים בעצמם (אין עותק שני של הדיו).
+      if (bl.graphic) {
+        const { crownSvgOf } = require('../output/shaar-content');
+        const { svgDataUri } = require('../decoration/asset-registry');
+        if (!out.decorations) out.decorations = [];
+        out.decorations.push({
+          x: page.shaarLayout.box.x, y: bl.yTop != null ? bl.yTop : 0,
+          w: page.shaarLayout.box.w, h: bl.h || 24,
+          kind: 'shaar-crown', slot: 'shaar', kindStyle: String(bl.graphic),
+          inkType: 'svg', inkUri: null, ink: { type: 'svg', uri: svgDataUri(crownSvgOf(bl.graphic)) },
+          paint: null, pdfOps: null, ornId: null, source: 'shaar'
+        });
+        continue;
+      }
       if (!bl.lines || !bl.lines.length) continue;
       const lh = bl.h / bl.lines.length;
       bl.lines.forEach((words, li) => {
         const lineH = Math.max(12, Math.round((bl.sizePt * (96 / 72)) * 1.25));
         void lh;
-        out.lines.push(centeredStampedLine(words, bl.spaceW, page.shaarLayout.box.x, bl.yTop + li * lineH, page.shaarLayout.box.w, lineH, bl.sizePt, bl.cls, bl.fontKey, bl.color));
+        // **פרוסה 3 (§2.2):** מאפייני העיצוב של הבלוק (מחלקה/משקל/ריווח-אותיות)
+        // עוברים בשלמותם להקרנה — המקרין של ה-PageModel קורא ואינו גוזר מההגדרות.
+        out.lines.push(centeredStampedLine(words, bl.spaceW, page.shaarLayout.box.x, bl.yTop + li * lineH, page.shaarLayout.box.w, lineH, bl.sizePt, bl.cls, bl.fontKey, bl.color, { bold: bl.bold === true, letterSpacingPx: bl.letterSpacingPx || null }));
       });
     }
   } else if (/^shaar-/.test(page.type)) {
@@ -332,6 +361,10 @@ function projectPage(page, settings, apiOrOpts) {
         x: d.x, y: d.y, w: d.w, h: d.h,
         kind: d.kind || null, slot: d.slot || null, kindStyle: d.kindStyle || null,
         inkType: ink ? ink.type : null, inkUri: ink && ink.uri ? ink.uri : null,
+        // **פרוסה 3 (§2.2 — הדיו מגיע מהמודל):** מטען הדיו בשלמותו (svg/image-
+        // ref/rule) עובר להקרנה — המקרין ה-DOM של ה-PageModel קורא ואינו פותר
+        // מחדש את הספרייה (אין חישוב מקביל ברנדרר).
+        ...(ink ? { ink } : {}),
         paint, pdfOps,
         // **השלמת חוזה העיטורים (שלב 6):** ההצהרה מהתוכנית עוברת בשלמותה —
         // ההקרנה מוסיפה אריזת-ציור (paint/pdfOps) ואינה מפילה נתוני חוזה.
@@ -790,27 +823,39 @@ function lineWidthsFromModel(ln) {
   if (!Array.isArray(lm.flow) || !Array.isArray(lm.fragments)) return null;
   const fragById = new Map((lm.fragments || []).map(f => [f.itemId, f]));
   const widths = [];
+  // **פרוסה 3 (סמן מודבק — פיצול בסמכות):** מלאי הפרגמנטים של כל מילה שטוחה
+  // (סוג+רוחב) — לפיו מפצלת ההקרנה מילה מורכבת "מילה+סמן" לשני חלקים בגדלים
+  // שנמדדו בפועל (הסמן נמדד בגודל הרישום). בלי זה הסמן מוצג בגודל השורה
+  // וגולש מהטור (נמדד: +8px; ברינדור זרימה נבלע בשבירה שקטה).
+  const wordFrags = [];
+  let curFrags = null;
   let curW = null;
   let spaceW = null;
+  const flushWord = () => {
+    if (curW !== null) { widths.push(curW); wordFrags.push(curFrags || []); }
+    curW = null; curFrags = null;
+  };
   for (const step of lm.flow) {
     if (step.type === 'glue') {
       if (step.internal) continue; // יחידה צמודה — אין גבול מילה
       if (step.breakGlue) continue; // דבק נקודת-החיתוך — מחוץ לרוחב השורה
-      if (curW !== null) { widths.push(curW); curW = null; }
+      flushWord();
       continue;
     }
     const f = fragById.get(step.itemId);
     if (!f) continue;
     const adv = Number(f.measuredAdvance) || 0;
+    if (curFrags === null) curFrags = [];
+    curFrags.push({ kind: f.kind || 'text', advance: adv });
     curW = curW === null ? adv : curW + adv;
   }
-  if (curW !== null) widths.push(curW);
+  flushWord();
   // רוחב הרווח — מה-glue החיצוני הראשון של השורה (naturalPx: הרווח שנמדד
   // בזמן השבירה, לא כאן)
   if (Array.isArray(lm.glue) && lm.glue.length && lm.glue[0].naturalPx != null) {
     spaceW = lm.glue[0].naturalPx;
   }
-  return { widths, spaceW };
+  return { widths, spaceW, wordFrags };
 }
 
 function projectLine(ln, colX, y, colW, settings, measure, align, production) {
@@ -915,18 +960,44 @@ function projectLine(ln, colX, y, colW, settings, measure, align, production) {
 
   const wordPos = [];
   let cursor = xRight;
-  for (let i = 0; i < words.length; i++) {
-    const eff = effSizeOf(i);
-    cursor -= widths[i];
-    // **S68:** סמן גודל פר-מילה רק כשהוא שונה מגודל השורה — שורות רגילות
-    // (ברירת מחדל, בלי סוגריים/סגנון) נשארות בדיוק כפי שהיו (נייטרליות).
+  // **פרוסה 3 (סמן מודבק — פיצול בסמכות ההקרנה):** מילה שטוחה "מילה+סמן הערה"
+  // נמדדה בשני גדלים (גוף + גודל הרישום) אך הוקרנה כמילה אחת בגודל השורה —
+  // הסמן הוצג גדול מכפי שנמדד וגלש מהטור (נמדד +8px; ברינדור הזרימה הישן
+  // נבלע בשבירת-שורה שקטה בתוך תיבת השורה). כאן היא מפוצלת לפי מבנה
+  // הפרגמנטים: חלק הטקסט בגודל השורה, הסמן בגודל הרישום — כפי שנמדד.
+  const fnSizePt = Number(settings['f-note-body-size-pt']) || 8;
+  const emitWord = (text, w, eff, extra) => {
     wordPos.push({
-      text: words[i], x: cursor, w: widths[i],
+      text, x: cursor, w,
       ...(eff !== sizePt ? { sizePt: eff } : {}),
       ...(hFontKey ? { fontKey: hFontKey } : {}),
       ...(hColor ? { color: hColor } : {}),
-      ...(!hColor && bodyColor ? { color: bodyColor } : {})
+      ...(!hColor && bodyColor ? { color: bodyColor } : {}),
+      ...(extra || {})
     });
+  };
+  for (let i = 0; i < words.length; i++) {
+    const eff = effSizeOf(i);
+    const frags = (lm && lm.wordFrags && lm.wordFrags[i]) || null;
+    const mkFrag = frags && frags.length >= 2 ? frags[frags.length - 1] : null;
+    if (mkFrag && mkFrag.kind === 'noteMarker' && mkFrag.advance > 0 && widths[i] > mkFrag.advance) {
+      // פיצול: [טקסט ..., סמן] — הסמן החלק האחרון (מודבק אחרי המילה)
+      const mkW = mkFrag.advance;
+      const txtW = widths[i] - mkW;
+      const raw = String(words[i]);
+      const sp = raw.lastIndexOf(' ');
+      const mkTxt = sp >= 0 ? raw.slice(sp + 1) : raw;
+      const txtTxt = sp >= 0 ? raw.slice(0, sp) : raw;
+      cursor -= txtW;
+      emitWord(txtTxt, txtW, eff, null);
+      cursor -= mkW;
+      emitWord(mkTxt, mkW, fnSizePt, { mk: true });
+    } else {
+      cursor -= widths[i];
+      // **S68:** סמן גודל פר-מילה רק כשהוא שונה מגודל השורה — שורות רגילות
+      // (ברירת מחדל, בלי סוגריים/סגנון) נשארות בדיוק כפי שהיו (נייטרליות).
+      emitWord(words[i], widths[i], eff, null);
+    }
     cursor -= gapW;
   }
 
@@ -988,7 +1059,7 @@ function centeredLine(text, x, y, w, h, sizePt, measure, cls, fontKey, color) {
 }
 
 /** **שלב 8 (§4.1):** שורת שער מהחותמת — מילים {text,w} ממוקמות מהמרכז החוצה (RTL); אפס מדידה. */
-function centeredStampedLine(stampedWords, spaceW, x, y, w, h, sizePt, cls, fontKey, color) {
+function centeredStampedLine(stampedWords, spaceW, x, y, w, h, sizePt, cls, fontKey, color, styleOpts) {
   const totalW = stampedWords.reduce((a, b2) => a + b2.w, 0) + (spaceW || 0) * Math.max(0, stampedWords.length - 1);
   let cursor = x + (w + totalW) / 2; // הקצה הימני של הטקסט הממורכז
   const wordPos = [];
@@ -997,7 +1068,13 @@ function centeredStampedLine(stampedWords, spaceW, x, y, w, h, sizePt, cls, font
     wordPos.push({ text: wd.text, x: cursor, w: wd.w, ...(fontKey ? { fontKey } : {}), ...(color ? { color } : {}) });
     cursor -= (spaceW || 0);
   }
-  return { x, y, w, h, words: wordPos, align: 'center', kind: 'shaar-content', level: null, isLast: false, sizePt, baselineY: null, tokenId: null, cls: cls || '' };
+  return {
+    x, y, w, h, words: wordPos, align: 'center', kind: 'shaar-content', level: null, isLast: false, sizePt, baselineY: null, tokenId: null,
+    cls: cls || '',
+    // **פרוסה 3 (§2.2):** מאפייני עיצוב מהבלוק — עוברים למודל (המקרין קורא).
+    ...(styleOpts && styleOpts.bold ? { bold: true } : {}),
+    ...(styleOpts && styleOpts.letterSpacingPx ? { letterSpacingPx: styleOpts.letterSpacingPx } : {})
+  };
 }
 
 /** **שלב 8 (§4.1):** שורת TOC מהחותמת — מילים {text,w} מימין לשמאל; אפס מדידה.

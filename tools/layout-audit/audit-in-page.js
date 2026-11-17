@@ -186,8 +186,14 @@
       return { y: rr.y - pgR.y, h: rr.height, text: (rowEl.textContent || '').trim().slice(0, 24) };
     });
 
-    // תוכן שער (מנוע מורשת): שורות השער הן .band--gate
+    // תוכן שער (מנוע מורשת): שורות השער הן .band--gate;
+    // **פרוסה 3 (מקרין ה-PageModel):** בפרופיל המאוחד תוכן השער הוא שורות
+    // structural בתוך .shaar-content — אותה בדיקת-אמת (שער לא ריק) בשני
+    // הפרופילים, בלי כפילות מנגנונים.
     info.gates = [...pg.querySelectorAll('.band--gate')].map((b) => b.textContent.trim().slice(0, 48)).filter(Boolean);
+    if (!info.gates.length) {
+      info.gates = [...pg.querySelectorAll('.shaar-content .line')].map((b) => b.textContent.trim().slice(0, 48)).filter(Boolean);
+    }
     info.ornaments = pg.querySelectorAll('.orn, [class*="divider"]').length;
 
     const fonts = new Set();

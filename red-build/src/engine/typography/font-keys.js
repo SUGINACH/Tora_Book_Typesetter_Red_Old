@@ -24,4 +24,22 @@ function familyFontKeyOf(fam) {
   return fam;
 }
 
-module.exports = { familyFontKeyOf };
+/** **פרוסה 3 (§2.2 — זהות גופן מהמודל):** היפוך המיפוי לצורך הקרנה —
+ * מפתח גופן (על שורות/מילים ב-PageModel) ⇒ שם משפחה לתצוגה. משפחה רשומה
+ * היא המפתח עצמו; המפתחות הפונקציונליים ממופים למשפחה הקנונית שיצרה אותם
+ * (אותה טבלה, כיוון אחד — אין עותק שני של הידע). */
+const KEY_FAMILY = {
+  fnbody: 'Frank Ruhl Libre',
+  margin: 'Hadassah Friedlaender',
+  window: 'FrankReal',
+  heading: 'DavidLibre-Bold'
+};
+
+/** @param {string} key — מפתח מהמודל; null ⇒ null (גוף הטקסט — ירושת שורש) */
+function familyOfFontKey(key) {
+  if (!key) return null;
+  if (key === 'body') return null;
+  return KEY_FAMILY[key] || key;
+}
+
+module.exports = { familyFontKeyOf, familyOfFontKey };

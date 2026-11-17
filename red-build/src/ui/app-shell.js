@@ -61,6 +61,7 @@ function createApp(doc, opts = {}) {
   let text = '';
   let result = null;            // תוצאה מסוריאליזת פרוטוקול (D-65)
   let pageModelObj = null;      // **שלב 8 פרוסה 2 (§4.4):** PageModel שהתקבל מה-Worker — מאומת וקפוא מחדש
+  let engineProfile = 'legacy'; // **פרוסה 3 (§2.3):** פרופיל המנוע של התוצאה הנוכחית (legacy/unified)
   let caretMapObj = null;
   let lightDirty = false, heavyDirty = false;
   let typesetGen = 0; // **S5.2 (5):** דור עימוד — מונה תוצאות שהושלמו; חוזה: st.gen (אודיט חי בוחן שינוי)
@@ -249,7 +250,11 @@ function createApp(doc, opts = {}) {
     onActivatePage: (pageIndex) => onActivatePage(pageIndex),
     onDebugDownload: (pageIndex) => opts.onDebugDownload && opts.onDebugDownload(buildDebugJson(pageIndex), pageIndex),
     // **S12 (REQ-EXP-01..04):** נתיב הייצוא האחיד — מקור יחיד לטקסט/הגדרות/הרחבות.
-    onExport: (kind) => onExportRequest(kind)
+    onExport: (kind) => onExportRequest(kind),
+    // **פרוסה 3 (§2.3/§2.6-5):** שגיאת פרופיל ודיאגנוסטיקות מקרין המודל — גלויות
+    // בפס המצב (אין השתקה; שום פריט לא נעלם בשקט).
+    onProfileError: (msg) => status.setNotice('שגיאת תצוגה: ' + msg),
+    onModelDiagnostic: (pageIndex, d) => status.setNotice(`אבחון תצוגה (עמוד ${pageIndex + 1}): ${d.kind}`)
   });
 
   const testing = buildTestingTab(doc, {
@@ -435,6 +440,10 @@ function createApp(doc, opts = {}) {
       } catch (e) {
         pageModelObj = null;
       }
+      // **פרוסה 3 (§2.3):** פרופיל המנוע שרץ (מה-Worker דרך ui-result-v1) —
+      // נשמר לכל רינדור חוזר (גם keepView) כדי שהתצוגה לא תחליף רנדרר
+      // באמצע סשן.
+      engineProfile = (res && res.legacyProfile) ? 'legacy' : 'unified';
       typesetGen++; // **S5.2 (5):** +1 על כל עימוד שהושלם (בדיוק במקום ההשמה ל-result) — ביטול/החלפה אינם נספרים
       applyResultToViews();
       status.setEngineState('idle');
@@ -476,6 +485,7 @@ function createApp(doc, opts = {}) {
       editor.setText('');
       result = null;
       pageModelObj = null; // **פרוסה 2:** ניקוי המודל עם המסמך
+      engineProfile = 'legacy'; // **פרוסה 3:** איפוס הפרופיל עם המסמך
       caretMapObj = null;
       preview.setResult({ pages: [], report: { findings: [], counts: {} }, trace: { events: [] }, tokens: [], droppedEvents: 0 }, settings);
       testing.setResult({ pages: [], report: { findings: [], counts: {} }, trace: { events: [] }, tokens: [], droppedEvents: 0 });
@@ -548,7 +558,7 @@ function createApp(doc, opts = {}) {
     const t0 = perf.now();
     // **S5.2 (7):** רינדור־קל שומר זום ויעד גלילה (עדכון צבע רקע לא אמור לקפוץ
     // לראש המסמך); רק מסמך חדש באמת מאפס תצוגה — הנתיב הזה הוא keepView.
-    preview.setResult(result, settings, { keepView: true }); // רינדור בלבד — אותם עמודים, הגדרות חדשות
+    preview.setResult(result, settings, { keepView: true, pageModel: pageModelObj, profile: engineProfile }); // רינדור בלבד — אותם עמודים, הגדרות חדשות, אותו פרופיל
     lastLightRefreshMs = perf.now() - t0;
     lightDirty = false;
     status.setPending({ light: false, heavy: heavyDirty });
@@ -705,7 +715,10 @@ function createApp(doc, opts = {}) {
 
   function applyResultToViews() {
     caretMapObj = buildCaretMap(text, result);
-    preview.setResult(result, settings);
+    // **פרוסה 3 (§2.1–§2.3):** התצוגה מחוברת ל-PageModel בפרופיל המאוחד —
+    // profile=unified כשהתוצאה ממנוע ה-DP ומודל קיים; legacy ממשיך ברנדרר
+    // הישן (מצב תעבור מפורש עד שלב 9). ברירת המחדל החיה אינה משתנה.
+    preview.setResult(result, settings, { pageModel: pageModelObj, profile: engineProfile });
     testing.setResult(result);
     testing.setRecommendations(result.recommendations || null); // **S11:** המלצות עם הוכחות
     // מפת שבירות עמודים לעורך (⏎ — תצוגה בלבד, F-01)

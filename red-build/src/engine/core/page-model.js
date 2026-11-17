@@ -164,6 +164,14 @@ function buildPageModel(result, opts = {}) {
         const pl = bodyProjected[cursor];
         lines.push(placeLine(pl, { gapBeforePx: 0, aqStretch: 1 }, { page: page.index, area: 'structural', col: -1, li: lines.length }));
       }
+      // **פרוסה 3 (§2.4 — כיסוי מלא):** שורות הערות-הצד/תיבות-המידע מוקרנות
+      // כבר מהחותמות בגיאומטריה סופית (מילים+רוחבים+פיץ') — עד כאן סוננו
+      // החוצה (NON_BODY_LINE_KINDS) והמודל איבד אותן; הזהות נשארת ב-sideNotes.
+      // עתה הן נושאות area=margin — המקרין מצייר אותן כהקרנה טהורה.
+      for (const pl of ((pp && pp.lines) || [])) {
+        if (!NON_BODY_LINE_KINDS.has(pl.kind)) continue;
+        lines.push(placeLine(pl, { gapBeforePx: 0, aqStretch: 1 }, { page: page.index, area: 'margin', col: -1, li: lines.length }));
+      }
     }
 
     // הערות מרזב — זהות+עוגן+חותמה מהרשומה, מיקום סופי מההקרנה (התאמה לפי
@@ -250,11 +258,20 @@ function buildPageModel(result, opts = {}) {
           if (a.placement === 'float' && seenImgItems.has(a.itemId)) continue; // צף מופיע בכל שורות הפריסה שלו — רשומה אחת
           seenImgItems.add(a.itemId);
           if (a.placement === 'float') {
+            // **פרוסה 3 (§2.2 — מיקום סופי מהסמכות):** תיבת הצף נקבעת כאן, בבניית
+            // המודל — צד (מאילוץ השורה) + פס העמודה (מהתבנית) + שורת העוגן
+            // (מההקרנה). הרנדרר מקבל x/y סופיים ואינו גוזר גאומטריה (§2.2).
+            const colBox = (tpl.columns || [])[ci] || null;
+            let fx = null;
+            if (colBox && ml) {
+              fx = a.side === 'left' ? colBox.x : (colBox.x + colBox.w - (a.widthPx || 0));
+            }
             images.push({
               itemId: a.itemId, placement: 'float', side: a.side || null,
               assetId: a.assetId != null ? a.assetId : null,
               resourcePath: a.resourcePath != null ? a.resourcePath : null,
-              x: null, y: null, // הצף מוקם ביחס לשורת העוגן — המקרין צורך את התיבה מהשורה
+              x: fx != null ? r2(fx) : null,
+              y: ml ? r2(ml.y) : null,
               w: a.widthPx != null ? r2(a.widthPx) : null,
               h: a.heightPx != null ? r2(a.heightPx) : null,
               lineId: ml ? ml.id : null,
@@ -295,6 +312,10 @@ function buildPageModel(result, opts = {}) {
       folioDisplay: page.folioDisplay || null,
       geometry: geo,
       ...(spanning ? { spanning } : {}),
+      // **פרוסה 3 (§2.4):** תיבת השער (כרום העטיפה — variant + rect) ותוכן
+      // עמודים מותאמים — מהתוכנית/ההקרנה; המקרינים קוראים ואינם גוזרים.
+      ...(page.shaarLayout ? { shaar: { variant: page.type === 'shaar-main' ? 'main' : page.type === 'shaar-sub' ? 'sub' : 'back', box: { x: r2(page.shaarLayout.box.x), y: r2(page.shaarLayout.box.y), w: r2(page.shaarLayout.box.w), h: r2(page.shaarLayout.box.h) } } } : {}),
+      ...(pp && pp.custom ? { custom: { boxes: pp.custom.boxes.map(b => ({ x: r2(b.x), y: r2(b.y), w: r2(b.w), h: r2(b.h), text: b.text })), images: pp.custom.images.map(im => ({ x: r2(im.x), y: r2(im.y), w: r2(im.w), h: r2(im.h), src: im.src })) } } : {}),
       lines,
       footnotes,
       sideNotes,
@@ -308,6 +329,7 @@ function buildPageModel(result, opts = {}) {
         // ואילוצים. inkMissing מסומן גם כ-diagnostic למטה (אין השתקה).
         ...(d.ornId ? { ornId: d.ornId } : {}),
         ...(d.source != null ? { source: d.source } : {}),
+        ...(d.image ? { image: d.image } : {}),
         ...(d.ink ? { ink: { ...d.ink } } : {}),
         ...(d.inkMissing ? { inkMissing: true } : {}),
         ...(d.natural ? { natural: { w: d.natural.w, h: d.natural.h } } : {}),
@@ -430,7 +452,10 @@ function matchEndnoteLine(pl, page) {
 
 /** מיקום שורה: גיאומטריה סופית + זהות מקור + fragments ממוקמים. */
 function placeLine(pl, srcLine, where) {
-  const tok = srcLine && (srcLine.tokenId != null ? srcLine.tokenId : (srcLine.meta && srcLine.meta.tokenId));
+  // **פרוסה 3 (§2.2 — זהות מקור):** ההקרנה עצמה נושאת tokenId (שורות margin
+  // מהחותמות, למשל) — נפילה אליה כשאין מקור שורה מפורש.
+  const tok = (srcLine && (srcLine.tokenId != null ? srcLine.tokenId : (srcLine.meta && srcLine.meta.tokenId)))
+    || (pl && pl.tokenId != null ? pl.tokenId : null);
   const id = `p${where.page}.${where.area === 'spanning' ? 'sp' : (where.area === 'endnotes' ? 'en' : 'c' + where.col)}.${where.li}`;
   if (!pl) {
     return { id, sourceTokenId: tok != null ? String(tok) : null, projected: false, ...where };
@@ -456,10 +481,16 @@ function placeLine(pl, srcLine, where) {
       ...(wd.sizePt != null ? { sizePt: wd.sizePt } : {}),
       ...(wd.fontKey != null ? { fontKey: wd.fontKey } : {}),
       ...(wd.baselineY != null ? { baselineY: r2(wd.baselineY) } : {}),
-      ...(wd.color != null ? { color: wd.color } : {})
+      ...(wd.color != null ? { color: wd.color } : {}),
+      ...(wd.mk ? { mk: true } : {})
     })),
     projected: true,
-    ...where
+    ...where,
+    // **פרוסה 3 (§2.2 — מאפייני עיצוב מהסמכות):** מחלקת הסגנון/משקל/ריווח-
+    // אותיות של שורות מובנות (שערים) — עוברים מהחותמת למודל; המקרין קורא.
+    ...(pl.cls ? { styleClass: String(pl.cls) } : {}),
+    ...(pl.bold ? { bold: true } : {}),
+    ...(pl.letterSpacingPx ? { letterSpacingPx: r2(pl.letterSpacingPx) } : {})
   };
 }
 

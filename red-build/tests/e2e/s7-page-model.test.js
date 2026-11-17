@@ -281,12 +281,14 @@ describe('שלב 7 (§7.1-8/9/12 + §23) — immutability, דטרמיניזם ו
     for (const p of r.pageModel.pages) for (const l of p.lines) {
       if (l.area === 'column') for (const w of l.words) modelWords.push(w.text);
     }
-    assertEq(modelWords.length, planWords.length, `כמות מילים (${modelWords.length} מול ${planWords.length})`);
-    // PUA נאסף בהקרנה — משווים לאחר ניקוי זהה
+    // **פרוסה 3 (סמן מודבק — פיצול בסמכות):** ההקרנה מפצלת מילה מורכבת
+    // "מילה+סמן הערה" לשניים (הסמן נמדד בגודל הרישום ומוצג כך) — מספר הפריטים
+    // עשוי לעלות ללא כל שינוי תוכן. אינווריאנט האמת: **אותו זרם טקסט** בסדר
+    // הקריאה (מילים משורשרות ברווחים) — לא אותה כמות פריטים.
     const scrub = (s) => String(s).replace(/\uE000/g, ' ').replace(/[\uE101\uE102]/g, '').replace(/\u00A0/g, ' ');
-    for (let i = 0; i < modelWords.length; i++) {
-      assertEq(scrub(modelWords[i]), scrub(planWords[i]), `מילה ${i}: ${modelWords[i]} מול ${planWords[i]}`);
-    }
+    const planText = scrub(planWords.map(w => (w && typeof w === 'object' ? (w.t != null ? w.t : String(w.text || w)) : String(w))).join(' '));
+    const modelText = scrub(modelWords.join(' '));
+    assertEq(modelText, planText, 'זרם הטקסט (מילים ברווחים) זהה בין המודל לתוכנית');
   });
 
   it('RTL: המילה הראשונה בסדר הקריאה היא הימנית ביותר בכל שורה', () => {
