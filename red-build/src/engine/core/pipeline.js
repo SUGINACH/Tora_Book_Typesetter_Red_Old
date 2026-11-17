@@ -1227,6 +1227,14 @@ function typeset(rawText, settingsIn, env = {}) {
     violations: pageItemValidation.violations.length
   });
 
+  // ---- **שלב 8 (§4.1): הטבעת גיאומטריית התוכן המבני — לפני המודל** ----
+  // מדידה אחת לשורות TOC/שערים/סלוטי כותרת/גיליון/נתיבי מרזב, אחרי כל
+  // ההחלטות (הצבות, איזונים, פיוס הערות, עיטורים ומספור) ולפני בניית
+  // ה-PageModel: ה-materialization צורך חותמות ואינו מודד (מונה הנפילות 0).
+  const { stampStructuralGeometry } = require('../layout/structural-stamps');
+  const structuralStamps = stampStructuralGeometry(pages, settings, api);
+  eventLog.emit('page-model', 'structural-stamps', { ...structuralStamps.stamped, pages: structuralStamps.pagesStamped });
+
   // ---- **שלב 7 (§§18–22): PageModel יחיד, סופי ו-immutable** ----
   // הבונה היחיד: מאמת את התוכנית, מוכיח כיסוי מלא (אין יתומים/כפילויות),
   // משמר עוגנים, מקרין fragments פעם אחת, מאמת גיאומטריה/הזמנות/נכסים,

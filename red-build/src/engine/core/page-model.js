@@ -27,7 +27,9 @@
  */
 
 const crypto = require('crypto');
-const { projectDocument } = require('../output/geometry-projector');
+// **שלב 8 (§4.1):** materialization חד-פעמי — המנגנון הפנימי הטהור (לא
+// מקרין, לא מודד, לא מחליט; צורך LineModel + חותמות structural-stamps).
+const { materializeDocument } = require('./materialize');
 const { stampIsValid } = require('../layout/notes-model');
 
 /** גרסת הסכמה — עולה רק בשינוי חוזה שובר-צרכן (תכנית §7.1-10). */
@@ -81,7 +83,7 @@ function buildPageModel(result, opts = {}) {
   // (1) הקרנת fragments חד-פעמית — מנוע ההקרנה הקיים (מקור אחד ל-PDF ולמודל;
   // שלב 8 יעביר את המקרינים לצריכת המודל). אין כאן החלטות עימוד חדשות:
   // המיקומים, הגבהים והפערים נצרכים מהתוכנית כמו שהם.
-  const projected = projectDocument(result, settings, measure);
+  const projected = materializeDocument(result, settings, measure);
 
   // (2) מיפוי זהות: כל שורת תוכנית → נציגותה במודל (token/part) — בסיס
   // הוכחת הכיסוי המלא ואפס-הכפילויות (§21-1).
