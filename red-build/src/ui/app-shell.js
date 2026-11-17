@@ -273,8 +273,9 @@ function createApp(doc, opts = {}) {
   // policy-help) ברוחב כל הדף — מעל הכרטיסיות והתצוגה. תוכן העזרה נפתח
   // כתפריט צף מתחת לשורה ואינו מרחיב אותה.
   const title = doc.createElement('h1');
-  title.className = 'app-title';
-  title.textContent = 'ספר תורה — מערך עימוד (Red)';
+  title.className = 'app-title app-title--brand';
+  title.textContent = 'Imudify';
+  title.setAttribute('aria-label', 'Imudify — תוכנת עימוד תורנית');
   header.appendChild(title);
   header.appendChild(status.root);
   // טבלת המדיניות מוצגת בעזרה (REQ-UI-02: policy table rendered in UI help)
