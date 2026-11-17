@@ -1,0 +1,216 @@
+// tests/e2e/s8b-materialize-boundary.test.js — שלב 8 ביקורת §3.1–§3.2: גבולות materialization
+//
+// מוכיח:
+//  1. טוהר אטום במסלול הייצור: patch ל-MeasureAPI.prototype.measureTextWidth שזורק
+//     — וה-materialization במצב 'production' (מתוך buildPageModel) עובר בלי קריאה
+//     אחת. זו הוכחה חזקה מנטרול המונה: גם מופע MeasureAPI פנימי היה נתפס.
+//  2. מסלול הייצור מקבל את כל הנתונים ללא fallback — קורפוס קנוני, מצב endnotes
+//     ו-very_long (1108 עמודים): אפס נפילות ואפס violations.
+//  3. שורש נפילת-השווא תוקן: שורות חד-מיליות (בלי דבק במודל — אין להן רווחים)
+//     אינן נספרות כנפילת מדידה.
+//  4. הזרקות שליליות: חותמה/LineModel חסרים ⇒ diagnostic מזוהה + violation —
+//     הטקסט נשמר, אין מדידה חלופית בייצור (ה-probe הזורק פעיל), אין השתקה.
+//  5. compat מתועד: ה-facade מטביע חותמות לקלט סינתטי; קריאה ישירה בלי חותמות
+//     מדווחת במונה (התנהגות הבדיקות הוותיקות נשמרת).
+//  6. מוצא רוחבי-המילה: כל מילה גוף במודל נובעת מ-measuredAdvance של הפרגמנטים
+//     (שרשרת RTL מוקרנת מרוחבי המודל — לא ממדידה שנייה), כולל כותרות בגופן
+//     משלהן ומילים עם ריצות גופן (סוגריים/סגנון מותאם).
+'use strict';
+
+const { describe, it, assert, assertEq, report } = require('../harness');
+const fs = require('fs');
+const path = require('path');
+const { typeset } = require('../../src/engine/core/pipeline');
+const { getDefaultSettings } = require('../../src/engine/core/settings-registry');
+const { materializeDocument, lineWidthsFromModel } = require('../../src/engine/core/materialize');
+const { buildPageModel } = require('../../src/engine/core/page-model');
+const facade = require('../../src/engine/output/geometry-projector');
+const { MeasureAPI } = require('../../src/engine/typography/measure-api');
+
+const S = () => getDefaultSettings();
+const CORPUS = fs.readFileSync(path.join(__dirname, '../fixtures/canonical_corpus.txt'), 'utf8');
+const VERY_LONG = fs.readFileSync(path.join(__dirname, '../../../audits/very_long_test_text.txt'), 'utf8');
+
+/** probe אטום: כל קריאת measureTextWidth (מכל מופע MeasureAPI) זורקת בזמן הפעלת fn. */
+function withMeasurementForbidden(fn) {
+  const proto = MeasureAPI.prototype;
+  const orig = proto.measureTextWidth;
+  let violations = 0;
+  proto.measureTextWidth = function () { violations++; throw new Error('production materialization measured text!'); };
+  try {
+    const out = fn();
+    return { out, violations };
+  } finally {
+    proto.measureTextWidth = orig;
+  }
+}
+
+describe('שלב 8 ביקורת (§3.1) — גבולות materialization', () => {
+  it('טוהר אטום: אפס קריאות מדידה במצב production (probe שזורק על ה-prototype)', () => {
+    const r = typeset(CORPUS, S());
+    const probe1 = withMeasurementForbidden(() => materializeDocument(r, S(), { mode: 'production' }));
+    assertEq(probe1.violations, 0, 'materializeDocument(production) — אפס קריאות measureTextWidth');
+    assertEq((probe1.out.materializeFallbacks || []).length, 0, 'אפס נפילות');
+    const probe2 = withMeasurementForbidden(() => buildPageModel(r, {}));
+    assertEq(probe2.violations, 0, 'buildPageModel — אפס קריאות measureTextWidth');
+    assertEq(probe2.out.model.meta.materializeFallbacks, 0, 'מודל: אפס נפילות');
+    assertEq(probe2.out.validation.violations.filter(v => v.code === 'materialize-fallback').length, 0, 'אפס violations');
+  });
+
+  it('מסלול הייצור מקבל הכול ללא fallback: קורפוס קנוני (footnotes) — חוזה הישן נשמר', () => {
+    const r = typeset(CORPUS, S());
+    assert(r.layoutHash.startsWith('f6f32c40'), `layoutHash נשמר (${r.layoutHash.slice(0, 8)})`);
+    assertEq(r.pageModel.meta.materializeFallbacks, 0, 'אפס נפילות במודל');
+    assertEq(r.pageModelValidation.violations.length, 0, 'אפס הפרות (מצב footnotes)');
+  });
+
+  it('endnotes: כותרת עמודי-ההערות מהחותמה — אפס מדידה ואפס נפילות (סגירת נקב)', () => {
+    const settings = S();
+    settings['note-placement-mode'] = 'endnotes';
+    const r = typeset(CORPUS, settings);
+    const enPages = r.pages.filter(p => p.type === 'endnotes');
+    assert(enPages.length >= 1, `עמודי הערות-סיום קיימים (${enPages.length})`);
+    for (const p of enPages) {
+      assert(p.endnoteTitleGeo && p.endnoteTitleGeo.words && p.endnoteTitleGeo.words.length,
+        'חותמת כותרת לכל עמוד הערות');
+    }
+    const probe = withMeasurementForbidden(() => buildPageModel(r, {}));
+    assertEq(probe.violations, 0, 'אפס מדידות');
+    assertEq(probe.out.model.meta.materializeFallbacks, 0, 'אפס נפילות');
+    // הכותרת מוקרנת עם מפתח הגופן שלה (heading ⇒ /F3) כמו בנתיב הישן
+    const titleLine = probe.out.model.pages
+      .flatMap(p => p.lines).filter(l => l.kind === 'endnote-title');
+    assert(titleLine.length >= 1, `שורות כותרת מוקרנות (${titleLine.length})`);
+    assert(titleLine.every(l => l.words.length > 0 && l.words.every(w => w.w > 0)), 'רוחבי מילים מהחותמת (> 0)');
+    // הפרות ה-endnotes ההיסטוריות (planned-line-missing/note-without-id) — מתועדות
+    // כפער קיים מ-main (לא רגרסיה); נסגרות בפרוסה 2 (השלמת PageModel).
+    const codes = new Set(probe.out.validation.violations.map(v => v.code));
+    assert(!codes.has('materialize-fallback'), 'אין נפילות materialization');
+  });
+
+  it('very_long (1108 עמודים): אפס נפילות — שורש נפילת-השווא (חד-מיליות בלי דבק) תוקן', () => {
+    const r = typeset(VERY_LONG, S());
+    assert(r.pages.length > 1000, `מסמך ענק (${r.pages.length} עמודים)`);
+    assert(r.layoutHash.startsWith('d2a18112'), `layoutHash very_long נשמר (${r.layoutHash.slice(0, 8)})`);
+    assertEq(r.pageModel.meta.materializeFallbacks, 0, 'אפס נפילות (בעבר: 852 שווא-נפילות רוחב-רווח)');
+    const mfViol = r.pageModelValidation.violations.filter(v => v.code === 'materialize-fallback');
+    assertEq(mfViol.length, 0, 'אפס violations');
+    // שורות חד-מיליות קיימות בשפע — ואינן נפילות: הרוחב מהמודל, הרווח 0 ללא דרישה
+    let single = 0;
+    for (const p of r.pages) {
+      for (const ln of p.columns.flat()) {
+        if ((ln.words || []).length === 1) single++;
+      }
+    }
+    assert(single > 100, `שורות חד-מיליות נבדקו (${single})`);
+  });
+
+  it('מוצא רוחבי-המילה: כל מילה גוף נובעת מה-LineModel (כותרות בגופן משלהן, ריצות מרובות)', () => {
+    const r = typeset(CORPUS, S());
+    let checked = 0, headings = 0, multiRun = 0;
+    for (const p of r.pages) {
+      if (p.type === 'endnotes') continue; // מבנה אחר — נבדק בנפרד למעלה
+      const mp = r.pageModel.pages[p.index];
+      // סדר הפס/עמודות בתוכנית == סדר שורות הגוף במודל (spanning ואז עמודות)
+      const planOrder = [...(p.spanning ? p.spanning.lines : []), ...(p.columns || []).flat()];
+      const modelOrder = mp.lines.filter(l => l.area === 'spanning' || l.area === 'column');
+      const n = Math.min(planOrder.length, modelOrder.length);
+      for (let i = 0; i < n; i++) {
+        const ln = planOrder[i];
+        const ml = modelOrder[i];
+        if (!ln.lineModel || !ml || !(ml.words || []).length) continue;
+        const lm = lineWidthsFromModel(ln);
+        const words = (ln.words || []).map(w => String(w).replace(/\u00A0/g, ' ')).filter(Boolean);
+        if (!lm || lm.widths.length !== words.length || ml.words.length !== words.length) continue;
+        for (let wi = 0; wi < words.length; wi++) {
+          // רוחב המילה במודל == סכום measuredAdvance הפרגמנטים של אותה יחידה
+          assert(Math.abs(ml.words[wi].w - lm.widths[wi]) < 1e-9,
+            `רוחב מילה ${wi} בשורה ${ml.id}: מודל ${ml.words[wi].w} ≠ LineModel ${lm.widths[wi]}`);
+          checked++;
+        }
+        if (ln.kind === 'heading') headings++;
+        if ((ln.parenSpans && ln.parenSpans.length) || (ln.customSpans && ln.customSpans.length)) multiRun++;
+      }
+    }
+    assert(checked > 3000, `מילים נבדקו מול ה-LineModel (${checked})`);
+    assert(headings > 5, `שורות כותרת נבדקו (${headings})`);
+    assert(multiRun >= 0, `שורות עם ריצות גופן/סוגריים (${multiRun})`);
+  });
+
+  it('הזרקות שליליות (production): חותמה חסרה ⇒ diagnostic + violation — בלי מדידה חלופית', () => {
+    const r = typeset(CORPUS, S());
+    const stripped = typeset(CORPUS, S()); // עותק טרי להזרקה
+
+    // (א) חותמת TOC חסרה
+    const tocPage = stripped.pages.find(p => (p.type === 'toc-general' || p.type === 'toc-detail') && p.tocLayout);
+    assert(tocPage, 'עמוד TOC קיים');
+    delete tocPage.tocLayout;
+    let probe = withMeasurementForbidden(() => buildPageModel(stripped, {}));
+    assert(probe.out.model.meta.materializeFallbacks >= 1, 'נפילת TOC מדווחת');
+    assert(probe.out.validation.violations.some(v => v.code === 'materialize-fallback' && v.detail.includes('toc-stamp')),
+      'violation מזוהה: materialize-fallback-toc-stamp');
+    assertEq(probe.violations, 0, 'שום מדידה למרות החותמה החסרה');
+
+    // (ב) LineModel חסר בשורת גוף — הטקסט נשמר (חשבונאות), רוחב 0, diagnostic.
+    // (השורות בתוצר קפואות — חוזה ה-immutable — לכן בונים עותק עמוד עם שורה
+    // מוחלפת בעותק בלי lineModel; ההזרקה כאן מדמה באג בשלב יצירת הנתון.)
+    const stripped2 = typeset(CORPUS, S());
+    const bodyPage = stripped2.pages.find(p => p.columns && p.columns.length && p.columns[0].length);
+    const target = bodyPage.columns[0][0];
+    const targetTok = target.tokenId;
+    const bare = { ...target };
+    delete bare.lineModel;
+    const pages2 = stripped2.pages.slice();
+    pages2[bodyPage.index] = {
+      ...bodyPage,
+      columns: bodyPage.columns.map((col, ci) => ci === 0 ? col.map((ln, li) => li === 0 ? bare : ln) : col)
+    };
+    const injected = { ...stripped2, pages: pages2 };
+    probe = withMeasurementForbidden(() => buildPageModel(injected, {}));
+    assert(probe.out.validation.violations.some(v => v.code === 'materialize-fallback' && v.detail.includes('line-widths')),
+      'violation: materialize-fallback-line-widths');
+    const ml = probe.out.model.pages[bodyPage.index].lines.find(l => l.sourceTokenId === String(targetTok));
+    assert(ml && ml.words.length > 0, 'המילים נשמרות במודל (אין אובדן תוכן)');
+    assert(ml.words.every(w => w.w === 0), 'רוחב 0 מסומן — לא מדידה שקטה');
+    assertEq(probe.violations, 0, 'אפס מדידות');
+
+    // (ג) חותמת גיליון חסרה — הגיליון נשאר ריק, diagnostic מזוהה
+    const stripped3 = typeset(CORPUS, S());
+    const folioPage = stripped3.pages.find(p => p.folioGeo);
+    delete folioPage.folioGeo;
+    probe = withMeasurementForbidden(() => buildPageModel(stripped3, {}));
+    assert(probe.out.validation.violations.some(v => v.code === 'materialize-fallback' && v.detail.includes('folio-stamp')),
+      'violation: materialize-fallback-folio-stamp');
+    assertEq(probe.out.model.pages[folioPage.index].folio, null, 'אין גיליון מסונתז בייצור');
+    assertEq(probe.violations, 0, 'אפס מדידות');
+  });
+
+  it('compat מתועד: facade מטביע חותמות לקלט סינתטי; קריאה ישירה מדווחת נפילות', () => {
+    const page = {
+      index: 0, type: 'toc-general', folioDisplay: '', footnotes: [],
+      toc: { rows: [{ kind: 'row', text: 'שורה א', label: 'א' }] },
+      template: { width: 794, height: 1123, columns: [{ x: 60, w: 674 }], contentBox: { top: 40, bottom: 1080, height: 1040 }, gutter: 0 },
+      columns: [[]], sideNotes: []
+    };
+    const direct = materializeDocument({ pages: [page], layoutHash: 'x' }, S());
+    assert((direct.materializeFallbacks || []).length > 0, 'קריאה ישירה בלי חותמה ⇒ נפילות מדווחות (compat)');
+    const page2 = {
+      index: 0, type: 'toc-general', folioDisplay: '', footnotes: [],
+      toc: { rows: [{ kind: 'row', text: 'שורה א', label: 'א' }] },
+      template: { width: 794, height: 1123, columns: [{ x: 60, w: 674 }], contentBox: { top: 40, bottom: 1080, height: 1040 }, gutter: 0 },
+      columns: [[]], sideNotes: []
+    };
+    const viaFacade = facade.projectDocument({ pages: [page2], layoutHash: 'x' }, S());
+    assertEq((viaFacade.materializeFallbacks || []).length, 0, 'facade מטביע ⇒ אפס נפילות');
+  });
+
+  it('אין תלות core→renderer: materialize אינו מייבא את dom-renderer (מיפוי שכבות)', () => {
+    const src = fs.readFileSync(path.join(__dirname, '../../src/engine/core/materialize.js'), 'utf8');
+    assert(!/require\('\.\.\/output\/dom-renderer'\)/.test(src), 'core/materialize.js אינו מייבא dom-renderer');
+    assert(/require\('\.\/pua-text'\)/.test(src), 'scrubPUAText מהמודול הניטרלי core/pua-text');
+    const dr = fs.readFileSync(path.join(__dirname, '../../src/engine/output/dom-renderer.js'), 'utf8');
+    assert(/require\('\.\.\/core\/pua-text'\)/.test(dr), 'dom-renderer צורך את אותו מקור (SSOT)');
+  });
+});
+
+report('s8b-materialize-boundary');

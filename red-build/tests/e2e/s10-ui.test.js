@@ -163,6 +163,19 @@ function makeDoc() {
 function fire(el, type, extra) { el.dispatchEvent(Object.assign({ type }, extra || {})); }
 const settle = (ms = 20) => new Promise(r => setTimeout(r, ms));
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
+/** **ייצוב (ביקורת שלב 8):** המתנה מותנית-מצב במקום שינה קבועה — מחסלת את
+ * מחלקת ה-flake של סביבות עמוסות (runner CI איטי) בלי להחליש אף אסרט:
+ * אותן בדיקות, רק שהמצב המיוחל נבדק בפועל ולא מונח מגודל שינה. */
+async function waitFor(cond, timeoutMs = 30000, label = 'condition') {
+  const t0 = Date.now();
+  for (;;) {
+    let ok = false;
+    try { ok = !!cond(); } catch (e) { ok = false; }
+    if (ok) return true;
+    if (Date.now() - t0 > timeoutMs) throw new Error(`waitFor(${label}) פג זמן אחרי ${timeoutMs}ms`);
+    await settle(10);
+  }
+}
 function throws(fn, re) {
   try { fn(); } catch (e) {
     if (re && !re.test(e.message)) throw new Error(`שגיאה שונה מהצפוי: ${e.message}`);
@@ -207,7 +220,7 @@ describe('S10.2 שער 1 — e2e: הדבקת מסמך 639 עמודים: progress
     const origSetEngine = app.status.setEngineState.bind(app.status);
     app.status.setEngineState = (state, info) => { if (state === 'working' && info && info.label) progressLabels.push(info.label); origSetEngine(state, info); };
     fire(app.editor.textarea, 'paste', { clipboardData: { getData: () => BIG_DOC } });
-    await settle(50);
+    await waitFor(() => app.getState().hasResult && app.getState().pages >= 639, 60000, 'BIG_DOC result');
     const st = app.getState();
     assert(st.hasResult, 'התוצאה חייבת להיות מיושמת אחרי הדבקה');
     assert(st.pages >= 639, `נדרש ≥639 עמודים; התקבלו ${st.pages}`);
@@ -268,7 +281,7 @@ describe('S10.2 שער 2 — F-06: אין עימוד אוטומטי מכל בק�
     const doc = makeDoc();
     const app = createApp(doc, { transport: inlineTransport.createInlineTransport() });
     fire(app.editor.textarea, 'paste', { clipboardData: { getData: () => SMALL_DOC } });
-    await settle();
+    await waitFor(() => app.getState().hasResult, 30000, 'SMALL_DOC result');
     const hashBefore = app.getState().layoutHash;
     // שינוי כבד דרך בקרה אמיתית בפאנל: grid-col-width-pct (select→input number)
     app.onSettingChanged('grid-col-width-pct', 52);
@@ -280,7 +293,7 @@ describe('S10.2 שער 2 — F-06: אין עימוד אוטומטי מכל בק�
     // לחיצת ⚡ — נתיב מיידי
     const t0 = performance.now();
     app.status.bolt.click();
-    await settle();
+    await waitFor(() => app.getState().layoutHash !== hashBefore, 30000, 'bolt retypeset');
     const elapsed = performance.now() - t0;
     assert(app.getState().layoutHash !== hashBefore, 'העימוד מחדש חייב לשנות את הפריסה (רוחב טור 52%)');
     assert(elapsed < 2000, `הנתיב המיידי איטי מדי: ${elapsed.toFixed(0)}ms`);

@@ -40,14 +40,10 @@ const LEGACY_PT_CLASS = {
   'sign-open': 'page page--sign-open'
 };
 
-const ATOMIC_SPACE = '\uE000';
-const PAREN_MARK = '\uE101';
-
-/** scrub חובה: אף תו PUA פנימי לא יוצא החוצה (BRZ-13 / S2.2). */
-function scrubPUAText(s) {
-  // BRZ-13: כל תווי ה‑PUA הפנימיים (E000 רווח אטומי, E101 סוגריים, E102 תג סמן) — נאספים לפני רנדר
-  return String(s).split(ATOMIC_SPACE).join(' ').split(PAREN_MARK).join('').split('\uE102').join('');
-}
+// **שלב 8 פרוסה 1-ביקורת (§3.1):** scrubPUAText עבר למודול הניטרלי core/pua-text —
+// הליבה (materialize) כבר אינה מייבאת מהרנדרר. כאן נצרך מהמקור היחיד ומיוצא
+// הלאה לצרכנים קיימים (חוזה המודול נשמר: scrubPUAText ב-export).
+const { scrubPUAText } = require('../core/pua-text');
 
 /** rgba() אמיתי מ‑background-color + background-opacity (תיקון P0-5). */
 function bgRgba(color, opacity) {

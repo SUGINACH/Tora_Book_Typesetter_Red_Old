@@ -545,7 +545,7 @@
 | 5. Planner | שער 4 | ניתוח constraints/DP ובדיקות שאינן משנות חוזה |
 | 6. פריטי עמוד והערות | חוזי planner של שלב 5 | מיפוי page items ותיעוד |
 | 7. PageModel | שער 6 | **הושלם (stage7/page-model)** — `core/page-model.js`: סכמה pagemodel-v1; buildPageModel (הקרנת fragments חד-פעמית — מקור אחד עם ה-PDF; אפס החלטות עימוד חדשות — נייטרליות layoutHash מוכחת); 11 אינווריאנטים (כיסוי/כפילויות/זהות/גבולות/סדר-קריאה/פערים/עוגנים/הזמנות/נכסים); הקפאה עמוקה; geometryHash+contentHash נפרדים; חשוף ב-result ובאירוע page-model; הפרות → ledger. very_long: 1050 עמודים / 68,844 שורות / 342,284 מילים — 344,639 בדיקות, אפס הפרות (~6% תקורת). החלפת המקרינים לקריאה-מהמודל — שלב 8 | s7-page-model (16) + audits/STAGE7_PAGE_MODEL.md |
-| 8. מקרינים וייצוא | שער 7 | בדיקות export על PageModel קפוא |
+| 8. מקרינים וייצוא | שער 7 | **פרוסה 1 הושלמה (stage8a, PR #31):** materialization חד-פעמי טהור (core/materialize.js + structural-stamps — רוחבים מה-LineModel; 0 מדידות בהקרנת pipeline). **פרוסה 1-ביקורת הושלמה (stage8b):** גבולות §3.1–§3.3 — production/compat מתוחמים (probe prototype מוכיח אפס מדידות בייצור), scrubPUAText/fontKeys SSOT, חותמת כותרת endnotes, שורש 852 נפילות-שווא, fallbacks ⇒ violations. נותר: פרוסה 2 (השלמת PageModel + Worker transport — ידוע: 105 הפרות מיפוי במצב endnotes), פרוסות 3–6 (DOM/HTML/PDF/parity) | s8a (6) + s8b (8) + audits/STAGE8_RENDER_PROJECTIONS.md |
 | 9. cutover והסרה | שערים 1–8 | shadow tests, dependency audit |
 | 10. קבלה והרחבה | שער 9 | תיעוד, מדריך הרחבה ותרגיל פריט חדש |
 

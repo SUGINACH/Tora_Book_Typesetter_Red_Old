@@ -28,10 +28,11 @@ const materialize = require('../core/materialize');
 function projectDocument(result, settings, api) {
   const missing = (result.pages || []).some(p =>
     (p.type === 'toc-general' || p.type === 'toc-detail') && (p.toc && p.toc.rows || []).length > 0 && !p.tocLayout)
-    || (result.pages || []).some(p => /^shaar-/.test(p.type) && !p.shaarLayout && p.type !== 'shaar-back' ? true : false)
+    || (result.pages || []).some(p => /^shaar-/.test(p.type) && !p.shaarLayout)
     || (result.pages || []).some(p => (p.header && p.header.slots && !p.headerSlotGeo))
     || (result.pages || []).some(p => (p.folioDisplay && !p.folioGeo))
-    || (result.pages || []).some(p => (p.footnotes && p.footnotes.length && !p.footnoteLanes));
+    || (result.pages || []).some(p => (p.footnotes && p.footnotes.length && !p.footnoteLanes))
+    || (result.pages || []).some(p => (p.type === 'endnotes' && p.heading && !p.endnoteTitleGeo));
   if (missing) {
     // קלט ללא חותמות (בדיקות/נתיב ישן): הטבעה חד-פעמית כאן — והיא תסומן
     // בפלט דרך materializeFallbacks של ההקרנה עצמה (אין השתקה).
@@ -48,7 +49,8 @@ function projectPage(page, settings, api) {
     || (/^shaar-/.test(page.type) && !page.shaarLayout)
     || (page.header && page.header.slots && !page.headerSlotGeo)
     || (page.folioDisplay && !page.folioGeo)
-    || (page.footnotes && page.footnotes.length && !page.footnoteLanes);
+    || (page.footnotes && page.footnotes.length && !page.footnoteLanes)
+    || (page.type === 'endnotes' && page.heading && !page.endnoteTitleGeo);
   if (needs) {
     const { MeasureAPI } = require('../typography/measure-api');
     stampStructuralGeometry(pages, settings, api || new MeasureAPI(settings, 'table'));

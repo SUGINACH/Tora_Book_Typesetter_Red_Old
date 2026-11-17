@@ -184,3 +184,16 @@
 | `importProjectZip` | Buffer-gated; אין חיבור UI (AMBIGUOUS — נדרש אימות נוסף לפני מחיקה) | לאימות |
 | הזרקת `env.*FontBytes` מורשת | חלופה לרישום worker; בדיקות/ייצוא בלבד | נשאר |
 | `endnote-pages`/`toc-detail`/`autoQualityPass` | מחוברים אך דלוקים כברירת מחדל | יכולות לגיטימיות |
+
+
+---
+
+## עדכון שלב 8 פרוסה 1-ביקורת (17.11) — מצבי materialization
+
+| מסלול | מנגנון | מתי פעיל | מדידה? |
+|---|---|---|---|
+| **production** | `core/materialize.js` דרך `buildPageModel` ({measure, mode:'production'}) | ה-pipeline — כל typeset | **אפס** (probe prototype ב-s8b; פרופיל גופן לבסיסים בלבד — נתוני טבלה) |
+| **compat** | אותו מנגנון, קריאה ישירה (API או ברירת מחדל) | בדיקות ותיקות; facade (geometry-projector) לנתיב ה-PDF הוותיק | fallback מודד — **כל נפילה נספרת** (materializeFallbacks) |
+| הטבעות | `layout/structural-stamps.js` (TOC/שערים/סלוטים/גיליון/נתיבים/**כותרת endnotes**) | ה-pipeline אחרי ההחלטות, לפני המודל | מדידה אחת לתוכן מבני — לפני ההחלטות הסופיות |
+
+חשבונאות: `model.diagnostics` + `model.meta.materializeFallbacks` + violations (code: materialize-fallback) — כל נפילה בייצור נראית ב-ledger ובבדיקות.

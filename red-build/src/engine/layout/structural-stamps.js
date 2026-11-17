@@ -24,17 +24,10 @@
 const { buildShaarBlocks, shaarFontOf } = require('../output/shaar-content');
 const { folioGeometry, headerGeometry } = require('../layout/furniture-geometry');
 const { assignFootnoteLanes } = require('../layout/footnote-lanes');
-const { registeredFonts } = require('../typography/measure-api');
-
-/** **S73:** מפתח משפחת גופן רשומה ⇒ תת-גופן ייעודי בייצוא (אותו מיפוי כמו המקרינים). */
-function familyFontKeyOf(fam) {
-  if (!fam || !registeredFonts.has(fam)) return null;
-  if (fam === 'Frank Ruhl Libre') return 'fnbody';
-  if (fam === 'Hadassah Friedlaender') return 'margin';
-  if (fam === 'FrankReal-Bold' || fam === 'FrankReal') return 'window';
-  if (fam === 'David Libre' || fam === 'DavidLibre-Bold') return 'heading';
-  return fam;
-}
+// **שלב 8 ביקורת §3.1:** המיפוי משפחה→מפתח גופן — מקור יחיד משותף (היה כפול
+// כאן וב-materialize); ה-scrub — מהמודול הניטרלי core/pua-text.
+const { familyFontKeyOf } = require('../typography/font-keys');
+const { scrubPUAText } = require('../core/pua-text');
 
 /** מדידה בגופן משפחה רשומה (אחרת המדידה הרגילה) — להטבעת שערים/גיליון/כותרות. */
 function measureOfFamily(baseMeasure, fam, settings) {
@@ -171,7 +164,7 @@ function stampHeaderSlots(page, settings, measure) {
   if (!slots.length) return false;
   const geo = headerGeometry(page);
   const stamped = slots.map(s => {
-    const t = String(s.text || '').split('\uE000').join(' ').split('\uE101').join('').split('\uE102').join('');
+    const t = scrubPUAText(String(s.text || ''));
     const sKey = familyFontKeyOf(s.font);
     const sMeasure = (sKey && sKey !== 'heading' && sKey !== 'fnbody' && sKey !== 'margin' && sKey !== 'window')
       ? measureOfFamily(measure, s.font, settings) : measure;
@@ -211,6 +204,34 @@ function stampFootnoteLanes(page) {
 }
 
 /**
+ * **שלב 8 ביקורת §3.2 (סגירת נקב):** הטבעת כותרת עמוד הערות-הסיום — עד כאן
+ * ההקרנה סינתזה אותה בעצמה (fakeLine — מדידה בזמן materialization), כך שבמסמכים
+ * עם note-placement-mode=endnotes היה מדידה שנייה במסלול הייצור. כאן היא
+ * נמדדת פעם אחת בהטבעה: מילים {text,w} + רוחב רווח + גודל/מפתח גופן/צבע.
+ * נשמר ב-page.endnoteTitleGeo.
+ */
+function stampEndnoteHeading(page, settings, measure) {
+  if (page.type !== 'endnotes' || !page.heading) return false;
+  const tpl = page.template;
+  const bodyPt = settings['body-font-size-pt'];
+  const sizePt = bodyPt * 1.2; // כמו projectEndnotePage (h2, 1.2× הגוף)
+  const fam = settings['endnote-title-font'] || '';
+  const m = (fam && familyFontKeyOf(fam)) ? measureOfFamily(measure, fam, settings) : measure;
+  const t = scrubPUAText(String(page.heading));
+  const words = t.split(/\s+/).filter(Boolean).map(w => ({ text: w, w: m.measureTextWidth(w, sizePt, 0) }));
+  const spaceW = m.measureTextWidth(' ', sizePt, 0);
+  const bandH = (page.titleBandPx && page.titleBandPx > 16) ? page.titleBandPx - 16 : Math.max(12, Math.round(sizePt * (96 / 72) * 1.34));
+  page.endnoteTitleGeo = {
+    schema: 'endnote-title-v1',
+    x: Math.min(...tpl.columns.map(c => c.x)),
+    w: Math.max(...tpl.columns.map(c => c.x + c.w)) - Math.min(...tpl.columns.map(c => c.x)),
+    y: tpl.contentBox.top + 8, h: bandH, words, spaceW, sizePt,
+    fontKey: fam && familyFontKeyOf(fam) ? familyFontKeyOf(fam) : 'heading'
+  };
+  return true;
+}
+
+/**
  * ההטבעה המלאה — נקראת מה-pipeline אחרי סיום ההצבות ולפני בניית ה-PageModel.
  * @param {Array} pages — עמודי התוצר הסופיים
  * @param {object} settings — הגדרות ממוזגות
@@ -218,18 +239,19 @@ function stampFootnoteLanes(page) {
  * @returns {{stamped: Object<string, number>, pagesStamped: number}}
  */
 function stampStructuralGeometry(pages, settings, measure) {
-  const stamped = { toc: 0, shaar: 0, header: 0, folio: 0, lanes: 0 };
+  const stamped = { toc: 0, shaar: 0, header: 0, folio: 0, lanes: 0, endnoteTitle: 0 };
   for (const page of pages) {
     if (stampTocLayout(page, settings, measure)) stamped.toc++;
     if (stampShaarLayout(page, settings, measure)) stamped.shaar++;
     if (stampHeaderSlots(page, settings, measure)) stamped.header++;
     if (stampFolioGeometry(page, settings, measure)) stamped.folio++;
     if (stampFootnoteLanes(page)) stamped.lanes++;
+    if (stampEndnoteHeading(page, settings, measure)) stamped.endnoteTitle++;
   }
   return { stamped, pagesStamped: pages.length };
 }
 
 module.exports = {
   stampStructuralGeometry,
-  stampTocLayout, stampShaarLayout, stampHeaderSlots, stampFolioGeometry, stampFootnoteLanes
+  stampTocLayout, stampShaarLayout, stampHeaderSlots, stampFolioGeometry, stampFootnoteLanes, stampEndnoteHeading
 };
