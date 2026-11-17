@@ -330,6 +330,9 @@ function buildPageModel(result, opts = {}) {
         ...(d.ornId ? { ornId: d.ornId } : {}),
         ...(d.source != null ? { source: d.source } : {}),
         ...(d.image ? { image: d.image } : {}),
+        // **פרוסה 5 (§4):** פעולות הציור שחושבו בהקרנה (svgToPdfOps) —
+        // הכותב מהמודל אוסף אותן כמו שהכותב הקיים אוסף מהפרויקטור.
+        ...(Array.isArray(d.pdfOps) ? { pdfOps: d.pdfOps } : {}),
         ...(d.ink ? { ink: { ...d.ink } } : {}),
         ...(d.inkMissing ? { inkMissing: true } : {}),
         ...(d.natural ? { natural: { w: d.natural.w, h: d.natural.h } } : {}),
@@ -511,7 +514,15 @@ function notePlacement(n, proj, where) {
     stampValid: stampIsValid(n),
     x: proj ? r2(proj.x) : null, y: proj ? r2(proj.y) : null,
     w: proj ? r2(proj.w) : null,
-    words: proj && proj.words ? proj.words.map(wd => ({ text: wd.text, x: r2(wd.x), w: r2(wd.w), baselineY: wd.baselineY != null ? r2(wd.baselineY) : null })) : [],
+    // **פרוסה 5 (§4 — זהות גופן ל-PDF):** מילות ההערה נושאות גם גודל/מפתח/
+    // צבע מההקרנה — הכותב מהמודל מצייר אותן בזהותן האמיתית (לא 8.5 קבוע).
+    words: proj && proj.words ? proj.words.map(wd => ({
+      text: wd.text, x: r2(wd.x), w: r2(wd.w),
+      baselineY: wd.baselineY != null ? r2(wd.baselineY) : null,
+      ...(wd.sizePt != null ? { sizePt: wd.sizePt } : {}),
+      ...(wd.fontKey != null ? { fontKey: wd.fontKey } : {}),
+      ...(wd.color != null ? { color: wd.color } : {})
+    })) : [],
     ...where
   };
 }

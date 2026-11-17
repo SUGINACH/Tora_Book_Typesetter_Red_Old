@@ -479,6 +479,11 @@ var __paths = {
   "src/engine/output/export-api.js|./geometry-projector": "src/engine/output/geometry-projector.js",
   "src/engine/output/export-api.js|./pdf-writer": "src/engine/output/pdf-writer.js",
   "src/engine/output/export-api.js|./legacy-projector": "src/engine/output/legacy-projector.js",
+  "src/engine/output/export-api.js|../typography/measure-api": "src/engine/typography/measure-api.js",
+  "src/engine/output/export-api.js|../typography/font-metrics": "src/engine/typography/font-metrics.js",
+  "src/engine/output/export-api.js|../typography/font-subset": "src/engine/typography/font-subset.js",
+  "src/engine/output/export-api.js|./pdf-writer": "src/engine/output/pdf-writer.js",
+  "src/engine/output/export-api.js|../core/settings-registry": "src/engine/core/settings-registry.js",
   "src/engine/output/export-api.js|../typography/font-metrics": "src/engine/typography/font-metrics.js",
   "src/engine/output/export-api.js|./zip-writer": "src/engine/output/zip-writer.js",
   "src/engine/output/export-api.js|./project-io": "src/engine/output/project-io.js",
@@ -564,6 +569,10 @@ function _resolverForAssets(assetsMsg) {
  * הקנוני (זהות content-addressed + שרשרת fallback מאובחנת) — ה-resolver מסנכרן
  * את מרשמי measure-api בעצמו (single entry point); לא נוצר מרשם מקבילי.
  * ה-fontId חוזר ל-UI כך שזהות הגופן זהה בשני הצדדים (מוכח בבדיקות E2E). */
+/** **פרוסה 5 (§4):** תוצאת העימוד האחרונה בזיכרון ה-Worker — ה-PageModel שלה
+ * משמש את ייצוא ה-PDF בפרופיל המאוחד (אותו מודל שנשלח ל-UI; אין עימוד שני). */
+let _lastTypesetResult = null;
+
 function handleRegisterFont(msg, post) {
   try {
     const fontResolver = require('../engine/typography/font-resolver');
@@ -595,13 +604,27 @@ function handleRegisterAssets(msg, post) {
  * הפלט מועתק ל-Uint8Array טהור (בלי byteOffset) — structured-clone/transfer בטוחים. */
 function handleExportRequest(msg, post) {
   try {
-    const { exportPdf, exportProjectZip } = require('../engine/output/export-api');
+    const { exportPdf, exportPdfFromModel, exportProjectZip } = require('../engine/output/export-api');
     if (msg.kind === 'pdf') {
       if (msg.fontBytes == null) {
         post({ type: 'export-result', jobId: msg.jobId, kind: 'pdf', ok: false, error: 'no-embedded-font' });
         return;
       }
       const u8 = msg.fontBytes instanceof ArrayBuffer ? new Uint8Array(msg.fontBytes) : new Uint8Array(msg.fontBytes.buffer, msg.fontBytes.byteOffset, msg.fontBytes.length);
+      // **פרוסה 5 (§4 — אין עימוד שני):** בפרופיל המאוחד הייצוא מה-PageModel
+      // שכבר חושב (אותו מודל שנשלח ל-UI). חסר-מודל ⇒ כשל מפורש — לא נפילה
+      // לעימוד מחדש. legacy ממשיך בנתיב הקיים עד שלב 9.
+      const lastIsLegacy = !(_lastTypesetResult && _lastTypesetResult.pageModel && _lastTypesetResult.legacyProfile !== true);
+      if (!lastIsLegacy) {
+        if (!_lastTypesetResult || !_lastTypesetResult.pageModel) {
+          post({ type: 'export-result', jobId: msg.jobId, kind: 'pdf', ok: false, error: 'model-required: אין PageModel בזיכרון — הפעילו עימוד לפני ייצוא' });
+          return;
+        }
+        const res = exportPdfFromModel(_lastTypesetResult.pageModel, msg.settings, u8, msg.fontName);
+        if (!res.ok) { post({ type: 'export-result', jobId: msg.jobId, kind: 'pdf', ok: false, error: res.error }); return; }
+        post({ type: 'export-result', jobId: msg.jobId, kind: 'pdf', ok: true, bytes: new Uint8Array(res.bytes), info: res.info || null });
+        return;
+      }
       const res = exportPdf(msg.text, msg.settings, u8, msg.fontName);
       if (!res.ok) { post({ type: 'export-result', jobId: msg.jobId, kind: 'pdf', ok: false, error: res.error }); return; }
       post({ type: 'export-result', jobId: msg.jobId, kind: 'pdf', ok: true, bytes: new Uint8Array(res.bytes), info: res.info || null });
@@ -652,6 +675,10 @@ function createEngineWorkerMain(post) {
         cancelledJobs.delete(jobId); // העבודה בוטלה — התוצאה נזרקת בזמן שנותרה מסומנת
         return;
       }
+      // **פרוסה 5 (§4 — המודל נשאר בזיכרון ה-Worker לייצוא):** התוצאה הגולמית
+      // (כולל pageModel שלא עובר ב-audit) נשמרת לבקשת ייצוא מהמודל — הייצוא
+      // בפרופיל המאוחד צורך את אותו מודל בדיוק שנשלח ל-UI (אין עימוד שני).
+      _lastTypesetResult = result;
       post({ type: 'typeset-result', jobId, result: serializeTypesetResult(result) });
     } catch (e) {
       if (cancelledJobs.has(jobId)) { cancelledJobs.delete(jobId); return; }
@@ -21546,6 +21573,9 @@ function buildPageModel(result, opts = {}) {
         ...(d.ornId ? { ornId: d.ornId } : {}),
         ...(d.source != null ? { source: d.source } : {}),
         ...(d.image ? { image: d.image } : {}),
+        // **פרוסה 5 (§4):** פעולות הציור שחושבו בהקרנה (svgToPdfOps) —
+        // הכותב מהמודל אוסף אותן כמו שהכותב הקיים אוסף מהפרויקטור.
+        ...(Array.isArray(d.pdfOps) ? { pdfOps: d.pdfOps } : {}),
         ...(d.ink ? { ink: { ...d.ink } } : {}),
         ...(d.inkMissing ? { inkMissing: true } : {}),
         ...(d.natural ? { natural: { w: d.natural.w, h: d.natural.h } } : {}),
@@ -21727,7 +21757,15 @@ function notePlacement(n, proj, where) {
     stampValid: stampIsValid(n),
     x: proj ? r2(proj.x) : null, y: proj ? r2(proj.y) : null,
     w: proj ? r2(proj.w) : null,
-    words: proj && proj.words ? proj.words.map(wd => ({ text: wd.text, x: r2(wd.x), w: r2(wd.w), baselineY: wd.baselineY != null ? r2(wd.baselineY) : null })) : [],
+    // **פרוסה 5 (§4 — זהות גופן ל-PDF):** מילות ההערה נושאות גם גודל/מפתח/
+    // צבע מההקרנה — הכותב מהמודל מצייר אותן בזהותן האמיתית (לא 8.5 קבוע).
+    words: proj && proj.words ? proj.words.map(wd => ({
+      text: wd.text, x: r2(wd.x), w: r2(wd.w),
+      baselineY: wd.baselineY != null ? r2(wd.baselineY) : null,
+      ...(wd.sizePt != null ? { sizePt: wd.sizePt } : {}),
+      ...(wd.fontKey != null ? { fontKey: wd.fontKey } : {}),
+      ...(wd.color != null ? { color: wd.color } : {})
+    })) : [],
     ...where
   };
 }
@@ -24735,6 +24773,130 @@ function exportPdf(text, settingsIn, fontBytes, fontName, env) {
   }
 }
 
+/**
+ * **פרוסה 5 (§4 — PDF מה-PageModel בלבד):** הסרת העימוד השני מנתיב ה-PDF.
+ * הכותב צורך את **אותו PageModel** שה-DOM וה-HTML צורכים — אין typeset,
+ * אין Parser/Planner, אין מדידה, אין חלוקת הערות, אין החלטות מיקום: כל
+ * x/y/baseline/גודל/מפתח-גופן/צבע/פעולות-דיו מגיעים מהמודל. הפונקציה עוסקת
+ * באריזה בלבד (רישום גופן הייצוא, מלאי תווים מהטקסט המצויר בפועל, מצווץ,
+ * כתיבה) — כמו exportPdf, בלי שלב העימוד-ההקרנה.
+ * @param {object} model — PageModel (pagemodel-v1) — אותו מודל שהגיע ל-UI
+ * @param {object} settingsIn — הגדרות (עמוד/הגדרות כותב בלבד)
+ * @param {Uint8Array} fontBytes — גופן הייצוא (TTF) ל-/F1
+ * @param {string} [fontName] — שם פרופיל הרישום
+ */
+function exportPdfFromModel(model, settingsIn, fontBytes, fontName) {
+  if (typeof Buffer === 'undefined') return { ok: false, error: 'no-buffer' }; // דפדפן — נתיב Node בלבד (מתועד)
+  if (!model || model.schema !== 'pagemodel-v1' || !Array.isArray(model.pages) || !model.pages.length) {
+    return { ok: false, error: 'model-required: נדרש PageModel תקין — אין נתיב עימוד חלופי בייצוא מהמודל' };
+  }
+  /* node-only */ const { registerFont, unregisterFont, restoreFontRegistration, registeredFonts: registeredFontsRef } = require('../typography/measure-api');
+  /* node-only */ const { glyphIdOf } = require('../typography/font-metrics');
+  /* node-only */ const { buildSubset, charInventory } = require('../typography/font-subset');
+  /* node-only */ const { writePdf } = require('./pdf-writer');
+  /* node-only */ const { getDefaultSettings } = require('../core/settings-registry');
+  const profileName = fontName || settingsIn['body-font'] || 'ToraExport';
+  const hadPrevFont = registeredFontsRef.has(profileName);
+  const prevFont = hadPrevFont ? registeredFontsRef.get(profileName) : null;
+  const reg = registerFont(profileName, fontBytes);
+  if (!reg.ok) { if (!hadPrevFont) unregisterFont(profileName); return { ok: false, error: `font:${reg.error}` }; }
+  try {
+    const settings = { ...getDefaultSettings(), ...settingsIn, 'body-font': profileName };
+    // ---- עמודי הכותב: התאמה טהורה של עמודי המודל לצורת הכותב (אפס החלטות) ----
+    const pages = model.pages.map(mp => ({
+      width: mp.geometry.width, height: mp.geometry.height,
+      type: mp.type,
+      spanning: mp.spanning ? { lines: mp.lines.filter(l => l.area === 'spanning') } : null,
+      lines: mp.lines.filter(l => l.area !== 'spanning'),
+      footnotes: mp.footnotes || [],
+      folio: mp.folio || null,
+      header: mp.header || null,
+      decorations: (mp.decorations || []).filter(d => Array.isArray(d.pdfOps) && d.pdfOps.length)
+    }));
+    // ---- מלאי תווים מהטקסט שמצויר בפועל (מהמודל) ----
+    const drawnParts = [];
+    for (const pg of pages) {
+      for (const ln of [...(pg.spanning ? pg.spanning.lines : []), ...pg.lines]) for (const w of ln.words) drawnParts.push(w.text);
+      for (const fn of pg.footnotes) for (const w of (fn.words || [])) drawnParts.push(w.text);
+      if (pg.folio && pg.folio.text) drawnParts.push(pg.folio.text);
+      if (pg.header) for (const s of pg.header.slots) drawnParts.push(s.text);
+    }
+    const font = reg.profile;
+    const inventory = charInventory(drawnParts.join(' '));
+    const f1Inventory = inventory.filter(ch => glyphIdOf(font, ch) !== 0);
+    const subset = buildSubset(font, f1Inventory);
+    if (!subset.ok) return { ok: false, error: `subset:${subset.error}` };
+    const mkFont = (sub) => {
+      const c2g = subsetNewCmap(sub);
+      return {
+        subsetBytes: sub.bytes, widthsUnits: sub.widthsUnits, unitsPerEm: sub.unitsPerEm,
+        cidOf: (ch) => { const g = c2g.get(ch); return g != null ? g : glyphIdOf(parseSubsetCache(sub), ch); },
+        charToGidEntries: () => [...c2g.entries()]
+      };
+    };
+    const fontForWriter = mkFont(subset);
+    // ---- גופני-תפקידים מהמודל (window/heading/fnbody/margin) + משפחות רשודות ----
+    const wordsByRole = new Map();
+    const allLines = [];
+    for (const pg of pages) { allLines.push(...(pg.spanning ? pg.spanning.lines : []), ...pg.lines); }
+    for (const ln of allLines) for (const w of ln.words) {
+      if (w.fontKey == null) continue;
+      if (!wordsByRole.has(w.fontKey)) wordsByRole.set(w.fontKey, []);
+      wordsByRole.get(w.fontKey).push(w.text);
+    }
+    for (const fn of pages.flatMap(p => p.footnotes)) for (const w of (fn.words || [])) {
+      if (w.fontKey == null) continue;
+      if (!wordsByRole.has(w.fontKey)) wordsByRole.set(w.fontKey, []);
+      wordsByRole.get(w.fontKey).push(w.text);
+    }
+    const mkRoleFont = (family) => {
+      const prof = registeredFontsRef.get(family);
+      if (!prof) return null;
+      const parts = wordsByRole.get(family) || [];
+      if (!parts.length) return null;
+      const sub = buildSubset(prof, charInventory(parts.join(' ')));
+      return sub.ok ? mkFont(sub) : null;
+    };
+    const fontForWriter2 = mkRoleFont('FrankReal-Bold');
+    const fontForWriter3 = mkRoleFont('DavidLibre-Bold');
+    const fontForWriter4 = mkRoleFont('David Libre');
+    const fontForWriter5 = mkRoleFont('Frank Ruhl Libre');
+    const fontForWriter6 = mkRoleFont('Hadassah Friedlaender');
+    // משפחות רשודות נוספות (מפתחות שאינם תפקידים) — כמו הנתיב הקיים
+    const ROLE_KEYS = new Set(['window', 'heading', 'fnbody', 'margin']);
+    const extraFonts = [];
+    for (const key of wordsByRole.keys()) {
+      if (ROLE_KEYS.has(key) || !registeredFontsRef.has(key)) continue;
+      const sub = buildSubset(registeredFontsRef.get(key), charInventory(wordsByRole.get(key).join(' ')));
+      if (sub.ok) extraFonts.push({ key, font: mkFont(sub) });
+    }
+    // ---- סימניות וקישורים: מהמודל (נבנו בבונה מהטוקנים/החותמות) ----
+    const outline = (model.document && model.document.outline) || [];
+    const tocLinks = (model.document && model.document.tocLinks) || [];
+    const pageSizeMm = pageMmOf(settings);
+    const bytes = writePdf({
+      pages, pageSizeMm,
+      font: fontForWriter, font2: fontForWriter2, font3: fontForWriter3,
+      font4: fontForWriter4, font5: fontForWriter5, font6: fontForWriter6,
+      extraFonts, settings, outline, tocLinks
+    });
+    return {
+      ok: true, bytes,
+      info: {
+        pages: pages.length, glyphs: subset.kept, fontBytes: subset.bytes.length,
+        outline: outline.length, tocLinks: tocLinks.length,
+        geometryHash: model.geometryHash || null,
+        outlineItems: outline,
+        tocLinkTargets: tocLinks.map(l => l.targetPage),
+        tocLinkPages: tocLinks.map(l => l.page),
+        fromPageModel: true
+      }
+    };
+  } finally {
+    restoreFontRegistration(profileName, prevFont);
+  }
+}
+
 /** קריאת תת־הגופן (פעם אחת) למיפוי תו→gid חדש — ה־cidOf/charToGidEntries של הכותב. */
 const _subsetCache = new WeakMap();
 function parseSubsetCache(subset) {
@@ -24847,7 +25009,7 @@ function cleanSettings(settings) {
 }
 
 module.exports = {
-  exportHtml, exportHtmlFromModel, exportPdf, exportProjectZip, importProjectZip, pageMmOf
+  exportHtml, exportHtmlFromModel, exportPdf, exportPdfFromModel, exportProjectZip, importProjectZip, pageMmOf
 };
 
 };

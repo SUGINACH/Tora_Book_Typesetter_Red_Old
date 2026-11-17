@@ -105,3 +105,14 @@
 **ראיות:** s8e חדשה (12): הוכחה שלילית ל-typeset (patch שזורק — 0 קריאות); חתימה ללא result; כשל מפורש על 5 קלטים שגויים; מיקומי שורות לפי data-id; עוגני מילים HTML==מודל (כולל מרזב); זהות DOM↔HTML (אותו מקרין); כיסוי כל סוגי התוכן; קישורי TOC; offline (אפס http); **very_long מלא** (344,476 מילות שורות + מרזב — כולן בקובץ); אינטגרציית createApp (unified+inline-transport) — הייצוא מגיע מהמודל בפועל; נתיב legacy לא נפגע. · npm test מלא **EXIT=0** · determinism OK · cross-check PASS · **אימות דפדפן אמיתי: הקובץ העצמאי נטען (7 עמודים, 39 שורות, 152 מילים; רקע כהה+עמודים לבנים; דיו בפיזור טורים)**.
 
 **נותר (פרוסה 5):** PDF מה-PageModel — הסרת העימוד השני מנתיב ה-PDF.
+
+## פרוסה 5 (17.11, ענף stage8e/pagemodel-html) — PDF export מה-PageModel (§4)
+
+**מה נעשה:**
+1. **`exportPdfFromModel(model, settings, fontBytes, fontName)`** ב-export-api: הסרת העימוד השני מנתיב ה-PDF. הכותב צורך את **אותו PageModel** שה-DOM וה-HTML צורכים — אין typeset/Parser/Planner/מדידה/חלוקת הערות/החלטות מיקום. אריזה בלבד: רישום גופן הייצוא, מלאי תווים מהטקסט שמצויר בפועל (מהמודל), תתי-גופנים לפי תפקידים (window/heading/fnbody/margin + משפחות רשומות), כתיבה. עמודי הכותב = התאמה טהורה של עמודי המודל (spanning→pg.spanning; השאר→pg.lines; footnotes/folio/header/decorations כמו שהם). סימניות וקישורים — מ-model.document (נבנו בבונה). מודל חסר ⇒ כשל מפורש (model-required) — אין נתיב עימוד חלופי.
+2. **השלמת זהויות במודל (סמכות):** מילות מרזב ההערות נושאות sizePt/fontKey/color מההקרנה (הכותב מצייר בזהותן האמיתית); עיטורים נושאים pdfOps (פעולות הציור שחושבו בהקרנה — svgToPdfOps).
+3. **חיבור ה-Worker:** התוצאה הגולמית (עם pageModel) נשמרת בזיכרון ה-Worker; export-pdf בפרופיל המאוחד (לפי האמת של הריצה — result.legacyProfile) צורך את המודל שבזיכרון — **אותו מודל שנשלח ל-UI**; חסר-מודל ⇒ כשל מפורש. legacy ממשיך בנתיב הקיים עד שלב 9.
+
+**ראיות:** s8f חדשה (10): הוכחה שלילית לעימוד שני (patch ל-typeset — 0 קריאות); מודל חסר/שגוי/גופן פסול ⇒ כשלים מפורשים; geometryHash של המודל חוזר ב-info; חלוץ טקסט (כיסוי >90% ממילות המודל); FontFile2+ToUnicode בקובץ; bookmarks+קישורים מהמודל עם יעדים; **גיאומטריה: מיקומי מילים ב-bbox של הפלט תואמים ל-baseline של המודל (RTL-visual כולל)**; זרימת Worker מלאה (inline-transport: typeset→מודל→ייצוא fromPageModel + השוואת hash). · npm test מלא **EXIT=0** · determinism OK · cross-check PASS. · **אימות דפדפן אמיתי + Worker אמיתי: הייצוא מהמודל (fromPageModel=true, 8 עמודים, 61KB) ו-geometryHash של הייצוא == hash המודל שה-DOM מציג (1cba68a695e6)**.
+
+**נותר (פרוסה 6):** מלאי קוד מלא (dom-renderer/geometry-projector/legacy-projector/pdf-writer/export-api), parity DOM/HTML/PDF, ביצועים לפני/אחרי, פישוט.

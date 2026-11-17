@@ -24406,6 +24406,130 @@ function exportPdf(text, settingsIn, fontBytes, fontName, env) {
   }
 }
 
+/**
+ * **פרוסה 5 (§4 — PDF מה-PageModel בלבד):** הסרת העימוד השני מנתיב ה-PDF.
+ * הכותב צורך את **אותו PageModel** שה-DOM וה-HTML צורכים — אין typeset,
+ * אין Parser/Planner, אין מדידה, אין חלוקת הערות, אין החלטות מיקום: כל
+ * x/y/baseline/גודל/מפתח-גופן/צבע/פעולות-דיו מגיעים מהמודל. הפונקציה עוסקת
+ * באריזה בלבד (רישום גופן הייצוא, מלאי תווים מהטקסט המצויר בפועל, מצווץ,
+ * כתיבה) — כמו exportPdf, בלי שלב העימוד-ההקרנה.
+ * @param {object} model — PageModel (pagemodel-v1) — אותו מודל שהגיע ל-UI
+ * @param {object} settingsIn — הגדרות (עמוד/הגדרות כותב בלבד)
+ * @param {Uint8Array} fontBytes — גופן הייצוא (TTF) ל-/F1
+ * @param {string} [fontName] — שם פרופיל הרישום
+ */
+function exportPdfFromModel(model, settingsIn, fontBytes, fontName) {
+  if (typeof Buffer === 'undefined') return { ok: false, error: 'no-buffer' }; // דפדפן — נתיב Node בלבד (מתועד)
+  if (!model || model.schema !== 'pagemodel-v1' || !Array.isArray(model.pages) || !model.pages.length) {
+    return { ok: false, error: 'model-required: נדרש PageModel תקין — אין נתיב עימוד חלופי בייצוא מהמודל' };
+  }
+  /* node-only */ const { registerFont, unregisterFont, restoreFontRegistration, registeredFonts: registeredFontsRef } = require('../typography/measure-api');
+  /* node-only */ const { glyphIdOf } = require('../typography/font-metrics');
+  /* node-only */ const { buildSubset, charInventory } = require('../typography/font-subset');
+  /* node-only */ const { writePdf } = require('./pdf-writer');
+  /* node-only */ const { getDefaultSettings } = require('../core/settings-registry');
+  const profileName = fontName || settingsIn['body-font'] || 'ToraExport';
+  const hadPrevFont = registeredFontsRef.has(profileName);
+  const prevFont = hadPrevFont ? registeredFontsRef.get(profileName) : null;
+  const reg = registerFont(profileName, fontBytes);
+  if (!reg.ok) { if (!hadPrevFont) unregisterFont(profileName); return { ok: false, error: `font:${reg.error}` }; }
+  try {
+    const settings = { ...getDefaultSettings(), ...settingsIn, 'body-font': profileName };
+    // ---- עמודי הכותב: התאמה טהורה של עמודי המודל לצורת הכותב (אפס החלטות) ----
+    const pages = model.pages.map(mp => ({
+      width: mp.geometry.width, height: mp.geometry.height,
+      type: mp.type,
+      spanning: mp.spanning ? { lines: mp.lines.filter(l => l.area === 'spanning') } : null,
+      lines: mp.lines.filter(l => l.area !== 'spanning'),
+      footnotes: mp.footnotes || [],
+      folio: mp.folio || null,
+      header: mp.header || null,
+      decorations: (mp.decorations || []).filter(d => Array.isArray(d.pdfOps) && d.pdfOps.length)
+    }));
+    // ---- מלאי תווים מהטקסט שמצויר בפועל (מהמודל) ----
+    const drawnParts = [];
+    for (const pg of pages) {
+      for (const ln of [...(pg.spanning ? pg.spanning.lines : []), ...pg.lines]) for (const w of ln.words) drawnParts.push(w.text);
+      for (const fn of pg.footnotes) for (const w of (fn.words || [])) drawnParts.push(w.text);
+      if (pg.folio && pg.folio.text) drawnParts.push(pg.folio.text);
+      if (pg.header) for (const s of pg.header.slots) drawnParts.push(s.text);
+    }
+    const font = reg.profile;
+    const inventory = charInventory(drawnParts.join(' '));
+    const f1Inventory = inventory.filter(ch => glyphIdOf(font, ch) !== 0);
+    const subset = buildSubset(font, f1Inventory);
+    if (!subset.ok) return { ok: false, error: `subset:${subset.error}` };
+    const mkFont = (sub) => {
+      const c2g = subsetNewCmap(sub);
+      return {
+        subsetBytes: sub.bytes, widthsUnits: sub.widthsUnits, unitsPerEm: sub.unitsPerEm,
+        cidOf: (ch) => { const g = c2g.get(ch); return g != null ? g : glyphIdOf(parseSubsetCache(sub), ch); },
+        charToGidEntries: () => [...c2g.entries()]
+      };
+    };
+    const fontForWriter = mkFont(subset);
+    // ---- גופני-תפקידים מהמודל (window/heading/fnbody/margin) + משפחות רשודות ----
+    const wordsByRole = new Map();
+    const allLines = [];
+    for (const pg of pages) { allLines.push(...(pg.spanning ? pg.spanning.lines : []), ...pg.lines); }
+    for (const ln of allLines) for (const w of ln.words) {
+      if (w.fontKey == null) continue;
+      if (!wordsByRole.has(w.fontKey)) wordsByRole.set(w.fontKey, []);
+      wordsByRole.get(w.fontKey).push(w.text);
+    }
+    for (const fn of pages.flatMap(p => p.footnotes)) for (const w of (fn.words || [])) {
+      if (w.fontKey == null) continue;
+      if (!wordsByRole.has(w.fontKey)) wordsByRole.set(w.fontKey, []);
+      wordsByRole.get(w.fontKey).push(w.text);
+    }
+    const mkRoleFont = (family) => {
+      const prof = registeredFontsRef.get(family);
+      if (!prof) return null;
+      const parts = wordsByRole.get(family) || [];
+      if (!parts.length) return null;
+      const sub = buildSubset(prof, charInventory(parts.join(' ')));
+      return sub.ok ? mkFont(sub) : null;
+    };
+    const fontForWriter2 = mkRoleFont('FrankReal-Bold');
+    const fontForWriter3 = mkRoleFont('DavidLibre-Bold');
+    const fontForWriter4 = mkRoleFont('David Libre');
+    const fontForWriter5 = mkRoleFont('Frank Ruhl Libre');
+    const fontForWriter6 = mkRoleFont('Hadassah Friedlaender');
+    // משפחות רשודות נוספות (מפתחות שאינם תפקידים) — כמו הנתיב הקיים
+    const ROLE_KEYS = new Set(['window', 'heading', 'fnbody', 'margin']);
+    const extraFonts = [];
+    for (const key of wordsByRole.keys()) {
+      if (ROLE_KEYS.has(key) || !registeredFontsRef.has(key)) continue;
+      const sub = buildSubset(registeredFontsRef.get(key), charInventory(wordsByRole.get(key).join(' ')));
+      if (sub.ok) extraFonts.push({ key, font: mkFont(sub) });
+    }
+    // ---- סימניות וקישורים: מהמודל (נבנו בבונה מהטוקנים/החותמות) ----
+    const outline = (model.document && model.document.outline) || [];
+    const tocLinks = (model.document && model.document.tocLinks) || [];
+    const pageSizeMm = pageMmOf(settings);
+    const bytes = writePdf({
+      pages, pageSizeMm,
+      font: fontForWriter, font2: fontForWriter2, font3: fontForWriter3,
+      font4: fontForWriter4, font5: fontForWriter5, font6: fontForWriter6,
+      extraFonts, settings, outline, tocLinks
+    });
+    return {
+      ok: true, bytes,
+      info: {
+        pages: pages.length, glyphs: subset.kept, fontBytes: subset.bytes.length,
+        outline: outline.length, tocLinks: tocLinks.length,
+        geometryHash: model.geometryHash || null,
+        outlineItems: outline,
+        tocLinkTargets: tocLinks.map(l => l.targetPage),
+        tocLinkPages: tocLinks.map(l => l.page),
+        fromPageModel: true
+      }
+    };
+  } finally {
+    restoreFontRegistration(profileName, prevFont);
+  }
+}
+
 /** קריאת תת־הגופן (פעם אחת) למיפוי תו→gid חדש — ה־cidOf/charToGidEntries של הכותב. */
 const _subsetCache = new WeakMap();
 function parseSubsetCache(subset) {
@@ -24518,7 +24642,7 @@ function cleanSettings(settings) {
 }
 
 module.exports = {
-  exportHtml, exportHtmlFromModel, exportPdf, exportProjectZip, importProjectZip, pageMmOf
+  exportHtml, exportHtmlFromModel, exportPdf, exportPdfFromModel, exportProjectZip, importProjectZip, pageMmOf
 };
 
 };

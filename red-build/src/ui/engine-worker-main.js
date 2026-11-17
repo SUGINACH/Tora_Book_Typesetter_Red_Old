@@ -41,6 +41,10 @@ function _resolverForAssets(assetsMsg) {
  * הקנוני (זהות content-addressed + שרשרת fallback מאובחנת) — ה-resolver מסנכרן
  * את מרשמי measure-api בעצמו (single entry point); לא נוצר מרשם מקבילי.
  * ה-fontId חוזר ל-UI כך שזהות הגופן זהה בשני הצדדים (מוכח בבדיקות E2E). */
+/** **פרוסה 5 (§4):** תוצאת העימוד האחרונה בזיכרון ה-Worker — ה-PageModel שלה
+ * משמש את ייצוא ה-PDF בפרופיל המאוחד (אותו מודל שנשלח ל-UI; אין עימוד שני). */
+let _lastTypesetResult = null;
+
 function handleRegisterFont(msg, post) {
   try {
     const fontResolver = require('../engine/typography/font-resolver');
@@ -72,13 +76,27 @@ function handleRegisterAssets(msg, post) {
  * הפלט מועתק ל-Uint8Array טהור (בלי byteOffset) — structured-clone/transfer בטוחים. */
 function handleExportRequest(msg, post) {
   try {
-    const { exportPdf, exportProjectZip } = require('../engine/output/export-api');
+    const { exportPdf, exportPdfFromModel, exportProjectZip } = require('../engine/output/export-api');
     if (msg.kind === 'pdf') {
       if (msg.fontBytes == null) {
         post({ type: 'export-result', jobId: msg.jobId, kind: 'pdf', ok: false, error: 'no-embedded-font' });
         return;
       }
       const u8 = msg.fontBytes instanceof ArrayBuffer ? new Uint8Array(msg.fontBytes) : new Uint8Array(msg.fontBytes.buffer, msg.fontBytes.byteOffset, msg.fontBytes.length);
+      // **פרוסה 5 (§4 — אין עימוד שני):** בפרופיל המאוחד הייצוא מה-PageModel
+      // שכבר חושב (אותו מודל שנשלח ל-UI). חסר-מודל ⇒ כשל מפורש — לא נפילה
+      // לעימוד מחדש. legacy ממשיך בנתיב הקיים עד שלב 9.
+      const lastIsLegacy = !(_lastTypesetResult && _lastTypesetResult.pageModel && _lastTypesetResult.legacyProfile !== true);
+      if (!lastIsLegacy) {
+        if (!_lastTypesetResult || !_lastTypesetResult.pageModel) {
+          post({ type: 'export-result', jobId: msg.jobId, kind: 'pdf', ok: false, error: 'model-required: אין PageModel בזיכרון — הפעילו עימוד לפני ייצוא' });
+          return;
+        }
+        const res = exportPdfFromModel(_lastTypesetResult.pageModel, msg.settings, u8, msg.fontName);
+        if (!res.ok) { post({ type: 'export-result', jobId: msg.jobId, kind: 'pdf', ok: false, error: res.error }); return; }
+        post({ type: 'export-result', jobId: msg.jobId, kind: 'pdf', ok: true, bytes: new Uint8Array(res.bytes), info: res.info || null });
+        return;
+      }
       const res = exportPdf(msg.text, msg.settings, u8, msg.fontName);
       if (!res.ok) { post({ type: 'export-result', jobId: msg.jobId, kind: 'pdf', ok: false, error: res.error }); return; }
       post({ type: 'export-result', jobId: msg.jobId, kind: 'pdf', ok: true, bytes: new Uint8Array(res.bytes), info: res.info || null });
@@ -129,6 +147,10 @@ function createEngineWorkerMain(post) {
         cancelledJobs.delete(jobId); // העבודה בוטלה — התוצאה נזרקת בזמן שנותרה מסומנת
         return;
       }
+      // **פרוסה 5 (§4 — המודל נשאר בזיכרון ה-Worker לייצוא):** התוצאה הגולמית
+      // (כולל pageModel שלא עובר ב-audit) נשמרת לבקשת ייצוא מהמודל — הייצוא
+      // בפרופיל המאוחד צורך את אותו מודל בדיוק שנשלח ל-UI (אין עימוד שני).
+      _lastTypesetResult = result;
       post({ type: 'typeset-result', jobId, result: serializeTypesetResult(result) });
     } catch (e) {
       if (cancelledJobs.has(jobId)) { cancelledJobs.delete(jobId); return; }
