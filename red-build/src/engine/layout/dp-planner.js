@@ -2,6 +2,9 @@
 'use strict';
 
 const crypto = require('crypto');
+// **חוזה H3 (D-S2H3/CSS parity):** ריפודי פס כותרת 3 ממקור יחיד —
+// אותו חוזה כמו המנוע המורשת (legacy-imud-flow) ומדידת ה-pipeline.
+const { H3_TOP_PAD_PX, H3_BOTTOM_PAD_PX, H3_MARGIN_BOTTOM_PX, h3BandHeightPx } = require('../core/h3-contract');
 const { PAGE_TYPES, buildPageTemplate } = require('./page-templates');
 const { Ledger } = require('../core/ledger');
 const { runProtections } = require('./protections-matrix');
@@ -613,13 +616,17 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
       }
       if (!cur.spanning && cur.template.columns.length >= 2) {
         const bandH3 = blk.lines.reduce((s, ln) => s + (ln.heightPx || 0), 0);
+        // **חוזה H3 (D-S2H3/CSS parity):** הפס נושא ריפוד עליון 8px פעם אחת,
+        // ריפוד תחתון 4px + שוליים 4px פעם אחת אחרי השורה האחרונה — כמו
+        // .block-h3-span ב-CSS המקורי. ה-line-height עצמו (1.22) נקבע במדידה
+        // (core/pipeline.js). מקור יחיד: core/h3-contract.js.
         cur.spanning = {
           lines: blk.lines.map((ln, i) => ({ ...ln, meta: { tokenId: blk.tokenId, firstOfBlock: i === 0, docPart: blk.part }, seq: seqCounter++ })),
-          heightPx: bandH3,
-          titleTopPadPx: 0,
+          heightPx: h3BandHeightPx(bandH3),
+          titleTopPadPx: H3_TOP_PAD_PX,
           orn: null
         };
-        eventLog.emit('page-plan', 'h3-spanning', { token: blk.tokenId, level: blk.level, heightPx: bandH3 }, cur.index);
+        eventLog.emit('page-plan', 'h3-spanning', { token: blk.tokenId, level: blk.level, heightPx: cur.spanning.heightPx }, cur.index);
         continue; // הכותרת בפס; הבלוקים הבאים ימלאו את הטורים מתחת
       }
     }

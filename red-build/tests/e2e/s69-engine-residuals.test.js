@@ -338,7 +338,13 @@ describe('S70 (R3-M2/M3) — כיול orphan/widow: רק הפרות אמיתיו
     // contentPreserved=true; 1108 עמודים — השינוי גיאומטרי בלבד (מיקום
     // הערות במרזב), ללא כל שינוי שורות/תוכן/זהות. הצדקה מלאה בקובץ
     // הנעילות (tools/cross-check-locks.json).
-    assert(r.layoutHash.startsWith('d2a18112'), `layout unchanged (got ${r.layoutHash.slice(0, 8)})`);
+    // **H3-CSS (17.11, חוזה ה-CSS המקורי גם במסלול המאוחד):** נעילה מחודשת
+    // d2a18112→e68e1f0b — פסי H3 במסלול המאוחד קיבלו את ריפודי החוזה (8/4/4)
+    // ו-line-height 1.22 (היה 1.4 ללא ריפודים כלל). שימור תוכן מלא: זרם
+    // מילים זהה ביט-לביט; אפס שינויי חלוקת שורות; הערות 129=129; +2
+    // עמודי regular מהריפודים. bodyHash/notesHash הוכחו בדוח ההשוואה.
+    // דוח: audits/H3_SPACING_OLD_STYLE_PARITY_2026-11-17.md. הקודם: d2a18112.
+    assert(r.layoutHash.startsWith('e68e1f0b'), `layout unchanged (got ${r.layoutHash.slice(0, 8)})`);
     const count = (kind) => [...r.ledger.issues.values()].filter(x => x.kind === kind && x.status === 'persists').length;
     assertEq(count('widow-bottom'), 0, 'false widow-bottom flood eliminated (was 1176)');
     assertEq(count('orphan-top'), 0, 'false orphan-top flood eliminated (was 791)');

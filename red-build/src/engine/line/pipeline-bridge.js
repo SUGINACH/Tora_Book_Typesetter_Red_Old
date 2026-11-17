@@ -217,16 +217,19 @@ function layoutModelBlock(blk, spec) {
     ? { wordStyleOf: spec.wordOverlay }
     : wordOverlayFactory(blk, settings, spec.customStyles || null);
   // סמנטיקת כותרת 3 (D-S2H3, §21/§13 בהוראה): פריט סמנטי אחד — הרווח
-  // התחתון שייך לכולו ומופיע פעם אחת אחרי ה-fragment האחרון; הקונסטנטים
-  // מנוסחים פעם אחת ב-line-items (מקור יחיד).
-  const { H3_LINE_PITCH_PX, H3_LAST_BAND_PX } = require('./line-items');
+  // התחתון שייך לכולו ומופיע פעם אחת אחרי ה-fragment האחרון; ה-pitch נגזר
+  // מהחוזה לפי גודל הכותרת בפועל (core/h3-contract — מקור יחיד).
+  const { h3PitchOf, H3_BOTTOM_PAD_PX } = require('./line-items');
   const semantic = (spec.kind === 'heading' && spec.level === 3)
-    ? {
-        kind: 'heading3', itemId: blk.id,
-        linePitchPx: H3_LINE_PITCH_PX, lastBandPx: H3_LAST_BAND_PX,
-        trailingSpacePx: H3_LAST_BAND_PX - H3_LINE_PITCH_PX,
-        rule: 'bottom-space-once-after-last-fragment'
-      }
+    ? (() => {
+        const pitch3 = h3PitchOf(settings);
+        return {
+          kind: 'heading3', itemId: blk.id,
+          linePitchPx: pitch3, lastBandPx: pitch3 + H3_BOTTOM_PAD_PX,
+          trailingSpacePx: H3_BOTTOM_PAD_PX,
+          rule: 'bottom-space-once-after-last-fragment'
+        };
+      })()
     : null;
   const sequence = buildContainerSequence(
     { id: blk.id, kind: spec.kind, items, item0Kind: items[0] ? items[0].kind : 'text', baseStyle, wordStyleOf },

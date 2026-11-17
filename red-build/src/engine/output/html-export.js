@@ -125,7 +125,9 @@ html,body,.page,.line,.rh,.band,.footnote,.footnotes,.endnote-note,.endnote-list
    ממוקמים ב-inline left/top/width/height ודורשים position:absolute גם בתצוגה
    החיה וגם בקובץ העצמאי. BASE_CSS הזה מוזרק גם לאפליקציה (browser-entry) —
    מקור שליטה יחיד לשני הנתיבים (F-09). */
-.spanning-band{position:absolute}
+/* **חוזה H3 (D-S2H3):** border-box — גובה הפס כולל את הריפוד העליון
+   (titleTopPadPx; 8px בפס H3) ומתאים בדיוק להזמנה מה-planner. */
+.spanning-band{position:absolute;box-sizing:border-box}
 .orn{position:absolute;background-repeat:no-repeat;background-position:center}
 .deco{position:absolute;background-repeat:no-repeat;background-position:center}/* EXT-4: עיטורי הדף (שערים/רקעים) — ממוקמים מה-rectים (F-09) */
 .shaar-main-box,.shaar-sub-box,.shaar-back-box{position:absolute;display:flex;align-items:center;justify-content:center;font-weight:700;text-align:center;padding:0 8px}

@@ -76,7 +76,11 @@ function baseStyleOf(settings, kind, level) {
   const prof = familyWidthProfileOf(family, s);
   return {
     sizePt,
-    lineHeight: Number.isFinite(s['body-line-height']) ? s['body-line-height'] : 1.34,
+    // **חוזה H3 (D-S2H3/CSS parity):** שורות כותרת 3 ב-line-height 1.22 של
+    // ה-CSS המקורי — לא body-line-height הכללי. מקור יחיד: core/h3-contract.
+    lineHeight: (kind === 'heading' && level === 3)
+      ? H3_CONTRACT_LINE_HEIGHT
+      : (Number.isFinite(s['body-line-height']) ? s['body-line-height'] : 1.34),
     fnSize: Number.isFinite(s['f-note-body-size-pt']) ? s['f-note-body-size-pt'] : 8,
     family,
     defaultFamily: s['body-font'] || null,
@@ -91,11 +95,18 @@ function baseStyleOf(settings, kind, level) {
  * ו-wordStyleOf לסגנון האמיתי; פלובק תמונה מאובחן. */
 const LINE_ITEM_CONTRACT_VERSION = 'line-item-v2.1(single-measurement-boundary)';
 
-/** קבועי כותרת 3 (D-S2H3, שלב 2 — התנהגות שנקבעה ותוקנה): פסיחה בין-שורות
- * 34px, הפס האחרון 38px, הרווח התחתון (38−34) שייך לפריט כולו ומופיע פעם אחת
- * אחרי ה-fragment האחרון. ה-renderer אינו מוסיף ואינו מתקן. */
-const H3_LINE_PITCH_PX = 34;
-const H3_LAST_BAND_PX = 38;
+/** קבועי כותרת 3 (חוזה H3 — core/h3-contract.js, D-S2H3/CSS parity): pitch
+ * בין-שורות = line-height 1.22 של ה-CSS המקורי (גודל×96/72×1.22 — 21.96px
+ * בברירת המחדל 13.5pt), הפס האחרון = pitch+ריפוד תחתון 4, הרווח שאחרי
+ * ה-fragment האחרון = 4. ה-renderer אינו מוסיף ואינו מתקן. (הערכים
+ * הישנים 34/38 שיקפו גובה שורה שכלל בטעות את הריפוד העליון.) */
+const { H3_LINE_HEIGHT: H3_CONTRACT_LINE_HEIGHT, h3LineHeightPx, H3_BOTTOM_PAD_PX } = require('../core/h3-contract');
+const H3_DEFAULT_SIZE_PT = 13.5;
+const h3PitchOf = (settings) => h3LineHeightPx(
+  (settings && Number.isFinite(settings['heading-3-size-pt'])) ? settings['heading-3-size-pt'] : H3_DEFAULT_SIZE_PT
+);
+const H3_LINE_PITCH_PX = h3LineHeightPx(H3_DEFAULT_SIZE_PT);
+const H3_LAST_BAND_PX = H3_LINE_PITCH_PX + H3_BOTTOM_PAD_PX;
 
 /**
  * בניית רצף פריטי-שורה של מסמך שלם.
@@ -123,10 +134,11 @@ function buildLineSequences(model, ctx = {}) {
     // סמנטיקה של כותרת 3 (§21 בהוראה): פריט סמנטי אחד — הרווח התחתון שייך לכולו.
     let semantic = null;
     if (blk.kind === 'heading' && blk.level === 3) {
+      const pitch3 = h3PitchOf(settings);
       semantic = {
         kind: 'heading3', itemId: blk.id,
-        linePitchPx: H3_LINE_PITCH_PX, lastBandPx: H3_LAST_BAND_PX,
-        trailingSpacePx: H3_LAST_BAND_PX - H3_LINE_PITCH_PX,
+        linePitchPx: pitch3, lastBandPx: pitch3 + H3_BOTTOM_PAD_PX,
+        trailingSpacePx: H3_BOTTOM_PAD_PX,
         rule: 'bottom-space-once-after-last-fragment'
       };
     }
@@ -682,5 +694,5 @@ function lineItemOf(base) {
 module.exports = {
   LINE_ITEM_CONTRACT_VERSION, buildLineSequences, buildContainerSequence,
   resolveStyleFor, baseStyleOf,
-  H3_LINE_PITCH_PX, H3_LAST_BAND_PX
+  H3_LINE_PITCH_PX, H3_LAST_BAND_PX, h3PitchOf, H3_BOTTOM_PAD_PX
 };

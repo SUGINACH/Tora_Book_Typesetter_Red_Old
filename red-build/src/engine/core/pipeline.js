@@ -24,6 +24,9 @@
  */
 
 const { getDefaultSettings, derivePlacementFlags } = require('./settings-registry');
+// **חוזה H3 (D-S2H3/CSS parity):** line-height 1.22 של ה-CSS המקורי — מקור
+// יחיד המשותף למדידת הכותרות כאן, לפס ה-H3 ב-planner ולמנוע המורשת.
+const { h3LineHeightPx } = require('./h3-contract');
 const { lexDocument } = require('../parser/dfa-lexer');
 const { tokenizeDetailed, contentHash } = require('../parser/block-tokenizer');
 // **שלב 2 (מודל תוכן אחיד):** המודל הקנוני הוא מקור הסמכות של שלב הפענוח;
@@ -285,9 +288,13 @@ function typeset(rawText, settingsIn, env = {}) {
       // תצוגה נגזרת. הסגנון: גוף/גודל/משפחה לפי רמת הכותרת (הוראה §7) בגופן
       // הרמה שלה — כמו שהמוצר מציג ומודד את שורת הכותרת כולה (S4.26).
       // אין עוד words[] עצמאי שמחליט שבירה.
+      // **חוזה H3 (core/h3-contract.js, D-S2H3/CSS parity):** שורות כותרת 3
+      // ב-line-height 1.22 של ה-CSS המקורי — לא body-line-height הכללי.
+      // אותו חוזה כמו המנוע המורשת (legacy-imud-flow) — מקור יחיד.
+      const isH3 = t.level === 3;
       const hBuilt = layoutModelBlock(blockById.get(t.blockId), {
         settings, kind: 'heading', level: t.level, widthPx: wLimit,
-        lineHeightPx: api.lineHeightPx(hSize),
+        lineHeightPx: isH3 ? h3LineHeightPx(hSize) : api.lineHeightPx(hSize),
         measureCtx: { assetResolver: docAssets, measure: api }
       });
       const lines = hBuilt.view;

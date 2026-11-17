@@ -204,8 +204,12 @@ describe('S76 — נייטרליות legacy מלאה (התיקונים ב-body-f
     const text = generateTestDocument({ mode: 'fixed' });
     const r = legacyTypeset(text, { ...imudSettings(), 'fn-placement-mode': 'legacy' }, {});
     // **R-03 (יובא מ-Red PR #48):** נעילה מחודשת legacy-3ce38→legacy-1231b — התיקון של דגלי הסוגריים של מילות-סמן חל גם על מצב legacy (שינוי מדידה נכון, מתוצא ב-PR הנייחות). הקודם: legacy-3ce387962aa20101.
-    assert(r.layoutHash.startsWith('legacy-1231b1b7e15cb'),
-      `legacy אינו נייטרלי — התקבל ${r.layoutHash.slice(0, 20)} (צפוי נעילת S74+R-03)`);
+    // **H3-CSS (17.11):** נעילה מחודשת legacy-1231b→legacy-8b344 — חוזה
+    // line-height 1.22 של ה-CSS המקורי חל על שני מצבי הצבת ההערות כאחד
+    // (הכותרת אינה תלויה במצב ההערות); אותה הצדקה ואותו דוח כמו s72.
+    // הקודם: legacy-1231b1b7e15cb.
+    assert(r.layoutHash.startsWith('legacy-8b3449320ba23'),
+      `legacy אינו נייטרלי — התקבל ${r.layoutHash.slice(0, 20)} (צפוי נעילת S74+R-03+H3-CSS)`);
   });
 
   it('body-first במסמך הבדיקה הקבוע: ההאש החדש של S76 (שינוי מכוון, מתועד ב-s72)', () => {
@@ -213,16 +217,15 @@ describe('S76 — נייטרליות legacy מלאה (התיקונים ב-body-f
     const text = generateTestDocument({ mode: 'fixed' });
     const r = legacyTypeset(text, imudSettings(), {});
     // **R-03:** נעילה מחודשת legacy-6a06e→legacy-a0946 (תיקון שורש מתוצא ב-PR הנייחות). הקודם: legacy-6a06e3108c8eca9b.
-    // **F-BL2 (17.11, תיקון שורש — סמן-הערה שנבלע בחיתוך שורת המרזב):** נעילה מחודשת
-    // legacy-a0946→legacy-1457d — טוקן הרווח-הכפל (gap) של ההערה נספר כ"הערה
-    // שהחלה" גם כשחיתוך השורה נפל בדיוק בינו לבין הסמן ⇒ ההמשך נפתח ב-'(המשך)'
-    // והסמן לא הוצג לעולם. תוקן: "החלה" מוכח רק על-ידי טוקן שהוצג (סמן/מילה).
-    // במסמך זה שוחזרו 4 סמנים שאבדו (כ. עמ' 149, לא. עמ' 150, כז. עמ' 282, כו. עמ' 458)
-    // + זרימה מקומית מחדש סביב עמ' 151–153 (רוחב הסמן בהמשך ⇒ קוונטיזציית תקציב);
-    // 489=489 עמודים; contentPreserved=true; הקורפוס (long_test_text) לא השתנה
-    // (legacy-d81aa5 נשמר). הוכח ב-full-math-audit: MARKER_NOTE_MATCH 2→0.
-    assert(r.layoutHash.startsWith('legacy-1457d71d19b9c'),
-      `body-first נעול על ההאש החדש — התקבל ${r.layoutHash.slice(0, 20)}`);
+    // **H3-CSS+F-BL2 (17.11, נעילה משולבת — שני תיקוני שורש):** H3-CSS
+    // (חוזה ה-CSS המקורי לכותרת 3; דוח audits/H3_SPACING_OLD_STYLE_PARITY_2026-11-17.md)
+    // + F-BL4 (סמן-הערה שנבלע בחיתוך המרזב — 4 סמנים שוחזרו; דוח
+    // audits/FULLMATH_FLOOR_ROOT_CLOSURE_2026-11-17.md). נעילות ביניים:
+    // H3 בלבד legacy-5f0dc · F-BL2 בלבד legacy-1457d · משולב legacy-0861db.
+    // **H3-CSS (17.11):** נעילה מחודשת legacy-a0946→legacy-5f0dc — חוזה
+    // ה-CSS המקורי (pitch 1.22, ריפודים 8/4/4); ההצדקה המלאה ב-s72
+    // וב-audits/H3_SPACING_OLD_STYLE_PARITY_2026-11-17.md. הקודם: legacy-a0946f99c7c197bd.
+    assert(r.layoutHash.startsWith('legacy-0861db'),      `body-first נעול על ההאש החדש — התקבל ${r.layoutHash.slice(0, 20)}`);
     assertEq(r.contentPreserved, true, 'שימור תוכן');
   });
 });
