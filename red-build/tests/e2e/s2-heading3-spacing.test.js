@@ -136,7 +136,7 @@ describe('D-S2H3 — מפרט רווח תחתון של כותרת 3 (תוקן ב
     registerCoreFonts(s);
     const r = legacyTypeset(DOC, s, {});
     const { page, bands } = findWrappedH3(r);
-    // הפס האחרון: 38 = 34 (שורה) + 4 (הרווח התחתון היחיד).
+    // הפס האחרון: line-height 21.96 + padding-bottom 4; אחריו margin-bottom 4.
     const last = bands[bands.length - 1];
     assert(Math.abs(last.h - H3_SPAN_H) < 0.05, 'הפס האחרון כולל padding-bottom של 4px');
     // כל המדידות באותה מערכת קואורדינטות של העמוד:
@@ -168,12 +168,10 @@ describe('D-S2H3 — מפרט רווח תחתון של כותרת 3 (תוקן ב
     const single = (found.page.bands || []).filter(x => x.kind === 'h3-title' && x.tokenId != null);
     assertEq(single.length, 1, 'כותרת חד-שורתית אחת בלבד עם tokenId');
     const contentAfter = (found.page.columns[0] || []).filter(u => u.y >= found.band.y - 0.01);
-    if (contentAfter.length) {
-      const first = contentAfter.find(u => u.y >= found.band.y + H3_SPAN_H + H3_SPAN_MARGIN_BOTTOM_PX - 0.01);
-      assert(first, 'התוכן אחרי כותרת חד-שורתית נפתח אחרי top padding + line-height + bottom padding + margin');
-      assert(Math.abs(first.y - (found.band.y + H3_SPAN_LINE_H + H3_SPAN_BOTTOM_PAD_PX + H3_SPAN_MARGIN_BOTTOM_PX)) < 0.05,
-        'גובה הכותרת החד-שורתית כולל top padding 8, line-height 1.22, padding-bottom 4 ו-margin-bottom 4');
-    }
+    const first = contentAfter.find(u => u.y >= found.band.y + H3_SPAN_H + H3_SPAN_MARGIN_BOTTOM_PX - 0.01);
+    assert(first, 'התוכן אחרי כותרת חד-שורתית נפתח אחרי top padding + line-height + bottom padding + margin');
+    assert(Math.abs(first.y - (found.band.y + H3_SPAN_LINE_H + H3_SPAN_BOTTOM_PAD_PX + H3_SPAN_MARGIN_BOTTOM_PX)) < 0.05,
+      'גובה הכותרת החד-שורתית כולל top padding 8, line-height 1.22, padding-bottom 4 ו-margin-bottom 4');
     clearRegisteredFonts();
   });
 
@@ -193,7 +191,7 @@ describe('D-S2H3 — מפרט רווח תחתון של כותרת 3 (תוקן ב
       const pb = pdfBandLines.find(l => Math.abs(l.y - bands[i].y) < 0.01 && Math.abs(l.h - H3_SPAN_LINE_H) < 0.01);
       assert(pb, `ל-PDF אין את שורת הכותרת ${i} באותו y ו-line-height`);
     }
-    // הבסיס ב-PDF נגזר מהתיבה (baselineOf) — מרכוז בתוך התיבה של אותה שורה.
+    // הבסיס ב-PDF נגזר מ-lineHeightPx של הטקסט, ולא מגובה הפס הכולל את הריפוד.
     for (let i = 0; i < pdfBandLines.length; i++) {
       const pb = pdfBandLines[i];
       const expectedH = H3_SPAN_LINE_H;
