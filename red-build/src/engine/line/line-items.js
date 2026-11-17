@@ -423,12 +423,34 @@ function boxItemFor(b, env) {
   }
   const sr = src.sourceRange || null;
   const itemNoteRef = (src.payload && src.payload.noteRef) || null;
+  // **שלב 8 פרוסה 2 (§4.2 — תמונות פריטים ממדרגה ראשונה):** זהות הנכס וההצהרה
+  // עולות מה-payload אל פריט השורה — כך שה-LineModel (וה-PageModel אחריו)
+  // נושאים assetId/מידות-טבעיות/fit/placement בלי שהמקרינים יחפשו אותם מחדש.
+  const imgPayload = src.kind === 'image' && src.payload ? {
+    // **פרוסה 2 (תיקון שורש — זהות קנונית):** כשה-resolver פתר את הנכס,
+    // הזהות היא ה-id מכתובת-התוכן (contentAssetId — מה ש-resolvedAssetIds
+    // מחזיר); ה-id על בסיס הנתיב נשמר כ-declaredAssetId לעקיבות.
+    assetId: src.payload.contentAssetId != null ? src.payload.contentAssetId
+      : (src.payload.assetId != null ? src.payload.assetId : null),
+    ...(src.payload.contentAssetId != null && src.payload.assetId != null
+      ? { declaredAssetId: src.payload.assetId } : {}),
+    resourcePath: src.payload.resourcePath != null ? src.payload.resourcePath : null,
+    align: src.payload.align != null ? src.payload.align : null,
+    widthPct: src.payload.widthPct != null ? src.payload.widthPct : null,
+    natural: (src.payload.naturalWidth != null && src.payload.naturalHeight != null)
+      ? { w: src.payload.naturalWidth, h: src.payload.naturalHeight,
+          ...(src.payload.aspectRatio != null ? { aspectRatio: src.payload.aspectRatio } : {}) }
+      : null,
+    fit: src.payload.fit != null ? { ...src.payload.fit } : null,
+    altText: src.payload.altText != null ? src.payload.altText : null
+  } : null;
   return lineItemOf({
     role: 'box', kind: src.kind, itemId: src.id, sourceItemId: src.id,
     fragments: (m.ok && m.segments ? m.segments.map((s) => ({ itemId: src.id, runIndex: 0, text: s.text, start: 0, end: String(s.text || '').length, docStart: sr ? sr.start : null, docEnd: sr ? sr.end : null, fontId: s.fontId, fontFamily: s.family || null, advancePx: s.advancePx })) : []),
     measured: m,
     overlay: b._overlay || null,
     sourceText: src.sourceText != null ? src.sourceText : null, // תמונות/אטומים — טקסט המקור לתצוגת המוצר
+    image: imgPayload, // **§4.2:** ההצהרה המלאה של התמונה — מהמודל, בלי חישוב במקרינים
     sourceRange: { blockId: env.blockId, itemId: src.id, runIndex: 0, start: sr ? sr.start : null, end: sr ? sr.end : null },
     sourceAnchor: itemNoteRef,
     noteRef: itemNoteRef,
@@ -641,6 +663,9 @@ function lineItemOf(base) {
     fragments: base.fragments || [],
     // טקסט מקור של פריט שלם (תמונה/אטום) — לתצוגת המוצר עד שלב 8
     sourceText: base.sourceText != null ? base.sourceText : null,
+    // **שלב 8 פרוסה 2 (§4.2):** הצהרת התמונה (assetId/מידות/fit/placement) —
+    // מועברת מהמודל לפריט השורה; ה-LineModel יאסוף אותה ל-assets של השורה.
+    image: base.image || null,
     // שכבת-על של סגנון המילה (§7: סוגריים/סגנון inline) — נשמרת על הפריט
     // ומועברת לפרגמנטים של ה-LineModel (לזיהוי span-ים בגזירת התצוגה)
     overlay: base.overlay || null,

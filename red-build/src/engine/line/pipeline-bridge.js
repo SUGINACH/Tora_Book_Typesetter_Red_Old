@@ -242,6 +242,24 @@ function layoutModelBlock(blk, spec) {
     runts: spec.runts,
     lineHeightPx: spec.lineHeightPx
   });
+  // **שלב 8 פרוסה 2 (§4.2 — מדידה אחת לטקסט-המקור של צף):** תחביר המקור של
+  // תמונה צפה נספר ב-words לחשבונאות התוכן ומוצג כמילה (התנהגות המוצר עד
+  // שלב 8) — אך אינו בזרימת ה-LineModel. עד כאן ההקרנה מדדה אותו מחדש
+  // (נפילה); כאן הוא נמדד פעם אחת בזמן התכנון ומוטבע על ה-floatArea.
+  // legacyViewOfLines עצמו נשאר accessor טהור — ההטבעה לפני הקריאה אליו.
+  const mApi = spec.measureCtx && spec.measureCtx.measure;
+  if (mApi && res.lines) {
+    const szPt = spec.kind === 'heading' && spec.level != null
+      ? (settings[`heading-${spec.level}-size-pt`] || settings['body-font-size-pt'])
+      : settings['body-font-size-pt'];
+    for (const ln of res.lines) {
+      for (const fa of (ln.floatAreas || [])) {
+        if (fa.sourceText != null && fa.sourceTextWidthPx == null) {
+          fa.sourceTextWidthPx = mApi.measureTextWidth(fa.sourceText, szPt, 0);
+        }
+      }
+    }
+  }
   const diagnostics = [...(res.diagnostics || []), ...sequence.rejected];
   const view = legacyViewOfLines(res.lines, {
     kind: spec.viewKind || spec.kind, level: spec.level, blockId: blk.id

@@ -288,7 +288,7 @@ function typeset(rawText, settingsIn, env = {}) {
       const hBuilt = layoutModelBlock(blockById.get(t.blockId), {
         settings, kind: 'heading', level: t.level, widthPx: wLimit,
         lineHeightPx: api.lineHeightPx(hSize),
-        measureCtx: { assetResolver: docAssets }
+        measureCtx: { assetResolver: docAssets, measure: api }
       });
       const lines = hBuilt.view;
       for (const d of (hBuilt.diagnostics || [])) {
@@ -350,7 +350,7 @@ function typeset(rawText, settingsIn, env = {}) {
         settings, kind: 'paragraph', widthPx: w,
         lineHeightPx: api.lineHeightPx(null),
         runts: settings['runt-min-width-pct'],
-        measureCtx: { assetResolver: docAssets }
+        measureCtx: { assetResolver: docAssets, measure: api }
       });
       const lines = enBuilt.view;
       for (const d of (enBuilt.diagnostics || [])) {
@@ -426,7 +426,7 @@ function typeset(rawText, settingsIn, env = {}) {
           payload: { markerText: fnMark, noteRef: `fnstyle:${t.id}` },
           constraints: { atomic: true, participates: 'inline', splittable: 'never', bindToNeighbor: true }
         }],
-        measureCtx: { assetResolver: docAssets }
+        measureCtx: { assetResolver: docAssets, measure: api }
       });
       const fnLines = fnBuilt.view;
       const fnBlk = {
@@ -502,7 +502,7 @@ function typeset(rawText, settingsIn, env = {}) {
       lineHeightPx: api.lineHeightPx(null),
       runts: settings['runt-min-width-pct'],
       notesByRef, customStyles,
-      measureCtx: { assetResolver: docAssets }
+      measureCtx: { assetResolver: docAssets, measure: api }
     });
     const lines = built.view;
     for (const d of (built.diagnostics || [])) {

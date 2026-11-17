@@ -13,6 +13,7 @@
     "extensions-panel.js",
     "imud-library.js",
     "inline-transport.js",
+    "page-model-transport.js",
     "preview-tab.js",
     "retypeset-policy.js",
     "settings-panel.js",
@@ -28,7 +29,7 @@
       "file": "app-shell.js",
       "fn": "onExplicitRetypeset",
       "callee": "requestTypeset",
-      "line": 392
+      "line": 394
     },
     {
       "file": "engine-worker-main.js",

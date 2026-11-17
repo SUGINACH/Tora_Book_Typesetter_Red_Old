@@ -236,6 +236,25 @@ describe('S10.2 שער 1 — e2e: הדבקת מסמך 639 עמודים: progress
     assertEq(app.getState().pages, direct.pages.length);
   });
 
+  it('שלב 8 פרוסה 2 (§4.3-4.4): PageModel מגיע מה-Worker לצרכן ה-UI — מאומת וקפוא', async () => {
+    const pm = app.pageModel && app.pageModel();
+    assert(pm, 'המודל התקבל באפליקציה (חוזה pagemodel-transport-v1)');
+    assertEq(pm.schema, 'pagemodel-v1', 'סכמת המודל');
+    const direct = typeset(BIG_DOC, getDefaultSettings());
+    assertEq(pm.geometryHash, direct.pageModel.geometryHash, 'geometryHash זהה לבנייה ישירה');
+    assertEq(pm.contentHash, direct.pageModel.contentHash, 'contentHash זהה');
+    assertEq(pm.pages.length, direct.pages.length, 'אותם עמודים');
+    // הוקפא מחדש אחרי structured clone — מוטציה נזרקת
+    let threw = false;
+    try { pm.pages[0].index = 999; } catch (e) { threw = true; }
+    assert(threw, 'המודל בצד ה-UI קפוא');
+    // ריהוט מלא במודל שהתקבל (§4.1)
+    const withHeader = pm.pages.find(p => p.header && p.header.slots && p.header.slots.length);
+    const withFolio = pm.pages.find(p => p.folio && p.folio.text);
+    assert(withHeader && withFolio, 'ריהוט מלא במודל שעבר Worker');
+    assert(Array.isArray(pm.document.outline) && pm.document.outline.length >= 3, 'outline במודל');
+  });
+
   it('רספונסיביות: המתנה בדגימת אינטראקציות < 100ms (לשוניות/חיפוש/קפיצה)', () => {
     const t0 = performance.now();
     for (let i = 0; i < 20; i++) { app.switchTab(i % 2 ? 'preview' : 'editor'); }

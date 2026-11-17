@@ -240,7 +240,47 @@ function assembleLine(items, cut, maxWidthPx, wrap, opts, policy, sequence, line
       itemId: f.itemId, sourceItemId: f.sourceItemId, side: f.side,
       widthPx: round3(f.widthPx), heightPx: round3(f.heightPx),
       lines: wrap.linesSpanned, anchor: f.anchor,
-      sourceText: f.sourceText != null ? f.sourceText : null
+      sourceText: f.sourceText != null ? f.sourceText : null,
+      ...(f.image && f.image.assetId != null ? { assetId: f.image.assetId } : {}),
+      ...(f.image && f.image.resourcePath != null ? { resourcePath: f.image.resourcePath } : {}),
+      ...(f.image && f.image.natural ? { natural: { ...f.image.natural } } : {}),
+      ...(f.image && f.image.fit ? { fit: { ...f.image.fit } } : {})
+    });
+    // **פרוסה 2 (רוחב טקסט-המקור של צף):** ה-pipeline מטביע את המדידה החד-פעמית
+    // של תחביר המקור (sourceTextWidthPx) בזמן התכנון — ההקרנה צורכת ואינה מודדת.
+  }
+
+  // **שלב 8 פרוסה 2 (§4.2 — תמונות ממדרגה ראשונה):** מלאי הנכסים של השורה —
+  // לכל פריט תמונה בתיבות: זהות + הצהרה (assetId/מידות טבעיות/fit/placement
+  // מהמודל דרך line-items) + רוחב מוקרן. ה-PageModel ייצרך את זה כמו שהוא —
+  // אין למקרינים מה לחפש או לחשב מחדש. (עד כאן שדה .assets לא אויש כלל —
+  // בדיקת האינטגריטי ב-page-model הייתה מתה.)
+  const assets = [];
+  for (const it of seg) {
+    if (it.role !== 'box' || it.kind !== 'image') continue;
+    assets.push({
+      itemId: it.itemId,
+      ...(it.image && it.image.assetId != null ? { assetId: it.image.assetId } : {}),
+      ...(it.image && it.image.resourcePath != null ? { resourcePath: it.image.resourcePath } : {}),
+      placement: (it.constraints && it.constraints.placement) || 'inline',
+      align: (it.image && it.image.align) || null,
+      advancePx: round3(it.measuredAdvance || 0),
+      ...(it.image && it.image.natural ? { natural: { ...it.image.natural } } : {}),
+      ...(it.image && it.image.fit ? { fit: { ...it.image.fit } } : {}),
+      ...(it.image && it.image.altText != null ? { altText: it.image.altText } : {}),
+      ...(it.sourceText != null ? { sourceText: it.sourceText } : {})
+    });
+  }
+  for (const fa of floatAreas) {
+    assets.push({
+      itemId: fa.itemId, placement: 'float', side: fa.side,
+      widthPx: fa.widthPx, heightPx: fa.heightPx, lines: fa.lines,
+      ...(fa.assetId != null ? { assetId: fa.assetId } : {}),
+      ...(fa.resourcePath != null ? { resourcePath: fa.resourcePath } : {}),
+      ...(fa.natural ? { natural: { ...fa.natural } } : {}),
+      ...(fa.fit ? { fit: { ...fa.fit } } : {}),
+      ...(fa.anchor != null ? { anchor: fa.anchor } : {}),
+      ...(fa.sourceText != null ? { sourceText: fa.sourceText } : {})
     });
   }
 
@@ -254,6 +294,7 @@ function assembleLine(items, cut, maxWidthPx, wrap, opts, policy, sequence, line
     naturalWidthPx: round3(natural),
     effectiveMaxWidthPx: round3(effMax),
     floatAreas,
+    assets,
     glue,
     baseline: { ascentPx: round3(ascent), descentPx: round3(descent) },
     lineHeightPx: round3(height),
@@ -292,6 +333,20 @@ function centeredImageLine(item, maxWidthPx, sequence) {
     naturalWidthPx: round3(w),
     effectiveMaxWidthPx: round3(maxWidthPx),
     floatAreas: [],
+    // **שלב 8 פרוסה 2 (§4.2):** תמונת הבלוק/הממורכזת מוצהרת גם כאן — המלאי
+    // של השורה נושא זהות נכס, מידות טבעיות, fit ומדיניות פריסה מהמודל.
+    assets: [{
+      itemId: item.itemId,
+      ...(item.image && item.image.assetId != null ? { assetId: item.image.assetId } : {}),
+      ...(item.image && item.image.resourcePath != null ? { resourcePath: item.image.resourcePath } : {}),
+      placement: (item.constraints && item.constraints.placement) || 'centered',
+      align: (item.image && item.image.align) || null,
+      advancePx: round3(w),
+      ...(item.image && item.image.natural ? { natural: { ...item.image.natural } } : {}),
+      ...(item.image && item.image.fit ? { fit: { ...item.image.fit } } : {}),
+      ...(item.image && item.image.altText != null ? { altText: item.image.altText } : {}),
+      ...(item.sourceText != null ? { sourceText: item.sourceText } : {})
+    }],
     glue: [],
     baseline: { ascentPx: round3(h), descentPx: 0 },
     lineHeightPx: round3(h),
@@ -330,6 +385,9 @@ function extractFloats(items) {
         inkBounds: it.inkBounds, constraints: it.constraints,
         sourceRange: it.sourceRange || null,
         sourceText: it.sourceText != null ? it.sourceText : null, // §22: טקסט המקור — לתצוגה/חשבונאות עד שלב 8
+        // **שלב 8 פרוסה 2 (§4.2):** הצהרת התמונה עולה גם לצף — assetId/מידות
+        // טבעיות/fit מהפריט; ה-LineModel אוסף אותה ל-assets (רשומה אחת לצף).
+        image: it.image || null,
         anchor: {
           prevItemId: lastKeptBox ? lastKeptBox.itemId : null,
           nextItemId: nextBox ? nextBox.itemId : null

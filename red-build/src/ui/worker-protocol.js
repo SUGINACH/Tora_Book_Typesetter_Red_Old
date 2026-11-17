@@ -24,6 +24,28 @@
 
 const PROTOCOL_VERSION = 1;
 
+/** **שלב 8 פרוסה 2 (§4.3 — העברת PageModel ב-Worker):** עטיפת transport
+ * למודל העמוד: גרסה, ההאשים שחושבו בצד הבונה (הוכחת שלמות לצד המקבל)
+ * ואומדן גודל ההעברה. המודל עצמו נתונים טהורים (מערכים/אובייקטים/פרימיטיבים)
+ * — עובר structured-clone; ההקפאה מוחזרת בצד המקבל (page-model-transport). */
+function serializePageModelTransport(model) {
+  if (!model) return null;
+  if (model.schema !== 'pagemodel-v1') {
+    throw new Error(`protocol: unexpected page model schema ${model.schema}`);
+  }
+  if (typeof model.geometryHash !== 'string' || typeof model.contentHash !== 'string') {
+    throw new Error('protocol: page model missing hashes');
+  }
+  return {
+    transport: 'pagemodel-transport-v1',
+    schema: model.schema,
+    model,
+    geometryHash: model.geometryHash,
+    contentHash: model.contentHash,
+    bytesEstimate: JSON.stringify(model).length
+  };
+}
+
 /** סריאליזציית תוצאת מנוע → plain JSON עובר structured-clone (D-65). */
 function serializeTypesetResult(result) {
   const { buildReport } = require('../audit/report-schema');
@@ -48,6 +70,10 @@ function serializeTypesetResult(result) {
     numberingAudit: result.numberingAudit,
     tokens: result.tokens.map(t => ({ id: t.id, type: t.type, level: t.level || null, raw: t.raw || '' })),
     droppedEvents: result.events.droppedEvents,
+    // **שלב 8 פרוסה 2 (§4.3-4.4):** PageModel עובר בפועל לצרכן ה-UI — עטוף
+    // חוזה transport עם ההאשים; הצד המקבל מאמת ומקפיא מחדש. אין מסלול
+    // חלופי של מסמך-גולמי לצורך רינדור.
+    pageModel: serializePageModelTransport(result.pageModel || null),
     // **S1-ח (gap-Gold-V21):** אבחון צילומי-מצב — additive; null כשכובה
     // (ברירת מחדל). חוזה ui-result-v1 נשמר: שדה חדש עם ברירת-מחדל ריקה.
     stageSnapshots: result.stageSnapshots || null,
@@ -121,4 +147,4 @@ function progressMessage(jobId, info) {
   };
 }
 
-module.exports = { PROTOCOL_VERSION, serializeTypesetResult, validateRequest, progressMessage };
+module.exports = { PROTOCOL_VERSION, serializeTypesetResult, serializePageModelTransport, validateRequest, progressMessage };
