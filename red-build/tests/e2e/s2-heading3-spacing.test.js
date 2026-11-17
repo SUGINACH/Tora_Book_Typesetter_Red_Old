@@ -2,6 +2,7 @@
 // החוזה המקורי: line-height:1.22; padding:8px 0 4px; margin-bottom:4px.
 // כלומר: pitch טקסטואלי בלבד; top padding פעם אחת; bottom padding ו-margin פעם אחת בסוף.
 // 34px הישן היה line-height + top padding + bottom padding; אסור להשתמש בו כ-pitch.
+// בדיקה זו מכוונת לנתיב IMUD הפעיל; ה-DP יידרש לאותו חוזה לפני cutover.
 'use strict';
 const fs = require('fs');
 const path = require('path');
