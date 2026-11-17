@@ -735,17 +735,19 @@ const H2_AREA_H = 284.25;
 const H2_SPAN_EXEMPT = (
   (typeof process !== 'undefined' && process.env && process.env.RED_H2_SPAN_EXEMPT) !== '0'
 );
-// **S4.14:** span 34px + רווח 4px = 38 — נמדד בכל 13 מופעי block-h3-span
-// של הייחוס (מרחק תווית-span → תווית-block תמיד 38.0). היה 40 (+2px לכל span).
-const H3_SPAN_H = 38;
-// **D-S2H3 (ממצא משתמש מאומת):** גובה שורת ה-span לבדה (34) מופרד מהרווח התחתון (4).
-// עד לתיקון: כל שורת כותרת נדחפה פס 38 מלא — והרווח המבני פעל בין שורות הכותרת
-// ולא בינה לתוכן שאחריה. התיקון: pitch בין-שורות = 34 (גובה השורה); הרווח (4px) פעם
-// אחת בלבד, בתוך הפס האחרון (38=34+4). כותרת חד-שורתית נותרת זהה לחלוטין
-// ((n-1)*34+38 = 38 — פס יחיד ובלוק נפתח בסופו) — הכיוול S4.14 שמור.
-// חוזה סמנטי זה הוא גם החוזה של מנוע השורות המאוחד (שלב 4): הכותרת = פריט אחד
-// עם מקטעי שורה; הרווח התחתון שלה אחרי השורה האחרונה בלבד.
-const H3_SPAN_LINE_H = 34;
+// **התאמה מדויקת ל-CSS המקורי (Orange/Yellow/Green):**
+// .h3-title-text { line-height:1.22 } ו-.block-h3-span {
+// padding:8px 0 4px; margin-bottom:4px }.
+// ה-pitch הוא line-height של הטקסט בלבד (13.5pt × 96/72 × 1.22 = 21.96px),
+// ולא 34px שכללו בטעות את הריפוד העליון בכל שורת המשך.
+// הריפוד העליון 8px מופיע פעם אחת לפני השורה הראשונה; הריפוד התחתון 4px
+// וה-margin-bottom 4px מופיעים פעם אחת אחרי השורה האחרונה.
+// כותרת חד-שורתית נשארת בגובה כולל 8 + 21.96 + 4 + 4 ≈ 38px (כיול S4.14).
+const H3_SPAN_LINE_H = SZ.h3 * (96 / 72) * 1.22;
+const H3_SPAN_TOP_PAD_PX = 8;
+const H3_SPAN_BOTTOM_PAD_PX = 4;
+const H3_SPAN_MARGIN_BOTTOM_PX = 4;
+const H3_SPAN_H = H3_SPAN_LINE_H + H3_SPAN_BOTTOM_PAD_PX;
 const H0_AREA_H = 249.2;   // **S4.19:** זרימת ההקדמה מתחילה ב-356.4px — המדידה מהייחוס
 // (עמ' 10, שורות ההקדמה 2-3): הייחוס יושב 9.7-10.2px מתחת ל-348 הקודם; גם לדף
 // ה-h0 יש spacer (הכותרת ב-309 = 107.2+201.3+0.5) + כותרת (27.2) + שוליים (20)
@@ -2094,14 +2096,22 @@ function legacyTypeset(rawText, settings, env) {
             finalizeBlock(block, tok, false);
             break fillPage;
           }
-          // **D-S2H3:** שורות ביניים בגובה השורה בלבד (34) — אין רווח מבני בין שורות הכותרת;
-          // הפס האחרון נושא 38 (34+4) — הרווח התחתון פעם אחת, אחרי השורה האחרונה, לפני התוכן שאחריו.
-          // כותרת חד-שורתית: (n-1)*34+38 = 38 — זהה לגיאומטריה הקודמת (נעילת הכיוול S4.14).
+          // **D-S2H3 — גאומטריית המקור, בלי שכפול הריפוד העליון:**
+          // שורות הביניים נעות ב-line-height המקורי (1.22); הריפוד העליון 8px
+          // נצרך פעם אחת, וה-padding-bottom + margin-bottom (4+4) פעם אחת בסוף.
           for (let li = 0; li < spanLines.length; li++) {
             const isLastLine = li === spanLines.length - 1;
-            stack.push({ type: 'span', text: spanLines[li], y: curY + li * H3_SPAN_LINE_H, h: isLastLine ? H3_SPAN_H : H3_SPAN_LINE_H, tokenId: li === 0 ? tok.id : null });
+            stack.push({
+              type: 'span', text: spanLines[li], y: curY + li * H3_SPAN_LINE_H,
+              h: isLastLine ? H3_SPAN_H : H3_SPAN_LINE_H,
+              lineHeightPx: H3_SPAN_LINE_H, tokenId: li === 0 ? tok.id : null
+            });
           }
-          openBlock(curY + (spanLines.length - 1) * H3_SPAN_LINE_H + H3_SPAN_H);
+          openBlock(
+            curY + H3_SPAN_TOP_PAD_PX
+              + (spanLines.length - 1) * H3_SPAN_LINE_H
+              + H3_SPAN_H + H3_SPAN_MARGIN_BOTTOM_PX
+          );
           ti++;
           continue;
         }
@@ -2986,7 +2996,11 @@ function legacyTypeset(rawText, settings, env) {
     let y = top;
     for (const seg of stack) {
       if (seg.type === 'span') {
-        pg.bands.push({ kind: 'h3-title', text: seg.text, sizePt: SZ.h3, y: seg.y + 8, h: seg.h, tokenId: seg.tokenId });
+        pg.bands.push({
+          kind: 'h3-title', text: seg.text, sizePt: SZ.h3,
+          y: seg.y + H3_SPAN_TOP_PAD_PX, h: seg.h,
+          lineHeightPx: seg.lineHeightPx || seg.h, tokenId: seg.tokenId
+        });
         y = seg.y + seg.h;
         continue;
       }

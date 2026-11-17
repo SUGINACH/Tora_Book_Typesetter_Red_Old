@@ -881,7 +881,7 @@ function renderLegacyPage(pg, settings, doc) {
 
   // ---- פסים: סימן/h2/h0/h3 — ממורכזים ברוחב הפס ----
   for (const b of (pg.bands || [])) {
-    const el = mkLine(b.text, b.sizePt, 'center', b.h || pt2px(b.sizePt) * 1.1);
+    const el = mkLine(b.text, b.sizePt, 'center', b.lineHeightPx || b.h || pt2px(b.sizePt) * 1.1);
     el.className += ` band band--${b.kind || 'title'}`;
     // **S4.26 + S6.3:** גופן הפס — מהשורה עצמה (b.font — כותרת ההערות
     // ⇒ David Libre) או מההגדרות לפי הרמה + הדגשה (כמו הייחוס).
