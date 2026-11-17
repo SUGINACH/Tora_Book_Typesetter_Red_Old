@@ -176,7 +176,7 @@ describe('D-S2H3 — מפרט רווח תחתון של כותרת 3 (תוקן ב
     clearRegisteredFonts();
   });
 
-  it('DOM ו-PDF צורכים את אותן עובדות גאומטריה (אותו y/h לכל שורת כותרת)', () => {
+  it('DOM ו-PDF שומרים על אותו y ו-line-height טקסטואלי; תיבת הריפוד נפרדת', () => {
     const s = imudSettings();
     registerCoreFonts(s);
     const r = legacyTypeset(DOC, s, {});
@@ -189,8 +189,8 @@ describe('D-S2H3 — מפרט רווח תחתון של כותרת 3 (תוקן ב
     const pdfBandLines = ppage.lines.filter(l => l.kind === 'h3-title');
     assert(pdfBandLines.length >= bands.length, 'שורות כותרת חסרות במקרן ה-PDF');
     for (let i = 0; i < bands.length; i++) {
-      const pb = pdfBandLines.find(l => Math.abs(l.y - bands[i].y) < 0.01 && Math.abs(l.h - bands[i].h) < 0.01);
-      assert(pb, `ל-PDF אין את שורת הכותרת ${i} באותן קואורדינטות (${bands[i].y}/${bands[i].h})`);
+      const pb = pdfBandLines.find(l => Math.abs(l.y - bands[i].y) < 0.01 && Math.abs(l.h - H3_SPAN_LINE_H) < 0.01);
+      assert(pb, `ל-PDF אין את שורת הכותרת ${i} באותו y ו-line-height`);
     }
     // הבסיס ב-PDF נגזר מהתיבה (baselineOf) — מרכוז בתוך התיבה של אותה שורה.
     for (let i = 0; i < pdfBandLines.length; i++) {
