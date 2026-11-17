@@ -52,6 +52,10 @@ function serializeTypesetResult(result) {
   const report = buildReport(result);
   return {
     schema: 'ui-result-v1',
+    // **פרוסה 3 (§2.3):** פרופיל המנוע שהריץ את התוצאה — ה-UI קובע לפיו את
+    // פרופיל הרינדור (legacy=רנדרר ישן; unified=מקרין PageModel). שדה additive
+    // לחוזה ui-result-v1; עד כאן אבד בסריאליזציה וה-UI לא ידע מי רץ.
+    legacyProfile: result.legacyProfile === true,
     layoutHash: result.layoutHash,
     plannedLayoutHash: result.plannedLayoutHash,
     contentHashIn: result.contentHashIn,

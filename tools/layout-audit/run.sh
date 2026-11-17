@@ -43,7 +43,12 @@ cp "$FIXTURE" "$FIXSERVED"
 trap 'kill $HTTP_PID 2>/dev/null; rm -f "$UI/_layout-audit.js" "$UI/$FIXSERVED"; agent-browser close >/dev/null 2>&1' EXIT
 sleep 1
 
-agent-browser open "http://localhost:$PORT/index.html" >/dev/null || exit 2
+# **פרוסה 3 (§7 בהוראה):** QUERY נוסף ל-URL (למשל engine=unified) — ביקורת
+# מסלול ה-PageModel לפני שלב 9, בלי לשנות ברירת מחדל כלשהי.
+AUDIT_QUERY="${LAYOUT_AUDIT_QUERY:-}"
+AUDIT_URL="http://localhost:$PORT/index.html"
+[ -n "$AUDIT_QUERY" ] && AUDIT_URL="$AUDIT_URL?$AUDIT_QUERY"
+agent-browser open "$AUDIT_URL" >/dev/null || exit 2
 agent-browser wait 3500 >/dev/null
 
 # טעינת הספר + עימוד + מעבר לתצוגה — הנתיב החי האמיתי.

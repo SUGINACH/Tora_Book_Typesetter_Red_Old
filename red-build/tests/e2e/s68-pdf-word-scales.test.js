@@ -102,12 +102,14 @@ describe('S68-2 — אינטגרציה: הקורפוס עם paren-scale — הה
     const proj = projectDocument(r, getDefaultSettings());
     // שורות גוף בלבד — להערות/כותרות-עזר יש גדלים פר-מילה חוקיים מלכתחילה
     // (fnbody / שורות שער) שאינם קשורים לשינוי הזה.
+    // **פרוסה 3 (סמן מודבק):** גם סמני הערה בגוף הם גודל-פר-מילה חוקי — הם
+    // נמדדים בגודל הרישום ומוקרנים כך (mk:true); אין זו סקיילת סגנון.
     let marked = 0;
     for (const pl of proj.pages) for (const ln of pl.lines) {
       if (ln.kind !== 'paragraph' && ln.kind !== 'heading') continue;
-      for (const w of ln.words) if (w.sizePt != null) marked++;
+      for (const w of ln.words) if (w.sizePt != null && !w.mk) marked++;
     }
-    assertEq(marked, 0, 'default body projection unchanged (no per-word sizes)');
+    assertEq(marked, 0, 'default body projection unchanged (no per-word sizes beyond note markers)');
   });
 
   it('מסמך עם סגנון inline מותאם ⇒ מילות הסגנון מוקרנות בגודלן האמיתי', () => {

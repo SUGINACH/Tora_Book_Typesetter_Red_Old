@@ -164,7 +164,13 @@ function boot() {
   // הראשונה (David Libre/Frank Ruhl Libre/Bellefair, שער ראשי+אחורי+משנה,
   // כותרות עליונות בכל עמוד). כשל טעינה (למשל פתיחה מקומית בלי assets) —
   // נשארות ברירות RED, האפליקציה עובדת; ההודעה מתועדת במצב.
-  imud.loadFontCatalog().then(() => imud.loadLegacyDefaults()).then(async ({ settings: imported, report }) => {
+  // **פרוסה 3 (§7 בהוראה — ביקורת מסלול unified לפני שלב 9):** דגל ביקורת
+  // מפורש ?engine=unified — מדלג על יישום ברירות המחדל של IMUD בעלייה ומריץ
+  // את האפליקציה בפרופיל המאוחד (PageModel renderer). זהו מתג ביקורת בלבד:
+  // ברירת המחדל של המשתמש אינה משתנה (עמוד רגיל = legacy, כמו קודם).
+  const auditUnified = /[?&]engine=unified\b/.test(String((typeof location !== 'undefined' && location && location.search) || ''));
+  const bootLegacy = !auditUnified && imud.loadFontCatalog().then(() => imud.loadLegacyDefaults());
+  (auditUnified ? Promise.resolve({ settings: {}, report: { note: 'unified-audit-boot' } }) : bootLegacy).then(async ({ settings: imported, report }) => {
     // **S6.2 (בקשת משתמש — "האם כל העיטורים, שערים... יובאו?"): ערכת הנושא
     // הפעילה של המקור.** ברירת המחדל של המקור היא active-theme-select =
     // "json_theme_40" — כלומר עמודי השערים נולדים עם רקע מעוצב (שער ראשי/

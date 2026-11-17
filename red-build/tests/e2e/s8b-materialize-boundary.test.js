@@ -98,7 +98,15 @@ describe('שלב 8 ביקורת (§3.1) — גבולות materialization', () =>
     // שהשתנו); 148 פסי H3 — כולם בגיאומטריית החוזה; הערות 129=129;
     // regular 1030→1032 (+2 עמודים מהריפודים שנוספו). דוח מלא:
     // audits/H3_SPACING_OLD_STYLE_PARITY_2026-11-17.md. הקודם: d2a18112.
-    assert(r.layoutHash.startsWith('e68e1f0b'), `layoutHash very_long נשמר (${r.layoutHash.slice(0, 8)})`);
+    // **RLM (17.11, שורש מדידה — פרוסה 3):** נעילה מחודשת e68e1f0b→40d587a0 —
+    // תווי בקרת bidi (U+200E/U+200F וכו') הם אפס-רוחב לפי יוניקוד ובכל מנוע
+    // תצוגה, אך חלק מהגופנים נותנים להם advance ב-hmtx (נמדד 6.4px ל-RLM
+    // ב-12pt) — המדידה ספרה אותם והתצוגה לא ⇒ פער דיו ~7px בכל מילה
+    // מסומנת-RLM. הוכחת סיווג (דוח השוואה מלא): זרם המילים זהה ביט-לביט;
+    // 151 שורות מכילות RLM בבסיס — 49 מהן נחלקו מחדש + שורות המשך-זרימה
+    // באותן פסקאות; 197 שורות הועברו בין עמודים; אין שינוי מספר עמודים
+    // (1110); הערות 129=129; contentPreserved=true. הקודם: e68e1f0b (H3-CSS).
+    assert(r.layoutHash.startsWith('40d587a0'), `layoutHash very_long נשמר (${r.layoutHash.slice(0, 8)})`);
     assertEq(r.pageModel.meta.materializeFallbacks, 0, 'אפס נפילות (בעבר: 852 שווא-נפילות רוחב-רווח)');
     const mfViol = r.pageModelValidation.violations.filter(v => v.code === 'materialize-fallback');
     assertEq(mfViol.length, 0, 'אפס violations');
@@ -128,12 +136,20 @@ describe('שלב 8 ביקורת (§3.1) — גבולות materialization', () =>
         if (!ln.lineModel || !ml || !(ml.words || []).length) continue;
         const lm = lineWidthsFromModel(ln);
         const words = (ln.words || []).map(w => String(w).replace(/\u00A0/g, ' ')).filter(Boolean);
-        if (!lm || lm.widths.length !== words.length || ml.words.length !== words.length) continue;
+        if (!lm || lm.widths.length !== words.length) continue;
+        // **פרוסה 3 (סמן מודבק — פיצול בסמכות):** מילת תוכנית "מילה+סמן" מפוצלת
+        // במודל לשני פריטים (הסמן בגודל הרישום) — האינווריאנט החזק: סכום רוחבי
+        // פריטי המודל של אותה מילת תוכנית == measuredAdvance של היחידה.
+        let mwi = 0;
         for (let wi = 0; wi < words.length; wi++) {
-          // רוחב המילה במודל == סכום measuredAdvance הפרגמנטים של אותה יחידה
-          assert(Math.abs(ml.words[wi].w - lm.widths[wi]) < 1e-9,
-            `רוחב מילה ${wi} בשורה ${ml.id}: מודל ${ml.words[wi].w} ≠ LineModel ${lm.widths[wi]}`);
-          checked++;
+          let parts = 0, sumW = 0;
+          if (mwi >= ml.words.length) break;
+          do {
+            sumW += ml.words[mwi].w; parts++; mwi++;
+          } while (mwi < ml.words.length && ml.words[mwi].mk === true);
+          assert(Math.abs(sumW - lm.widths[wi]) < 1e-9,
+            `רוחב מילה ${wi} בשורה ${ml.id}: מודל ${sumW} ≠ LineModel ${lm.widths[wi]}`);
+          checked += parts;
         }
         if (ln.kind === 'heading') headings++;
         if ((ln.parenSpans && ln.parenSpans.length) || (ln.customSpans && ln.customSpans.length)) multiRun++;
