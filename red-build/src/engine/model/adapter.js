@@ -45,7 +45,13 @@ function modelToTokens(model) {
       // **שלב 4 מקטע ב׳:** blockId — זיהוי בלוק המודל על הטוקן (הפלט נגזר;
       // תוספת טהורה — contentHash אינו כולל אותו). ה-pipeline משתמש בו כדי
       // להזרים את פריטי המודל למנוע השורות הקנוני.
-      tokens.push(mkToken('heading', { level: blk.level, text, raw, blockId: blk.id }));
+      // **9b.3:** num/citation — סדר השדות זהה לטוקנייזר (זהות מלאה round-trip).
+      tokens.push(mkToken('heading', {
+        level: blk.level, text,
+        ...(blk.num != null ? { num: blk.num } : {}),
+        ...(blk.citation ? { citation: blk.citation } : {}),
+        raw, blockId: blk.id
+      }));
       continue;
     }
     if (blk.kind === BLOCK_KINDS.ENDNOTE) {

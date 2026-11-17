@@ -238,6 +238,12 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
     pages.push(cur);
   }
 
+  // **9b.3 (F-9b-1):** תור פריטי-שוליים הממתינים להצבת שורת העוגן הראשונה של
+  // הפסקה המארחת שלהם — הפריט נכנס ל-sideNotes של העמוד שבו העוגן באמת מוצב
+  // (לא העמוד שבו נפגש ה-H7). מנוקז ב-pushLines בהצבה הראשונה של המארחת;
+  // שארית בסוף התכנון = ממצא מפורש.
+  const pendingSideByHost = new Map(); // hostTokenId(String) → [rec, …]
+  const hostByH7 = new Map(); // 9b.3: ownToken(H7) → hostTokenId הצפוי — לאימות העוגן
   function pushLines(lines, meta = {}, opts = {}) {
     // **FX-6 (פרוסה 2 — הפער כגיאומטריה מתוכננת):** פתיחת בלוק מתחת לתוכן
     // קיים בטור נושאת חותמת `gapBeforePx` על שורת הפתיחה — מקור יחיד שממנו
@@ -251,6 +257,18 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
     const startCol = Math.max(0, Math.min(opts.startCol != null ? opts.startCol : escortLockCol, cur.columns.length - 1));
     const gap = meta.firstOfBlock ? blockGapPx(settings, lineH) : 0;
     let firstOfCall = true; // הפער שייך לשורה הראשונה של הקריאה בלבד
+    let pendingFlushed = false; // 9b.3: ניקוז פריטי-שוליים ממתינים בהצבת השורה הראשונה בלבד
+    const flushPendingSideFor = () => {
+      if (pendingFlushed || meta.tokenId == null) return;
+      const pend = pendingSideByHost.get(String(meta.tokenId));
+      if (!pend) return;
+      pendingSideByHost.delete(String(meta.tokenId));
+      pendingFlushed = true;
+      for (const rec of pend) {
+        pushAnchoredMarginItem(rec); // cur = העמוד שבו שורת העוגן הראשונה הוצבה זה עתה
+        trace.emit(cur.index, 'side-note-attached-to-host-page', { note: rec.ownToken, host: rec.anchorToken });
+      }
+    };
     for (const ln of lines) {
       let placed = false;
       // **שלב 5 (סדר קריאה מבני):** החיפוש מתחיל בטור הזרימה הנוכחי — שום
@@ -264,6 +282,7 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
           firstOfCall = false;
           placed = true;
           flowCol = Math.max(flowCol, c); // מונוטוניות הזרימה
+          flushPendingSideFor(); // 9b.3: העוגן החזותי הוצב — הפריט נכנס לעמוד זה
           trace.emit(cur.index, 'block-place', { token: meta.tokenId, col: c, lineH: ln.heightPx, gapPx: gapHere });
           // **FX-1:** נעילת ליווי — שורות גוף ראשונות אחרי הכותרת מקריעות את
           // המונה; בהשלמת שורות הליווי — שחרור הנעילה (ההצבה חוזרת לזרימה חופשית).
@@ -280,6 +299,7 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
         cur.openedBy = meta.tokenId != null ? meta.tokenId : null; // מעבר עמוד — מי פתח
         cur.columns[0].push({ ...ln, meta, seq: seqCounter++ }); // טור חדש/עמוד חדש → ללא gap (ראש טור)
         firstOfCall = false;
+        flushPendingSideFor(); // 9b.3: גם בפתיחת עמוד חדש — העוגן כאן
       }
     }
   }
@@ -544,14 +564,31 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
 
     // REQ-FN-05/06: heading mode=side-note → הערת שוליים בטור מקביל (H7 doctrine)
     if (blk.kind === 'heading' && blk.asSideNote) {
-      // S7.1.2: הערת צד נצמדת לפסקה שהיא מבארת — הבלוק הבא (host) הוא העוגן החזותי;
-      // ההצבה מחפשת את שורת ה‑host וממקמת את ההערה בראשה (לא ראש עמוד עיוור).
+      // S7.1.2: הערת צד נצמדת לפסקה שהיא מבארת — הבלוק הבא (host) הוא העוגן החזותי.
+      // **9b.3 (F-9b-1 — תיקון תזמון במנגנון התכנון):** הרשומה אינה נדחפת לעמוד
+      // שבו נפגש ה-H7, אלא ממתינה בתור עד ששורת העוגן הראשונה של המארחת
+      // מוצבת בפועל — ואז נכנסת ל-sideNotes של **אותו** עמוד. בעבר, כשה-H7
+      // בסוף עמוד N והמארחת נפתחת ב-N+1, הפריט נותר ב-N והמקצה הציב אותו
+      // בראש תיבת התוכן (עוגן חזותי בעמוד אחר) — נמדד: 16 פריטים ב-very_long.
       const host = blocks.slice(bi + 1).find(b => b.kind === 'paragraph');
-      pushAnchoredMarginItem({
+      if (host) hostByH7.set(String(blk.tokenId), String(host.tokenId)); // 9b.3: לאימות העוגן הצפוי
+      const rec = {
         text: blk.lines.map(l => l.words.join(' ')).join(' ').trim(),
         anchorToken: host ? host.tokenId : blk.tokenId,
         ownToken: blk.tokenId, isHeading: true, level: blk.level, itemKind: 'side-note'
-      });
+      };
+      if (host) {
+        const k = String(host.tokenId);
+        if (!pendingSideByHost.has(k)) pendingSideByHost.set(k, []);
+        pendingSideByHost.get(k).push(rec);
+      } else {
+        // H7 ללא פסקה מארחת — ממצא מפורש (אינו נעלם בשקט); מוצמד לעצמו כבעבר
+        const r7 = ledger.create('h7-without-host', `h7@${blk.tokenId}`, null,
+          { token: blk.tokenId, text: rec.text.slice(0, 40) }, 'page-plan');
+        ledger.transition(r7.issue_id, 'persists', 'page-plan',
+          'H7 side note without a following host paragraph — anchored to itself (documented finding)');
+        pushAnchoredMarginItem(rec);
+      }
       eventLog.emit('page-plan', 'heading-side-note', { token: blk.tokenId }, cur.index);
       continue;
     }
@@ -569,9 +606,10 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
         // תיבת מידע (info-box) רוכבת על אותו מנגנון עוגן — דרך החוזה וה-registry (§11).
         // **FX-3:** הערות פנימיות של פסקת צד מחויבות כאן — הענף continue
         // מדלג על ההצבה הרגילה (התנהגות קודמת נשמרת).
+        // **9b.3:** אותו תיקון תזמון כמו H7 — הפריט נכנס לעמוד שורת העוגן של המארחת.
         if ((blk.notes || []).length) reserveNotes(blk);
         const host = blocks.slice(bi + 1).find(b => b.kind === 'paragraph' && !(b.customStyle && (b.customStyle.layoutMode === 'side-note' || b.customStyle.layoutMode === 'info-box')));
-        pushAnchoredMarginItem({
+        const recCS = {
           text: blk.lines.map(l => (l.words || []).join(' ')).join(' ').trim(),
           anchorToken: host ? host.tokenId : blk.tokenId,
           ownToken: blk.tokenId, isCustomStyle: cs.id,
@@ -579,7 +617,18 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
           itemKind: blk.asInfoBox ? 'info-box' : 'side-note',
           styleSpec: cs.styleSpec || null,
           boxSpec: blk.infoBoxSpec || null
-        });
+        };
+        if (host) {
+          const k = String(host.tokenId);
+          if (!pendingSideByHost.has(k)) pendingSideByHost.set(k, []);
+          pendingSideByHost.get(k).push(recCS);
+        } else {
+          const rCS = ledger.create('margin-item-without-host', `mi@${blk.tokenId}`, null,
+            { style: cs.id, token: blk.tokenId }, 'page-plan');
+          ledger.transition(rCS.issue_id, 'persists', 'page-plan',
+            'margin item without a following host paragraph — anchored to itself (documented finding)');
+          pushAnchoredMarginItem(recCS);
+        }
         eventLog.emit('page-plan', blk.asInfoBox ? 'custom-style-info-box' : 'custom-style-side-note', { style: cs.id, token: blk.tokenId }, cur.index);
         continue;
       }
@@ -736,6 +785,20 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
     pushLines(blk.lines.slice(mIdx), { tokenId: blk.tokenId, docPart: blk.part, ...(mIdx > 0 ? {} : { firstOfBlock: true }) }, { startCol: escortLockCol });
 
     if (blk.sideNoteText) pushAnchoredMarginItem({ text: blk.sideNoteText, anchorToken: blk.tokenId, ownToken: blk.tokenId, itemKind: 'side-note' });
+  }
+
+  // **9b.3 (F-9b-1):** שארית פריטי-השוליים שהמתינו למארחת שלא הוצבה מעולם —
+  // ממצא מפורש (לא גניזה): מוכנסים לעמוד הפתוח הנוכחי, והמארחה תתועד.
+  if (pendingSideByHost.size) {
+    for (const [hostTok, recs] of [...pendingSideByHost.entries()]) {
+      const rP = ledger.create('h7-host-not-placed', `host@${hostTok}`, null,
+        { host: hostTok, items: recs.length }, 'page-plan');
+      ledger.transition(rP.issue_id, 'persists', 'page-plan',
+        `host paragraph ${hostTok} never placed — ${recs.length} side item(s) flushed to current page (documented)`);
+      for (const rec of recs) pushAnchoredMarginItem(rec);
+      pendingSideByHost.delete(hostTok);
+    }
+    eventLog.emit('page-plan', 'side-notes-host-flush', { remaining: 0 });
   }
 
   // **S6.0 (R3-C1 — אובדן תוכן בזנב):** פס חוצה-טורים (H3–H6) או הערת-צד
@@ -929,7 +992,7 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
     assess
   });
 
-  return { pages, ledger, retreat, hash: layoutHash(pages), bodyHash: bodyGeometryHash(pages), trace, noteAnchorReconciliation };
+  return { pages, ledger, retreat, hash: layoutHash(pages), bodyHash: bodyGeometryHash(pages), trace, noteAnchorReconciliation, hostByH7 };
 }
 
 /** איזון בטוח עם rollback (REQ-BAL-09): snapshot כולל footnotes/sideNotes.
