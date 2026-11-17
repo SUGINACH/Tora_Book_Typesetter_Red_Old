@@ -1,17 +1,9 @@
-// tests/e2e/s2-heading3-spacing.test.js — D-S2H3: רווח תחתון של כותרת 3 שנשברת — מפרט ההתנהגות הרצויה.
-//
-// **הדיווח (מאומת):** "הרווח הוחל לפני מעבר השורה של כותרת 3 עצמה, ולא בין הכותרת
-// לבין התוכן שאחריה." — הפגם אומת ותועד בשלב 2 (נעילת מצב), ותוקן בשורש בנתיב
-// המורשת — הנתיב הפעיל בתצוגה ובייצוא (worker→pipeline→legacyTypeset; export-api→typeset).
-//
-// **השורש והתיקון (audits/STAGE2_MODEL_COVERAGE.md §5):** H3_SPAN_H=38 אפה את הרווח
-// התחתון בגובה הפס של *כל* שורה. התיקון ברמת הנתונים (לא CSS, לא חריג במקרין):
-//   - pitch בין שורות הכותרת = H3_SPAN_LINE_H (34) — אפס רווח מבני בין שורות הכותרת.
-//   - הפס האחרון = H3_SPAN_H (38 = 34+4) — הרווח התחתון פעם אחת, אחרי השורה
-//     האחרונה, לפני התוכן שאחריו.
-//   - כותרת חד-שורתית: (n-1)*34+38 = 38 — זהה לחלוטין לגיאומטריה הקודמת (S4.14 נעול).
-//   - DOM ו-PDF הם צרכנים טהורים של y/h — אותן עובדות בתצוגה ובייצוא.
-//   - חוזה סמנטי זה הוא החוזה של מנוע השורות המאוחד (שלב 4) ושל ה-Planner (שלב 5).
+// tests/e2e/s2-heading3-spacing.test.js — התאמת כותרת 3 ל-CSS המקורי בגרסאות Orange/Yellow/Green.
+// החוזה המקורי: line-height:1.22; padding:8px 0 4px; margin-bottom:4px.
+// כלומר: pitch טקסטואלי בלבד; top padding פעם אחת; bottom padding ו-margin פעם אחת בסוף.
+// 34px הישן היה line-height + top padding + bottom padding; אסור להשתמש בו כ-pitch.
+// בדיקה זו מכוונת לנתיב IMUD הפעיל; ה-DP יידרש לאותו חוזה לפני cutover.
+// בדיקת הקבלה כוללת גם התאמת cache-busting של CSS, app bundle ו-Worker.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -59,8 +51,11 @@ function makeDoc() {
 
 // ── ה-Fixture: מסמך תקין מבחינה מבנית (כל כותרת עם טקסט, טקסט בין כותרות,
 //    כותרת אחרונה עם תוכן אמיתי) — לפי תנאי המשתמש למסמכי בדיקה. ──
-const H3_SPAN_H = 38;       // 34 span + 4 gap (S4.14) — הפס האחרון בלבד
-const H3_SPAN_LINE_H = 34;  // D-S2H3: גובה שורת span לבדה — pitch בין-שורות
+const H3_SPAN_LINE_H = 13.5 * (96 / 72) * 1.22;
+const H3_SPAN_TOP_PAD_PX = 8;
+const H3_SPAN_BOTTOM_PAD_PX = 4;
+const H3_SPAN_MARGIN_BOTTOM_PX = 4;
+const H3_SPAN_H = H3_SPAN_LINE_H + H3_SPAN_BOTTOM_PAD_PX;
 const TITLE_W_PCT = 0.6;    // S74: עטיפת כותרות 2/3 ב-60% מרוחב הפס
 const H23_TITLE_W = SINGLE_W * TITLE_W_PCT;
 
@@ -104,8 +99,9 @@ function findWrappedH3(result) {
 describe('D-S2H3 — מפרט רווח תחתון של כותרת 3 (תוקן בשורש; fixture: כותרת נשברת + פסקת גוף)', () => {
 
   it('ההגדרות: הקבועים של גאומטריית הכותרת — מקור החוזה', () => {
-    assertEq(H3_SPAN_H, 38, 'אם הקבוע השתנה — עדכן את הבדיקה הזו במכוון');
-    assertEq(H3_SPAN_LINE_H, 34, 'גובה שורת ה-span לבדה (34) — בסיס ה-pitch הבין-שורתי');
+    assert(Math.abs(H3_SPAN_TOP_PAD_PX + H3_SPAN_LINE_H + H3_SPAN_BOTTOM_PAD_PX + H3_SPAN_MARGIN_BOTTOM_PX - 38) < 0.05,
+      'כותרת חד-שורתית שומרת על גובה כולל של 38px לפי ה-CSS הישן');
+    assert(Math.abs(H3_SPAN_LINE_H - 21.96) < 0.05, 'line-height המקורי 1.22 על 13.5pt');
     assertEq(Math.round(H23_TITLE_W), Math.round(SINGLE_W * 0.6), 'רוחב עטיפה שונה מהחוזה');
   });
 
@@ -121,18 +117,18 @@ describe('D-S2H3 — מפרט רווח תחתון של כותרת 3 (תוקן ב
     clearRegisteredFonts();
   });
 
-  it('המפרט הרצוי — אפס רווח מבני בין שורות הכותרת (pitch = 34)', () => {
+  it('המפרט הרצוי — pitch שווה ל-line-height המקורי 1.22', () => {
     const s = imudSettings();
     registerCoreFonts(s);
     const r = legacyTypeset(DOC, s, {});
     const { bands } = findWrappedH3(r);
     for (let i = 1; i < bands.length; i++) {
       assert(Math.abs((bands[i].y - bands[i - 1].y) - H3_SPAN_LINE_H) < 0.05,
-        `ה-pitch בין שורה ${i - 1} לשורה ${i} חייב להיות גובה שורה בלבד (34); התקבל ${bands[i].y - bands[i - 1].y}`);
+        `ה-pitch בין שורה ${i - 1} לשורה ${i} חייב להיות line-height מקורי בלבד; התקבל ${bands[i].y - bands[i - 1].y}`);
     }
     // שורות ביניים: גובה השורה בלבד — הרווח התחתון אינו נכנס בין השורות.
     for (let i = 0; i < bands.length - 1; i++) {
-      assert(Math.abs(bands[i].h - H3_SPAN_LINE_H) < 0.05, `שורת ביניים ${i} חייבת גובה 34 (ללא הרווח המבני); התקבל ${bands[i].h}`);
+      assert(Math.abs(bands[i].h - H3_SPAN_LINE_H) < 0.05, `שורת ביניים ${i} חייבת line-height מקורי (ללא ריפוד/מרווח); התקבל ${bands[i].h}`);
     }
     clearRegisteredFonts();
   });
@@ -142,26 +138,25 @@ describe('D-S2H3 — מפרט רווח תחתון של כותרת 3 (תוקן ב
     registerCoreFonts(s);
     const r = legacyTypeset(DOC, s, {});
     const { page, bands } = findWrappedH3(r);
-    // הפס האחרון: 38 = 34 (שורה) + 4 (הרווח התחתון היחיד).
+    // הפס האחרון: line-height 21.96 + padding-bottom 4; אחריו margin-bottom 4.
     const last = bands[bands.length - 1];
-    assert(Math.abs(last.h - H3_SPAN_H) < 0.05, 'הפס האחרון נושא את הרווח התחתון (38=34+4)');
-    // קואורדינטות מחסנית (הפסים מוצגים ב+8; שורות הטור בקואורדינטות המחסנית):
-    const BAND_STACK_OFFSET = 8;
-    const lastLineTextEndStack = last.y - BAND_STACK_OFFSET + H3_SPAN_LINE_H;
+    assert(Math.abs(last.h - H3_SPAN_H) < 0.05, 'הפס האחרון כולל padding-bottom של 4px');
+    // כל המדידות באותה מערכת קואורדינטות של העמוד:
+    const lastLineTextEndStack = last.y + H3_SPAN_LINE_H;
     const colLines = (page.columns[0] || []).filter(u => u.y >= lastLineTextEndStack - 0.01);
     assert(colLines.length >= 1, 'אין שורות גוף אחרי הכותרת באותו עמוד — הרחב את הפיקסטורה');
     const contentTop = colLines[0].y;
     const gap = contentTop - lastLineTextEndStack;
-    assert(Math.abs(gap - (H3_SPAN_H - H3_SPAN_LINE_H)) < 0.05,
-      `הרווח מסוף טקסט השורה האחרונה לתוכן חייב להיות בדיוק 4px (פעם אחת, אחרי השורה האחרונה); התקבל ${gap}px`);
-    // וההוכחה שאין רווח נוסף אחריו: סוף הפס האחרון (כולל הרווח) = תחילת התוכן בדיוק.
-    const lastBandEndStack = last.y - BAND_STACK_OFFSET + H3_SPAN_H;
-    assert(Math.abs(contentTop - lastBandEndStack) < 0.05,
-      `התוכן נפתח בדיוק בסוף הפס האחרון; התקבל ${contentTop - lastBandEndStack}px הפרש`);
+    assert(Math.abs(gap - (H3_SPAN_BOTTOM_PAD_PX + H3_SPAN_MARGIN_BOTTOM_PX)) < 0.05,
+      `המרחק מסוף השורה האחרונה לתוכן חייב להיות 8px (padding 4 + margin 4); התקבל ${gap}px`);
+    // תיבת הפס כוללת padding-bottom של 4px; אחריה נשאר margin-bottom של 4px.
+    const lastBandEndStack = last.y + last.h;
+    assert(Math.abs((contentTop - lastBandEndStack) - H3_SPAN_MARGIN_BOTTOM_PX) < 0.05,
+      `margin-bottom חייב להיות 4px; התקבל ${contentTop - lastBandEndStack}px`);
     clearRegisteredFonts();
   });
 
-  it('אי-רגרסיה לכותרת חד-שורתית — פס 38 יחיד והתוכן בסופו (כיוול S4.14 נעול)', () => {
+  it('אי-רגרסיה לכותרת חד-שורתית — גובה כולל 38px לפי ה-CSS המקורי', () => {
     const s = imudSettings();
     registerCoreFonts(s);
     const r = legacyTypeset(DOC_SINGLE, s, {});
@@ -171,18 +166,18 @@ describe('D-S2H3 — מפרט רווח תחתון של כותרת 3 (תוקן ב
       if (b) { found = { page: pg, band: b }; break; }
     }
     assert(found, 'לא נמצאה כותרת 3 חד-שורתית');
-    assertEq(found.band.h, H3_SPAN_H, 'כותרת חד-שורתית: פס 38 (34+4) — כמו לפני התיקון');
+    assertEq(found.band.h, H3_SPAN_H, 'תיבת שורת הכותרת כוללת line-height + padding-bottom');
     const single = (found.page.bands || []).filter(x => x.kind === 'h3-title' && x.tokenId != null);
     assertEq(single.length, 1, 'כותרת חד-שורתית אחת בלבד עם tokenId');
     const contentAfter = (found.page.columns[0] || []).filter(u => u.y >= found.band.y - 0.01);
-    if (contentAfter.length) {
-      const first = contentAfter.find(u => u.y >= found.band.y + H3_SPAN_H - 0.01);
-      assert(first, 'התוכן אחרי כותרת חד-שורתית נפתח בסוף הפס (38) — גיאומטריה זהה לקודמת');
-    }
+    const first = contentAfter.find(u => u.y >= found.band.y + H3_SPAN_H + H3_SPAN_MARGIN_BOTTOM_PX - 0.01);
+    assert(first, 'התוכן אחרי כותרת חד-שורתית נפתח אחרי top padding + line-height + bottom padding + margin');
+    assert(Math.abs(first.y - (found.band.y + H3_SPAN_LINE_H + H3_SPAN_BOTTOM_PAD_PX + H3_SPAN_MARGIN_BOTTOM_PX)) < 0.05,
+      'גובה הכותרת החד-שורתית כולל top padding 8, line-height 1.22, padding-bottom 4 ו-margin-bottom 4');
     clearRegisteredFonts();
   });
 
-  it('DOM ו-PDF צורכים את אותן עובדות גאומטריה (אותו y/h לכל שורת כותרת)', () => {
+  it('DOM ו-PDF שומרים על אותו y ו-line-height טקסטואלי; תיבת הריפוד נפרדת', () => {
     const s = imudSettings();
     registerCoreFonts(s);
     const r = legacyTypeset(DOC, s, {});
@@ -195,13 +190,13 @@ describe('D-S2H3 — מפרט רווח תחתון של כותרת 3 (תוקן ב
     const pdfBandLines = ppage.lines.filter(l => l.kind === 'h3-title');
     assert(pdfBandLines.length >= bands.length, 'שורות כותרת חסרות במקרן ה-PDF');
     for (let i = 0; i < bands.length; i++) {
-      const pb = pdfBandLines.find(l => Math.abs(l.y - bands[i].y) < 0.01 && Math.abs(l.h - bands[i].h) < 0.01);
-      assert(pb, `ל-PDF אין את שורת הכותרת ${i} באותן קואורדינטות (${bands[i].y}/${bands[i].h})`);
+      const pb = pdfBandLines.find(l => Math.abs(l.y - bands[i].y) < 0.01 && Math.abs(l.h - H3_SPAN_LINE_H) < 0.01);
+      assert(pb, `ל-PDF אין את שורת הכותרת ${i} באותו y ו-line-height`);
     }
-    // הבסיס ב-PDF נגזר מהתיבה (baselineOf) — מרכוז בתוך התיבה של אותה שורה.
+    // הבסיס ב-PDF נגזר מ-lineHeightPx של הטקסט, ולא מגובה הפס הכולל את הריפוד.
     for (let i = 0; i < pdfBandLines.length; i++) {
       const pb = pdfBandLines[i];
-      const expectedH = i === pdfBandLines.length - 1 ? H3_SPAN_H : H3_SPAN_LINE_H;
+      const expectedH = H3_SPAN_LINE_H;
       assertEq(pb.h, expectedH, `גובה שורת כותרת ${i} ב-PDF שונה מהמודל`);
     }
 
@@ -214,7 +209,7 @@ describe('D-S2H3 — מפרט רווח תחתון של כותרת 3 (תוקן ב
     for (let i = 0; i < bands.length; i++) {
       const match = domBands.find(c => Math.abs(px(c.style.top) - bands[i].y) < 0.01 && Math.abs(px(c.style.height) - bands[i].h) < 0.01);
       assert(match, `ל-DOM אין את שורת הכותרת ${i} באותן קואורדינטות`);
-      assertEq(px(match.style.lineHeight), bands[i].h, 'line-height שורת כותרת ב-DOM שונה מהמודל');
+      assertEq(px(match.style.lineHeight), H3_SPAN_LINE_H, 'line-height שורת כותרת ב-DOM חייב להתאים ל-CSS הישן');
     }
     clearRegisteredFonts();
   });

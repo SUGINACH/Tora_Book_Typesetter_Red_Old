@@ -421,25 +421,30 @@ describe('שלב 4 — כותרות 3 ופריטי רוחב: סמנטיקת D-S2
     const seqs = buildLineSequences(model, { settings: SETTINGS });
     const h3 = seqs.sequences.find((s) => s.blockKind === 'heading' && s.semantic && s.semantic.kind === 'heading3');
     assert(h3, 'רצף כותרת 3 עם סמנטיקה');
+    // **חוזה H3 (D-S2H3/CSS parity, core/h3-contract.js):** pitch = line-height
+    // 1.22 של ה-CSS המקורי (13.5pt ברירת מחדל ⇒ 21.96px), הפס האחרון = pitch+4,
+    // הרווח התחתון 4 פעם אחת. הערכים הישנים 34/38 שיקפו line-height שכלל בטעות
+    // את הריפוד העליון בכל שורת המשך — הוחלפו בחוזה המדויק.
+    assert(Math.abs(H3_LINE_PITCH_PX - 21.96) < 0.01, 'pitch לפי 1.22 על 13.5pt');
     assertEq(h3.semantic.linePitchPx, H3_LINE_PITCH_PX);
     assertEq(h3.semantic.lastBandPx, H3_LAST_BAND_PX);
     const res = layoutSequence(h3, { maxWidthPx: 190, lineHeightPx: 21.44 });
     assert(res.lines.length >= 2, 'כותרת דו-שורתית: ' + res.lines.length);
     for (const ln of res.lines) {
       assert(ln.semantic && ln.semantic.kind === 'heading3', 'כל שורה מתויגת כחלק מהפריט הסמנטי');
-      assertEq(ln.semantic.linePitchPx, 34, 'פסיחה');
+      assertEq(ln.semantic.linePitchPx, H3_LINE_PITCH_PX, 'פסיחה');
     }
     const last = res.lines[res.lines.length - 1];
-    assertEq(last.semantic.bandPx, 38, 'הפס האחרון');
+    assertEq(last.semantic.bandPx, H3_LAST_BAND_PX, 'הפס האחרון');
     assertEq(last.semantic.trailingSpacePx, 4, 'הרווח התחתון שייך לפריט כולו');
     for (const ln of res.lines.slice(0, -1)) assertEq(ln.semantic.trailingSpacePx, 0, 'אין רווח תחתון בשורות הביניים');
-    // כותרת חד-שורתית — גאומטריה זהה לקיים (שורה אחת = הפס 38, רווח 4)
+    // כותרת חד-שורתית — שורה אחת = הפס (pitch+4), רווח 4
     const raw1 = 'כותרת 1 - חלק\nכותרת 3 - קצרה\nטקסט.\n';
     const m1 = buildDocumentModel(raw1, {});
     const h3one = buildLineSequences(m1, { settings: SETTINGS }).sequences.find((s) => s.semantic && s.semantic.kind === 'heading3');
     const r1 = layoutSequence(h3one, { maxWidthPx: 300, lineHeightPx: 21.44 });
     assertEq(r1.lines.length, 1);
-    assertEq(r1.lines[0].semantic.bandPx, 38, 'חד-שורתית: פס 38');
+    assertEq(r1.lines[0].semantic.bandPx, H3_LAST_BAND_PX, 'חד-שורתית: פס pitch+4');
     assertEq(r1.lines[0].semantic.trailingSpacePx, 4, 'רווח 4 פעם אחת');
   });
 });

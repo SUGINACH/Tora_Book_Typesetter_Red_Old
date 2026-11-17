@@ -91,7 +91,14 @@ describe('שלב 8 ביקורת (§3.1) — גבולות materialization', () =>
   it('very_long (1108 עמודים): אפס נפילות — שורש נפילת-השווא (חד-מיליות בלי דבק) תוקן', () => {
     const r = typeset(VERY_LONG, S());
     assert(r.pages.length > 1000, `מסמך ענק (${r.pages.length} עמודים)`);
-    assert(r.layoutHash.startsWith('d2a18112'), `layoutHash very_long נשמר (${r.layoutHash.slice(0, 8)})`);
+    // **H3-CSS (17.11, חוזה ה-CSS המקורי גם במסלול המאוחד):** נעילה מחודשת
+    // d2a18112→e68e1f0b — פסי H3 במסלול המאוחד נשאו עד כה אפס ריפודים ו-line-height
+    // 1.4; כעת לפי החוזה (ריפוד עליון 8 + שורות ב-1.22 + תחתון 4+שוליים 4).
+    // הוכחת שימור: זרם המילים זהה לחלוטין (66,506 שורות; אפס חלוקות שורה
+    // שהשתנו); 148 פסי H3 — כולם בגיאומטריית החוזה; הערות 129=129;
+    // regular 1030→1032 (+2 עמודים מהריפודים שנוספו). דוח מלא:
+    // audits/H3_SPACING_OLD_STYLE_PARITY_2026-11-17.md. הקודם: d2a18112.
+    assert(r.layoutHash.startsWith('e68e1f0b'), `layoutHash very_long נשמר (${r.layoutHash.slice(0, 8)})`);
     assertEq(r.pageModel.meta.materializeFallbacks, 0, 'אפס נפילות (בעבר: 852 שווא-נפילות רוחב-רווח)');
     const mfViol = r.pageModelValidation.violations.filter(v => v.code === 'materialize-fallback');
     assertEq(mfViol.length, 0, 'אפס violations');

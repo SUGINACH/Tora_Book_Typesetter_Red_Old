@@ -519,6 +519,10 @@ function renderSpanningBand(page, settings, doc) {
   const spanTop = page.template.contentBox.top;
   band.style.top = `${spanTop}px`;
   band.style.height = `${page.spanning.heightPx}px`;
+  // **חוזה H3 + הזמנות עיטור (D-S2H3/F-08):** שורות הפס זורמות אחרי הריפוד
+  // העליון שהוזמן בתכנון (titleTopPadPx — 8px לפס H3 לפי ה-CSS המקורי,
+  // הזמנת עיטור לפס H2) — אותה גאומטריה כמו materialize/PageModel/PDF.
+  if (page.spanning.titleTopPadPx) band.style.paddingTop = `${page.spanning.titleTopPadPx}px`;
   const left = Math.min(...page.template.columns.map(c => c.x));
   const right = Math.max(...page.template.columns.map(c => c.x + c.w));
   band.style.left = `${Math.round(left)}px`;
@@ -877,7 +881,7 @@ function renderLegacyPage(pg, settings, doc) {
 
   // ---- פסים: סימן/h2/h0/h3 — ממורכזים ברוחב הפס ----
   for (const b of (pg.bands || [])) {
-    const el = mkLine(b.text, b.sizePt, 'center', b.h || pt2px(b.sizePt) * 1.1);
+    const el = mkLine(b.text, b.sizePt, 'center', b.lineHeightPx || b.h || pt2px(b.sizePt) * 1.1);
     el.className += ` band band--${b.kind || 'title'}`;
     // **S4.26 + S6.3:** גופן הפס — מהשורה עצמה (b.font — כותרת ההערות
     // ⇒ David Libre) או מההגדרות לפי הרמה + הדגשה (כמו הייחוס).

@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const { describe, it, assert, assertEq, report } = require('../harness');
 const { typeset } = require('../../src/engine/core/pipeline');
+const { h3LineHeightPx } = require('../../src/engine/core/h3-contract');
 const { getDefaultSettings } = require('../../src/engine/core/settings-registry');
 const { renderPage } = require('../../src/engine/output/dom-renderer');
 const { exportPdf } = require('../../src/engine/output/export-api');
@@ -96,9 +97,12 @@ describe('שלב 4 מקטע ב׳ — חיבור מלא למסלול המוצר (
     const res = typeset(ALL_LEVELS_DOC, getDefaultSettings());
     const h3Lines = allLines(res).filter(l => l.kind === 'heading' && l.level === 3);
     assert(h3Lines.length >= 3, 'שורות H3: ' + h3Lines.length);
+    // **H3-CSS (17.11):** pitch לפי חוזה ה-CSS המקורי — line-height 1.22 על
+    // גודל הכותרת בפועל מההגדרות (מקור יחיד: core/h3-contract); היה 34 קבוע.
+    const expPitch = h3LineHeightPx(getDefaultSettings()['heading-3-size-pt']);
     for (const ln of h3Lines) {
       assert(ln.semantic && ln.semantic.kind === 'heading3', 'סמנטיקת heading3 על השורה');
-      assert(ln.lineModel.semantic && ln.lineModel.semantic.linePitchPx === 34, 'pitch 34 בחוזה');
+      assert(ln.lineModel.semantic && Math.abs(ln.lineModel.semantic.linePitchPx - expPitch) < 0.01, `pitch ${expPitch.toFixed(2)} (1.22×size) בחוזה`);
     }
     // הפס האחרון של כל כותרת H3 נושא את הרווח התחתון פעם אחת; שורות ביניים — לא
     const byToken = new Map();
@@ -109,7 +113,7 @@ describe('שלב 4 מקטע ב׳ — חיבור מלא למסלול המוצר (
     }
     for (const [k, lns] of byToken) {
       const last = lns[lns.length - 1];
-      assertEq(last.semantic.bandPx, 38, `${k}: הפס האחרון 38`);
+      assert(Math.abs(last.semantic.bandPx - (expPitch + 4)) < 0.01, `${k}: הפס האחרון pitch+4`);
       assertEq(last.semantic.trailingSpacePx, 4, `${k}: רווח תחתון 4 פעם אחת`);
       for (const mid of lns.slice(0, -1)) {
         assertEq(mid.semantic.trailingSpacePx, 0, `${k}: אין רווח בשורות הביניים`);

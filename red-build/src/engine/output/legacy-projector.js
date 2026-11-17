@@ -224,7 +224,8 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
   const bandLeft = GEO.COL_L_X;
   const bandW = 2 * GEO.COL_W + 13.48;
   for (const b of (pg.bands || [])) {
-    const baseY = baselineOf(b.y, b.h, b.sizePt, ascent, descent);
+    const lineHeightPx = b.lineHeightPx || b.h;
+    const baseY = baselineOf(b.y, lineHeightPx, b.sizePt, ascent, descent);
     // **S5.1 (תצוגה=ייצוא — גופן פר-רמה כמו ה-DOM):** הפסים מרונדרים ב-DOM
     // בגופן heading-N-font של הרמה; המקרן צייר הכול ב-DavidLibre קבוע.
     // נפילה ל-hApi (התנהגות קודמת) כשהמשפחה אינה רשומה.
@@ -237,7 +238,7 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
     const bColor = bandColorOf(b);
     for (const w of words) { w.fontKey = bKey; if (bColor) w.color = bColor; }
     out.lines.push({
-      x: bandLeft, y: b.y, w: bandW, h: b.h, words, align: 'center',
+      x: bandLeft, y: b.y, w: bandW, h: lineHeightPx, words, align: 'center',
       kind: b.kind, level: null, isLast: false, sizePt: b.sizePt,
       baselineY: baseY, tokenId: b.tokenId != null ? b.tokenId : null
     });

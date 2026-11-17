@@ -76,7 +76,12 @@ function projectPage(page, settings, apiOrOpts) {
     const left = Math.min(...tpl.columns.map(c => c.x));
     const right = Math.max(...tpl.columns.map(c => c.x + c.w));
     const band = { x: left, y: tpl.contentBox.top, w: right - left, h: page.spanning.heightPx, lines: [] };
-    let y = tpl.contentBox.top;
+    // **חוזה H3 + הזמנות עיטור (D-S2H3/F-08):** שורות הפס מתחילות אחרי הריפוד
+    // העליון שהוזמן בתכנון — titleTopPadPx (ריפוד 8px של פס H3 לפי ה-CSS המקורי,
+    // או הזמנת עיטור-H2). ornament-plan כבר מניח הנחה זו (titleTop); עד כאן
+    // ההקרנה התעלמה ממנה ושורות הפס עלו על שטח ההזמנה.
+    const topPad = page.spanning.titleTopPadPx || 0;
+    let y = tpl.contentBox.top + topPad;
     for (const ln of page.spanning.lines) {
       band.lines.push(projectLine(ln, band.x, y, band.w, settings, measure, 'right', production));
       y += ln.heightPx || 0;
