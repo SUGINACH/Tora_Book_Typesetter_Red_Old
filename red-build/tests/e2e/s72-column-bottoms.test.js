@@ -234,10 +234,10 @@ describe('S72.2 DP — יישור תחתיות ככלל עימוד (שיפורי
     assert(result.layoutHash.startsWith('4a1773cc'), `hash הקורפוס השתנה: ${result.layoutHash.slice(0, 16)}`);
     const r2 = typeset(corpus, getDefaultSettings(), {});
     assertEq(result.layoutHash, r2.layoutHash, 'דטרמיניזם');
-    // הקנוני — נעילת f6f32c40 ממקטע ב׳ (מאומת ב-s13-acceptance)
+    // הקנוני — נעילת fdff19d8 ממקטע ב׳ (מאומת ב-s13-acceptance)
     const canon = fs.readFileSync(path.join(REPO, 'tests/fixtures/canonical_corpus.txt'), 'utf8');
     const rc = typeset(canon, getDefaultSettings(), {});
-    assert(rc.layoutHash.startsWith('f6f32c40'), `hash קנוני השתנה: ${rc.layoutHash.slice(0, 16)}`);
+    assert(rc.layoutHash.startsWith('fdff19d8'), `hash קנוני השתנה: ${rc.layoutHash.slice(0, 16)}`);
   });
 
   it('אין גלישה חדשה: כל טור מתוח נשאר בתוך הקיבולת (בלי חדירה לאזור ההערות)', () => {

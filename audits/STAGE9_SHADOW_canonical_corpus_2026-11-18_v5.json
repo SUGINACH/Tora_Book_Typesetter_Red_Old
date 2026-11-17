@@ -3,12 +3,12 @@
   "schema": 5,
   "file": "red-build/tests/fixtures/canonical_corpus.txt",
   "unifiedProfile": "imud-cutover",
-  "started": "2026-11-17T22:07:28.687Z",
+  "started": "2026-11-17T23:09:08.936Z",
   "summary": {
     "total": 13,
-    "passed": 11,
-    "failed": 2,
-    "ok": false
+    "passed": 13,
+    "failed": 0,
+    "ok": true
   },
   "gates": {
     "G1-legacy-covers-source": {
@@ -56,14 +56,14 @@
     "G6-toc-general-unified": {
       "group": "TOC",
       "desc": "D-107: TOC כללי במאוחד = רמות 1–6 מהמקור, ללא H7, בלי כפילויות/השמטות",
-      "ok": false,
-      "detail": "D-107 כללי: צפוי 24, בפועל 16; חסרות 8 (רמות חסרות: 3); עודפות 0; כפילויות 0"
+      "ok": true,
+      "detail": "D-107 כללי: 24 רשומות, רמות 1–6, ללא H7 — התאמה מלאה"
     },
     "G6-toc-detail-unified": {
       "group": "TOC",
       "desc": "D-107: TOC מפורט במאוחד = רמות 2–6, בלי H1 ובלי H7",
-      "ok": false,
-      "detail": "D-107 מפורט: צפוי 16, בפועל 24; חסרות 0; עודפות 8; H1 במפורט: 8; H7 במפורט: 0"
+      "ok": true,
+      "detail": "D-107 מפורט: 16 רשומות, רמות 2–6 — התאמה מלאה"
     },
     "G7-side-identity-unified": {
       "group": "ביאורי-צד",
@@ -81,7 +81,7 @@
       "group": "מודל",
       "desc": "r.pageModel (הקנוני של שלב 8) מייצג את אותו תוכן כמו r.pages במאוחד",
       "ok": true,
-      "detail": "PageModel מייצג את מלוא התוכן (3,428 מילים = האינוונטר)"
+      "detail": "PageModel מייצג את מלוא התוכן (3,436 מילים = האינוונטר)"
     },
     "G9-heading-grammar-parity": {
       "group": "דקדוק",
@@ -118,12 +118,12 @@
     },
     "unified": {
       "pages": 37,
-      "words": 3428,
+      "words": 3436,
       "notes": 8,
       "sideNotes": 8,
       "sideWords": 56,
-      "tocGeneralRows": 16,
-      "tocDetailRows": 24,
+      "tocGeneralRows": 24,
+      "tocDetailRows": 16,
       "endNotePages": 0,
       "pageModelPresent": true
     }
