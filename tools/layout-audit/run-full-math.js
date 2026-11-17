@@ -195,8 +195,70 @@ const gotoView = async () => {
 (async function main() {
   fs.mkdirSync(OUT, { recursive: true });
   if (!fs.existsSync(FIXTURE)) throw new Error(`חסר fixture: ${FIXTURE}`);
-  // **S5.2 (רצפת נפח):** ספירת מילות ה-fixture — בסיס ליחס המילים המרונדרות
-  const fixtureWords = fs.readFileSync(FIXTURE, 'utf8').split(/\s+/).filter(Boolean).length;
+  // **F-BL1 (17.11 — שורש הפער ההיסטורי 353,687<355,967):** רצפת הנפח השוותה
+  // מילים מרונדרות מול **ה-fixture הגולמי** — אך ~2.75% ממנו הוא תחביר סימון
+  // שלעולם אינו מרונדר (דירקטיבות 'כותרת N [מספר M] [(מקור: …)] -', מטא-מקור,
+  // עריכה). ההשוואה הייתה כשל-שקר קבוע (353,687<355,967). התיקון בסמכות
+  // הנכונה: הרצפה מודדת מול **מילות התוכן הצפויות** — מחושבות מאותו טוקניזר
+  // SSOT של המנוע (אותן הגדרות תוחמי-הערה של ברירת המחדל החיה) — ועל הירידה
+  // מופעל **משמר נגד-מעגליות**: כל מילה שנופלת מה-fixture ואינה בזרם הטוקנים
+  // חייבת להיות מילת תחביר מוסברת (דירקטיבה/מקף/מטא) או חצי-הדבקת-הערה
+  // (המרונדרת כמילה מודבקת). ירידה בלתי-מוסברת ⇒ כשל חמור עם דוגמאות.
+  // הסף 0.98 לא שונה ולא נחלש — מה שנמדד הוא כיסוי התוכן בפועל.
+  const RB = path.join(ROOT, 'red-build');
+  const { tokenizeDoc, stripEditorialNotes, parseMetadata } = require(path.join(RB, 'src/engine/layout/legacy-imud-flow'));
+  const defaults = JSON.parse(fs.readFileSync(path.join(RB, 'ui/assets/imud/default_settings.json'), 'utf8'));
+  const auditCfg = { fnOpen: String(defaults['fn-delim-open'] || '['), fnClose: String(defaults['fn-delim-close'] || ']') };
+  const rawText = fs.readFileSync(FIXTURE, 'utf8');
+  const fixtureWords = rawText.split(/\s+/).filter(Boolean).length;
+  const { tokens: auditTokens } = tokenizeDoc(rawText, auditCfg);
+  let contentWords = 0;
+  const tokMultiset = new Map();
+  const bumpTok = (w) => tokMultiset.set(w, (tokMultiset.get(w) || 0) + 1);
+  for (const t of auditTokens) {
+    for (const w of String(t.text == null ? '' : t.text).split(/\s+/).filter(Boolean)) { contentWords++; bumpTok(w); }
+    for (const w of String(t.sideNote || '').split(/\s+/).filter(Boolean)) { contentWords++; bumpTok(w); }
+    for (const w of String(t.endNote || '').split(/\s+/).filter(Boolean)) { contentWords++; bumpTok(w); }
+  }
+  // משמר נגד-מעגליות: כל מילה שנופתת מהמקור (אחרי עריכה+מטא) חייבת להיות
+  // תחביר מוסבר או חצי הדבקה (מילה מודבקת עם '[' בפנים מכסה את שני חצאיה).
+  const { text: noMetaText } = parseMetadata(stripEditorialNotes(rawText));
+  const syntaxWords = new Map();
+  const bumpSyn = (s) => { for (const w of String(s).split(/\s+/).filter(Boolean)) syntaxWords.set(w, (syntaxWords.get(w) || 0) + 1); };
+  for (const ln of noMetaText.split('\n')) {
+    const t = ln.trim();
+    if (!t) continue;
+    const m = /^כותרת\s+(\d+)\s+(מספר\s+(\S+)\s+)?(\(מקור[^)]*\)\s*)?[-–—:]\s*(.*)$/.exec(t)
+      || /^כותרת\s+(\d+)\s+(מספר\s+(\S+)\s+)?(\(מקור[^)]*\)\s*)(.*)$/.exec(t);
+    if (m) {
+      bumpSyn('כותרת'); bumpSyn(m[1]);
+      if (m[2]) { bumpSyn('מספר'); bumpSyn(m[3]); }
+      if (m[4]) bumpSyn(m[4]);
+    }
+    const sm = /^סימן\s+[א-ת]+\s*[-–—:]\s*/.exec(t);
+    if (sm) bumpSyn(sm[0]);
+  }
+  const srcMultiset = new Map();
+  for (const w of noMetaText.split(/\s+/).filter(Boolean)) srcMultiset.set(w, (srcMultiset.get(w) || 0) + 1);
+  const glued = new Set();
+  for (const [w] of tokMultiset) { const i = w.indexOf('['); if (i > 0) { glued.add(w.slice(0, i)); glued.add('[' + w.slice(i + 1)); } }
+  const unexplainedDrops = [];
+  for (const [w, c] of srcMultiset) {
+    const tc = tokMultiset.get(w) || 0;
+    if (tc >= c) continue;
+    let miss = c - tc;
+    if (w === '-' || w === '–' || w === '—') continue; // מקפי הפרדה של דירקטיבות
+    const syn = syntaxWords.get(w) || 0;
+    miss -= Math.min(miss, syn);
+    if (miss > 0 && glued.has(w)) miss = 0; // חצי-הדבקה: מרונדר בתור מילה מודבקת
+    if (miss > 0) unexplainedDrops.push(`${w} (×${miss})`);
+  }
+  if (unexplainedDrops.length) {
+    console.error('✗ משמר הטוקניזר נכשל — מילים שנופתו מהמקור בלי הסבר תחביר (אובדן תוכן חשוד):');
+    console.error('  - ' + unexplainedDrops.slice(0, 20).join(', ') + (unexplainedDrops.length > 20 ? ` … (${unexplainedDrops.length})` : ''));
+    process.exit(1);
+  }
+  log(`מילות תוכן צפויות (טוקניזר SSOT): ${contentWords.toLocaleString()} | גולמי: ${fixtureWords.toLocaleString()} | תחביר שהוסבר: ${(fixtureWords - contentWords).toLocaleString()} | משמר ירידה: עבר (0 בלתי-מוסברות)`);
   // **S5.2 (פריסה מיושנת — cache-bust):** פתיחת ה-HTML עם query ייחודי — אחרת
   // ה-CDN של Pages עשוי להגיש HTML מיושן מהמטמון והבדיקה תרוץ נגד עבר.
   const runId = Date.now();
@@ -315,8 +377,10 @@ const gotoView = async () => {
   // **S70 (R9):** הרצפה מודדת על מילות הגוף בלבד (bodyWords) — בעבר נכללו שורות ה-TOC
   // (כפילות של כותרות הגוף) והרצפה הוחלשה: ספר שקצר תוכן יכול היה לעבור בזכות מילות ה-TOC.
   const bodyWords = s.bodyWords != null ? s.bodyWords : (s.totalWords || 0);
-  if (!(bodyWords >= EXPECTED_WORDS_MIN_RATIO * fixtureWords)) {
-    floorFail.push(`מילים מרונדרות ${bodyWords.toLocaleString()} < ${Math.round(EXPECTED_WORDS_MIN_RATIO * fixtureWords).toLocaleString()} (= ${EXPECTED_WORDS_MIN_RATIO} × ${fixtureWords.toLocaleString()} מילות ה-fixture)`);
+  // **F-BL1:** הרצפה מול מילות התוכן הצפויות (לא הגולמי — תחביר הסימון אינו
+  // ניתן לרינדור). הסך הגולמי מדווח לשקיפות בלבד.
+  if (!(bodyWords >= EXPECTED_WORDS_MIN_RATIO * contentWords)) {
+    floorFail.push(`מילים מרונדרות ${bodyWords.toLocaleString()} < ${Math.round(EXPECTED_WORDS_MIN_RATIO * contentWords).toLocaleString()} (= ${EXPECTED_WORDS_MIN_RATIO} × ${contentWords.toLocaleString()} מילות תוכן צפויות; גולמי ${fixtureWords.toLocaleString()})`);
   }
   if (floorFail.length) {
     console.error('✗ רצפת הנפח נכשלה — הספר התקצר בשקט (ספר שחסר תוכן אינו יכול להיות "0 בעיות"):');
@@ -325,7 +389,7 @@ const gotoView = async () => {
     if (server) server.close();
     process.exit(1);
   }
-  log(`רצפת נפח ✓: ${pages1} עמודים (≥${EXPECTED_PAGES_MIN}) | ${totalWords.toLocaleString()} מילים (≥${Math.round(EXPECTED_WORDS_MIN_RATIO * fixtureWords).toLocaleString()})`);
+  log(`רצפת נפח ✓: ${pages1} עמודים (≥${EXPECTED_PAGES_MIN}) | גוף ${bodyWords.toLocaleString()} מילים (≥${Math.round(EXPECTED_WORDS_MIN_RATIO * contentWords).toLocaleString()} תוכן צפוי; סה"כ ${(s.totalWords || 0).toLocaleString()})`);
   log('─'.repeat(62));
   log(`עמודים: ${s.pages}/${s.slots} | שורות: ${(s.totalLines || 0).toLocaleString()} | וירטואלי: ${s.virtualized} | סריקה: ${s.sweep && s.sweep.ms}ms`);
   log(`בעיות (סה"כ): ${s.problems} | לפי סוג: ${JSON.stringify(st.counts || {})}`);

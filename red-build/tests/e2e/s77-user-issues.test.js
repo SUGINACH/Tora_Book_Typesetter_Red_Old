@@ -189,7 +189,15 @@ describe('S77 בקשה 1 — שורת החיתוך מיושבת לשני הצד�
     const text = generateTestDocument({ mode: 'fixed' });
     const r = legacyTypeset(text, s, {});
     // **R-03 (יובא מ-Red PR #48):** נעילות מחודשות בעקבות תיקון שורש דגלי-סוגריים-סמן-הערה: body-first legacy-6a06e→legacy-a0946; legacy-3ce38→legacy-1231b.
-    assert(r.layoutHash.startsWith('legacy-a0946f99c7c19'),
+    // **F-BL2 (17.11, תיקון שורש — סמן-הערה שנבלע בחיתוך שורת המרזב):** נעילה מחודשת
+    // legacy-a0946→legacy-1457d — טוקן הרווח-הכפל (gap) של ההערה נספר כ"הערה
+    // שהחלה" גם כשחיתוך השורה נפל בדיוק בינו לבין הסמן ⇒ ההמשך נפתח ב-'(המשך)'
+    // והסמן לא הוצג לעולם. תוקן: "החלה" מוכח רק על-ידי טוקן שהוצג (סמן/מילה).
+    // במסמך זה שוחזרו 4 סמנים שאבדו (כ. עמ' 149, לא. עמ' 150, כז. עמ' 282, כו. עמ' 458)
+    // + זרימה מקומית מחדש סביב עמ' 151–153 (רוחב הסמן בהמשך ⇒ קוונטיזציית תקציב);
+    // 489=489 עמודים; contentPreserved=true; הקורפוס (long_test_text) לא השתנה
+    // (legacy-d81aa5 נשמר). הוכח ב-full-math-audit: MARKER_NOTE_MATCH 2→0.
+    assert(r.layoutHash.startsWith('legacy-1457d71d19b9c'),
       `body-first נעול על ההאש של S76+R-03 — התקבל ${r.layoutHash.slice(0, 20)} (cutLast/centerLast אסור שיזיזו שורות)`);
     const rOld = legacyTypeset(text, { ...s, 'fn-placement-mode': 'legacy' }, {});
     assert(rOld.layoutHash.startsWith('legacy-1231b1b7e15cb'),

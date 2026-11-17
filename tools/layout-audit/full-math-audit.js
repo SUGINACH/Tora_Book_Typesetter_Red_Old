@@ -786,7 +786,11 @@ if (typeof document !== 'undefined') {
         info.words += wc(l.textContent);
 
         const base = rec.last ? 'l' : (rec.head ? 'h' : 'b');
-        colRec.tops.push(Math.round((lr.y + origin.y) * 10));  // אבסולוטי — כמו determinism-sweep
+        // **S70 (R9 — השלמת דו-ציריות, נחשף עם F-BL1):** הטביעה דו-צירית
+        // [left, top] — זהה בפורמט ל-determinism-sweep מאז S70. עד כאן כאן
+        // נאסף y-בלבד, וההשוואה ב-run-full-math השוותה מספרים מול זוגות —
+        // אי-שוויון קבוע (באג רדום: רצפת הנפח נכשלה תמיד לפני שלב הדטרמיניזם).
+        colRec.tops.push([Math.round((lr.x + origin.x) * 10), Math.round((lr.y + origin.y) * 10)]);
         colRec.f += base;
         colRec.at += (rec.window ? 'w' : '-') + (rec.markers.length ? 'm' : '-');
         if (prevTop !== null && base === 'b' && prevFlag === 'b') colRec.p.push(Math.round((rec.y - prevTop) * 10) / 10);
