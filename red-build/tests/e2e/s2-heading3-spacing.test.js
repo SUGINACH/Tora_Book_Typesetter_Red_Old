@@ -137,9 +137,8 @@ describe('D-S2H3 — מפרט רווח תחתון של כותרת 3 (תוקן ב
     const { page, bands } = findWrappedH3(r);
     // הפס האחרון: 38 = 34 (שורה) + 4 (הרווח התחתון היחיד).
     const last = bands[bands.length - 1];
-    assert(Math.abs(last.h - H3_SPAN_H) < 0.05, 'הפס האחרון נושא את הרווח התחתון (38=34+4)');
-    // קואורדינטות מחסנית (הפסים מוצגים ב+8; שורות הטור בקואורדינטות המחסנית):
-    const BAND_STACK_OFFSET = 8;
+    assert(Math.abs(last.h - H3_SPAN_H) < 0.05, 'הפס האחרון כולל padding-bottom של 4px');
+    // כל המדידות באותה מערכת קואורדינטות של העמוד:
     const lastLineTextEndStack = last.y + H3_SPAN_LINE_H;
     const colLines = (page.columns[0] || []).filter(u => u.y >= lastLineTextEndStack - 0.01);
     assert(colLines.length >= 1, 'אין שורות גוף אחרי הכותרת באותו עמוד — הרחב את הפיקסטורה');
@@ -169,8 +168,10 @@ describe('D-S2H3 — מפרט רווח תחתון של כותרת 3 (תוקן ב
     assertEq(single.length, 1, 'כותרת חד-שורתית אחת בלבד עם tokenId');
     const contentAfter = (found.page.columns[0] || []).filter(u => u.y >= found.band.y - 0.01);
     if (contentAfter.length) {
-      const first = contentAfter.find(u => u.y >= found.band.y + H3_SPAN_H - 0.01);
+      const first = contentAfter.find(u => u.y >= found.band.y + H3_SPAN_H + H3_SPAN_MARGIN_BOTTOM_PX - 0.01);
       assert(first, 'התוכן אחרי כותרת חד-שורתית נפתח אחרי top padding + line-height + bottom padding + margin');
+      assert(Math.abs(first.y - (found.band.y + H3_SPAN_LINE_H + H3_SPAN_BOTTOM_PAD_PX + H3_SPAN_MARGIN_BOTTOM_PX)) < 0.05,
+        'גובה הכותרת החד-שורתית כולל top padding 8, line-height 1.22, padding-bottom 4 ו-margin-bottom 4');
     }
     clearRegisteredFonts();
   });
