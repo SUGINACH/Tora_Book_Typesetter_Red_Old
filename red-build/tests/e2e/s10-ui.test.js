@@ -947,7 +947,9 @@ describe('חבילות הדפדפן (D-65) — הפרדת מנוע, שימה, of
     assert(fs.existsSync(path.join(BUNDLE_DIR, 'styles.css')), 'עיצוב קיים');
     assert(!html.includes('\\n'), 'index.html אינו מכיל רצפי backslash+n מילוליים בתוך ה-markup');
     assert(html.includes('/>\n<meta name="theme-color"'), 'תגיות head מופרדות בשורות אמיתיות');
-    const head = (html.match(/<head>([\\s\\S]*?)<\\/head>/i) || [])[1] || '';
+    const headStart = html.indexOf('<head>');
+    const headEnd = html.indexOf('</head>');
+    const head = headStart >= 0 && headEnd > headStart ? html.slice(headStart, headEnd) : '';
     assert(head.includes('name="theme-color"') && head.includes('rel="icon"'), 'theme-color ו-favicon נמצאים בתוך head');
   });
 });
