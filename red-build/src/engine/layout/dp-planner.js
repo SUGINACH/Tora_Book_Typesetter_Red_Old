@@ -779,6 +779,112 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
     }
   }
 
+  // **§3.2 (ביקורת PR #16 — העברת פתרון השורש למודל ההערות המאוחד):**
+  // reconcileNotesAfterPlacement — אחרי ההצבה המלאה. שורש הפגם: reserveNotes
+  // מחייב את **כל** הערות הבלוק בעמוד הסמן **הראשון** (FX-3); כשסמנים
+  // מאוחרים של אותו בלוק נוחתים בעמוד הבא (פיצול פסקה / זרימה), ההערות
+  // שלהם נשארות עמוד קודם לסמן — "הערה לפני העוגן" (הוכח בפועל:
+  // very_long, 6 הפרות — ראה tools/audit-note-anchors.js). התיקון: העברה
+  // קדימה של הערה לעמוד הסמן שלה **בקיבולת אמיתית מצטברת** — הטור האחרון
+  // של עמוד היעד + התקציב הקיים + ההערות שכבר הועברו אליו. המשכים
+  // (isContinuation/split-rest) אינם מוזזים כהערות מקוריות — הם קשורים
+  // לזרימת הפיצול של המקור. אין מקום חוקי ⇒ לא מעבירים בכוח — נרשם
+  // diagnostic אמיתי (fn-anchor-compromise). זהות נשמרת במלואה: noteId,
+  // anchorId, continuationOf, wordRange, סמן ומספור — מוקזים בלבד.
+  const reconcileNotesAfterPlacement = () => {
+    if (!settings['footnotes-enabled']) return { moved: 0, blocked: 0, movedList: [] };
+    // מיפוי טוקן-עוגן → שורות הסמן בפועל (עמוד/טור/שורה + טקסט הסמן)
+    const markerLines = new Map();
+    for (const pg of pages) {
+      pg.columns.forEach((col, ci) => {
+        col.forEach((ln, li) => {
+          const tok = ln.tokenId != null ? String(ln.tokenId) : (ln.meta && ln.meta.tokenId != null ? String(ln.meta.tokenId) : null);
+          if (!tok) return;
+          for (const w of (ln.words || [])) {
+            const s = String(w);
+            const at = s.indexOf(MARK_TAG);
+            if (at < 0) continue;
+            if (!markerLines.has(tok)) markerLines.set(tok, []);
+            markerLines.get(tok).push({ page: pg, col: ci, li, marker: s.slice(at + MARK_TAG.length) });
+          }
+        });
+      });
+    }
+    const markerRecOf = (n) => {
+      const tok = n.tokenId != null ? String(n.tokenId) : (n.anchorId != null ? String(n.anchorId) : null);
+      if (!tok) return null;
+      const cands = markerLines.get(tok) || [];
+      if (!cands.length) return null;
+      const mk = String(n.marker != null ? n.marker : '');
+      if (mk) {
+        const hit = cands.find(m => m.marker === mk);
+        if (hit) return hit;
+        // טקסט הסמן לא זוהה — נפילה לסמן היחיד של הטוקן בלבד (חד-משמעי);
+        // ריבוי סמנים בלי התאמה ⇒ אין זיהוי בטוח — לא מזיזים (כיוון שמרני)
+        return cands.length === 1 ? cands[0] : null;
+      }
+      return cands.length === 1 ? cands[0] : null;
+    };
+    let movedCount = 0;
+    const movedList = [], blocked = [];
+    for (const pg of pages) {
+      if (!(pg.footnotes || []).length) continue;
+      const keep = [];
+      let changed = false;
+      for (const n of pg.footnotes) {
+        const isCont = n.isContinuation === true || n.mode === 'split-rest' || n.continuationOf != null;
+        const rec = isCont ? null : markerRecOf(n);
+        // חוקי: אין רשומת סמן / אותו עמוד / הסמן בעמוד מוקדם — אין מה לתקן
+        if (!rec || rec.page === pg || rec.page.index < pg.index) { keep.push(n); continue; }
+        const target = rec.page;
+        // הכנסה לפי מיקום הסמן בסדר הקריאה של עמוד היעד — הסדר החזותי במרזב
+        // עוקב אחר סדר הסמנים בגוף (מדויק ודטרמיניסטי; נפילה לסוף כשאין רשומות)
+        const tRec = markerRecOf(n);
+        let insertAt = target.footnotes.length;
+        for (let i = target.footnotes.length - 1; i >= 0; i--) {
+          const other = markerRecOf(target.footnotes[i]);
+          if (other && other.page === target && (other.col < tRec.col || (other.col === tRec.col && other.li <= tRec.li))) {
+            insertAt = i + 1;
+            break;
+          }
+          if (!other) { insertAt = i + 1; break; }
+        }
+        target.footnotes.splice(insertAt, 0, n);
+        recomputeFnBudget(target);
+        // **קיבולת מצטברת אמיתית:** הטור האחרון של היעד (כולל התקציב המעודכן —
+        // כולל הערות שהועברו קודם לאותו עמוד באותה סריקה) אינו עובר את הקיבולת.
+        const capNoFn = colCapacityOf(target, { fnBudget: false });
+        const usedLast = planningUsedHeight(target.columns[target.columns.length - 1], target);
+        if (usedLast <= capNoFn + CM.CAPACITY_EPS) {
+          changed = true;
+          movedCount++;
+          movedList.push({ noteId: n.noteId || null, marker: n.marker, from: pg.index, to: target.index });
+          eventLog.emit('notes-budget', 'fn-anchor-reconciled', { token: n.tokenId, marker: n.marker, from: pg.index, to: target.index }, target.index);
+          trace.emit(target.index, 'note-anchor-reconciled', { token: n.tokenId, marker: n.marker, from: pg.index });
+        } else {
+          // אין מקום חוקי — לא מעבירים בכוח: נסיגה דטרמיניסטית + פשרה מדווחת
+          target.footnotes.splice(insertAt, 1);
+          recomputeFnBudget(target);
+          keep.push(n);
+          blocked.push({ noteId: n.noteId || null, marker: n.marker, notePage: pg.index, markerPage: target.index });
+          const rec2 = ledger.create('fn-anchor-compromise', `${n.noteId || n.tokenId}@p${pg.index}`, pg.index,
+            { marker: n.marker, notePage: pg.index, markerPage: target.index, reason: 'no-capacity-at-marker-page' }, 'notes-budget');
+          ledger.transition(rec2.issue_id, 'persists', 'notes-budget',
+            `note cannot move to marker page (capacity): marker p${target.index} > note p${pg.index}`);
+        }
+      }
+      if (changed) {
+        pg.footnotes = keep; // הוסרו רק המועברות; הסדר של הנשארות נשמר
+        recomputeFnBudget(pg);
+      }
+    }
+    if (movedCount || blocked.length) {
+      eventLog.emit('notes-budget', 'fn-anchor-reconciliation', { moved: movedCount, blocked: blocked.length });
+    }
+    return { moved: movedCount, blocked: blocked.length, movedList };
+  };
+  const noteAnchorReconciliation = reconcileNotesAfterPlacement();
+
   // S5.1.4 + S5.1.5: הגנות AFTER every mutation, ואז לולאת נסיגה מאוחדת עם גלאי תנודה
   const assess = (page, s, lg) => runProtections(page, s, lg).violations;
   const retreat = runRetreatLoop({
@@ -816,7 +922,7 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
     assess
   });
 
-  return { pages, ledger, retreat, hash: layoutHash(pages), bodyHash: bodyGeometryHash(pages), trace };
+  return { pages, ledger, retreat, hash: layoutHash(pages), bodyHash: bodyGeometryHash(pages), trace, noteAnchorReconciliation };
 }
 
 /** איזון בטוח עם rollback (REQ-BAL-09): snapshot כולל footnotes/sideNotes.

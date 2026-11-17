@@ -548,34 +548,35 @@ function renderDecorations(page, doc) {
     el.style.top = `${Math.round(d.y)}px`;
     el.style.width = `${Math.round(d.w)}px`;
     el.style.height = `${Math.round(d.h)}px`;
-    // **03.11 (EXT-14):** עיטור מסוג 'image' — רקע מההפניה הפתורה (asset-registry)
-    if (d.image) {
-      const uri = assetUri(d.image);
+    // **השלמת חוזה העיטורים (שלב 6 — §6.1-6/§6.1-10):** הדיו נצרך מההצהרה
+    // (ornId/ink) שנקבעה בתכנון — המקרן קורא ואינו מחליט מחדש (F-09). נכס
+    // חיצוני (imud:) נפתר כאן בזמן הציור — טעינת משאב, לא החלטת גיאומטריה.
+    // דיו שאינו פתיר — דיאגנוסטיק גלוי (dataset.inkMissing), לא השתקה.
+    if (d.ornId) el.dataset.ornId = d.ornId;
+    const ink = d.ink || (d.image ? { type: 'image', uri: null, ref: d.image } : null);
+    if (ink && ink.type === 'image') {
+      const uri = (ink.ref ? assetUri(ink.ref) : null) || ink.uri || (d.image ? assetUri(d.image) : null);
       if (uri) {
         el.style.backgroundImage = `url("${uri}")`;
         el.style.backgroundSize = '100% 100%';
         el.style.backgroundRepeat = 'no-repeat';
+      } else {
+        el.dataset.inkMissing = '1'; // asset חיצוני שלא נפתר — מדווח, לא ריק בשקט
       }
+    } else if (ink && ink.type === 'svg' && ink.uri) {
+      el.style.backgroundImage = `url("${ink.uri}")`;
+      el.style.backgroundSize = 'contain';
+      el.style.backgroundPosition = 'center center';
+      el.style.backgroundRepeat = 'no-repeat';
+    } else if (ink && ink.type === 'rule') {
+      el.style.borderTop = '0.75px solid #000';
+      el.style.height = '0px';
+    } else if (ink && ink.type === 'rect' && ink.color) {
+      el.style.backgroundColor = `rgb(${ink.color[0]}, ${ink.color[1]}, ${ink.color[2]})`;
     } else if (d.kindStyle && d.kindStyle !== 'none') {
-      // **EXT-4:** הדיו של kindStyle — מקור יחיד (ornament-ink): SVG מובנה
-      // (pyramid/lance/shoshanta/scroll) או מספריית העיצובים (imud:...) —
-      // רקע data-URI מותאם לתיבה; 'thin' — קו מפריד דק.
-      const ink = ornamentInk(d.kindStyle);
-      if (ink && ink.type === 'svg') {
-        el.style.backgroundImage = `url("${ink.uri}")`;
-        el.style.backgroundSize = 'contain';
-        el.style.backgroundPosition = 'center center';
-        el.style.backgroundRepeat = 'no-repeat';
-      } else if (ink && ink.type === 'rule') {
-        el.style.borderTop = '0.75px solid #000';
-        el.style.height = '0px';
-      } else if (ink && ink.type === 'image') {
-        el.style.backgroundImage = `url("${ink.uri}")`;
-        el.style.backgroundSize = 'contain';
-        el.style.backgroundPosition = 'center center';
-        el.style.backgroundRepeat = 'no-repeat';
-      }
+      el.dataset.inkMissing = '1'; // הצהרה בלי דיו פתיר — גלוי, לא ריק בשקט
     }
+    if (d.inkMissing) el.dataset.inkMissing = '1';
     els.push(el);
   }
   return els;

@@ -234,18 +234,48 @@ registerPageItem('info-box', {
   projectPDF: 'geometry-projector.projectSideNotes (תיבה כעיטור + projectStampedRows)'
 });
 
+// **השלמת חוזה העיטורים (שלב 6 — §6.1-6/§6.1-10):** העיטור מצהיר דרך החוזה על
+// כל מה שהמקרינים צריכים — זהות ומקור (ornId/source), סוג ונכס (kindStyle/ink),
+// מידות טבעיות מול יעד (natural מול w/h), מדיניות fit/scale, עוגן ומיקום סמנטי,
+// גבולות clipping ו-z-order, דרישת שטח שמור (reservation.mode/px/where) ואילוצי
+// placement. ornament-fit נשאר מקור המדדים — אך אין עוד חישובי מידות/fit מקביליים
+// ב-DOM וב-PDF: הם קוראים את ההצהרה הזו (F-09). ה-Planner מקבל את האילוצים לפני
+// ההצבה — ההזמנה (reservation) נקבעה בזמן הפריסה ומוצהרת כאן; אין הזזת טקסט
+// אחרי התכנון לפנות מקום לעיטור.
 registerPageItem('ornament', {
   participation: PAGE_ITEM_PARTICIPATION.RESERVED,
   slot: 'variable',
-  schema: { kindStyle: 'string', x: 'number', y: 'number', w: 'number', h: 'number' },
-  validate: (d) => Boolean(d && d.kindStyle && Number.isFinite(d.x)),
-  reservation: { px: 0, scope: 'all-columns', reason: 'overlay-rects מהפאס (F-09); הזמנת גובה חיה בתוך גבהי השורות (F-08) — לא נספרת פעמיים' },
-  measurement: 'ornament-fit — מדדי התאמה בגודל סופי',
-  placement: 'ornament-plan — פאס עיטורים ניטרלי-גיאומטריה (T1 מוכח)',
-  diagnostics: ['ornament-overflow', 'ornament-overlap', 'ornament-asymmetry'],
-  authority: 'decoration/ornament-plan + ornament-ink',
-  projectDOM: 'dom-renderer.renderDecorations',
-  projectPDF: 'geometry-projector (decorations pdfOps)'
+  schema: {
+    ornId: 'string (deterministic)', kind: 'string', kindStyle: 'string',
+    x: 'number', y: 'number', w: 'number', h: 'number',
+    source: 'string|null (setting key)',
+    ink: '{ type: image|svg|rule|rect, ref?, uri? }|null — declared at plan time',
+    natural: '{ w, h }', scale: 'number>0',
+    fit: '{ mode: fixed|fit-to-text|fit-to-line|fit-to-heading-height|fit-to-budget, reason }',
+    anchor: '{ tokenId: string|null, semantic: above-heading|below-heading|beside-heading|below-line|column-end|page-bottom|overlay }',
+    clip: '{ top, bottom, left, right } — ornament box (content ± h2TopOffset)',
+    zOrder: 'overlay|infrastructure',
+    reservation: '{ mode: overlay|row-padding|column-budget, px, where } — px>0 ⇒ budgeted at layout time',
+    constraints: '{ relativeTo: heading|column|page, bounds, keepsOut }'
+  },
+  validate: (d) => Boolean(d && d.kindStyle && Number.isFinite(d.x)
+    && typeof d.ornId === 'string' && d.ornId.length > 0
+    && d.natural && Number.isFinite(d.natural.w) && Number.isFinite(d.natural.h)
+    && d.fit && typeof d.fit.mode === 'string'
+    && d.anchor && typeof d.anchor.semantic === 'string'
+    && d.clip && Number.isFinite(d.clip.top) && Number.isFinite(d.clip.bottom)
+    && (d.zOrder === 'overlay' || d.zOrder === 'infrastructure')
+    && d.reservation && typeof d.reservation.mode === 'string'
+    && d.constraints && typeof d.constraints.relativeTo === 'string'
+    && (d.ink == null || (d.ink && typeof d.ink.type === 'string'))
+    && (d.inkMissing === true || d.ink != null || d.kindStyle === 'none')),
+  reservation: { px: 0, scope: 'all-columns', reason: 'overlay-rects מהפאס (F-09); הזמנת גובה חיה בתוך גבהי השורות (F-08) — לא נספרת פעמיים; ההצהרה הפר-עיטור (reservation.mode/px/where) מתעדת היכן תוקצב בפועל' },
+  measurement: 'ornament-fit — מדדי התאמה בגודל סופי; ההצהרה (natural/scale/fit) מתעדת את ההחלטה',
+  placement: 'ornament-plan — פאס עיטורים ניטרלי-גיאומטריה (T1 מוכח); ההצהרה (anchor/clip/zOrder/reservation/constraints) מתעדת את האילוצים',
+  diagnostics: ['ornament-overflow', 'ornament-overlap', 'ornament-asymmetry', 'ornament-ink-missing'],
+  authority: 'decoration/ornament-plan + ornament-fit + ornament-ink',
+  projectDOM: 'dom-renderer.renderDecorations (מההצהרה: rect+ink+cssClass)',
+  projectPDF: 'geometry-projector (decorations pdfOps — מההצהרה)'
 });
 
 registerPageItem('shaar-gate', {

@@ -292,7 +292,23 @@ function projectPage(page, settings, api) {
         x: d.x, y: d.y, w: d.w, h: d.h,
         kind: d.kind || null, slot: d.slot || null, kindStyle: d.kindStyle || null,
         inkType: ink ? ink.type : null, inkUri: ink && ink.uri ? ink.uri : null,
-        paint, pdfOps
+        paint, pdfOps,
+        // **השלמת חוזה העיטורים (שלב 6):** ההצהרה מהתוכנית עוברת בשלמותה —
+        // ההקרנה מוסיפה אריזת-ציור (paint/pdfOps) ואינה מפילה נתוני חוזה.
+        ...(d.ornId ? { ornId: d.ornId } : {}),
+        ...(d.source != null ? { source: d.source } : {}),
+        ...(d.image ? { image: d.image } : {}),
+        ...(d.ink ? { ink: { ...d.ink } } : {}),
+        ...(d.inkMissing ? { inkMissing: true } : {}),
+        ...(d.natural ? { natural: { w: d.natural.w, h: d.natural.h } } : {}),
+        ...(d.scale != null ? { scale: d.scale } : {}),
+        ...(d.fit ? { fit: { ...d.fit } } : {}),
+        ...(d.anchor ? { anchor: { ...d.anchor } } : {}),
+        ...(d.clip ? { clip: { ...d.clip } } : {}),
+        ...(d.zOrder ? { zOrder: d.zOrder } : {}),
+        ...(d.reservation ? { reservation: { ...d.reservation } } : {}),
+        ...(d.constraints ? { constraints: { ...d.constraints } } : {}),
+        ...(d.cssClass ? { cssClass: d.cssClass } : {})
       };
     });
   }

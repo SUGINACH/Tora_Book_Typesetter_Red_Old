@@ -391,6 +391,7 @@ var __paths = {
   "src/engine/layout/protections-matrix.js|./balancing": "src/engine/layout/balancing.js",
   "src/engine/layout/protections-matrix.js|./column-flow": "src/engine/layout/column-flow.js",
   "src/engine/layout/protections-matrix.js|../notes/markers": "src/engine/notes/markers.js",
+  "src/engine/layout/protections-matrix.js|./constraint-matrix": "src/engine/layout/constraint-matrix.js",
   "src/engine/layout/balancing.js|./column-flow": "src/engine/layout/column-flow.js",
   "src/engine/layout/balancing.js|./constraint-matrix": "src/engine/layout/constraint-matrix.js",
   "src/engine/layout/column-flow.js|./page-templates": "src/engine/layout/page-templates.js",
@@ -422,7 +423,10 @@ var __paths = {
   "src/engine/layout/side-notes.js|./notes-model": "src/engine/layout/notes-model.js",
   "src/engine/decoration/ornament-plan.js|./ornament-fit": "src/engine/decoration/ornament-fit.js",
   "src/engine/decoration/ornament-plan.js|./dividers": "src/engine/decoration/dividers.js",
+  "src/engine/decoration/ornament-plan.js|./ornament-ink": "src/engine/decoration/ornament-ink.js",
   "src/engine/decoration/dividers.js|./ornament-fit": "src/engine/decoration/ornament-fit.js",
+  "src/engine/decoration/ornament-ink.js|./asset-registry": "src/engine/decoration/asset-registry.js",
+  "src/engine/decoration/asset-registry.js|./svg-sanitize": "src/engine/decoration/svg-sanitize.js",
   "src/engine/layout/endnote-pages.js|./page-templates": "src/engine/layout/page-templates.js",
   "src/engine/layout/endnote-pages.js|../notes/markers": "src/engine/notes/markers.js",
   "src/engine/layout/endnote-pages.js|./notes-model": "src/engine/layout/notes-model.js",
@@ -457,8 +461,6 @@ var __paths = {
   "src/engine/output/dom-renderer.js|../typography/measure-api": "src/engine/typography/measure-api.js",
   "src/engine/output/dom-renderer.js|../layout/legacy-imud-flow": "src/engine/layout/legacy-imud-flow.js",
   "src/engine/decoration/page-decorations.js|../layout/page-templates": "src/engine/layout/page-templates.js",
-  "src/engine/decoration/asset-registry.js|./svg-sanitize": "src/engine/decoration/svg-sanitize.js",
-  "src/engine/decoration/ornament-ink.js|./asset-registry": "src/engine/decoration/asset-registry.js",
   "src/ui/worker-protocol.js|../audit/report-schema": "src/audit/report-schema.js",
   "src/audit/report-schema.js|../engine/layout/dp-planner": "src/engine/layout/dp-planner.js",
   "src/audit/report-schema.js|../engine/layout/legacy-imud-flow": "src/engine/layout/legacy-imud-flow.js",
@@ -9217,6 +9219,112 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
     }
   }
 
+  // **§3.2 (ביקורת PR #16 — העברת פתרון השורש למודל ההערות המאוחד):**
+  // reconcileNotesAfterPlacement — אחרי ההצבה המלאה. שורש הפגם: reserveNotes
+  // מחייב את **כל** הערות הבלוק בעמוד הסמן **הראשון** (FX-3); כשסמנים
+  // מאוחרים של אותו בלוק נוחתים בעמוד הבא (פיצול פסקה / זרימה), ההערות
+  // שלהם נשארות עמוד קודם לסמן — "הערה לפני העוגן" (הוכח בפועל:
+  // very_long, 6 הפרות — ראה tools/audit-note-anchors.js). התיקון: העברה
+  // קדימה של הערה לעמוד הסמן שלה **בקיבולת אמיתית מצטברת** — הטור האחרון
+  // של עמוד היעד + התקציב הקיים + ההערות שכבר הועברו אליו. המשכים
+  // (isContinuation/split-rest) אינם מוזזים כהערות מקוריות — הם קשורים
+  // לזרימת הפיצול של המקור. אין מקום חוקי ⇒ לא מעבירים בכוח — נרשם
+  // diagnostic אמיתי (fn-anchor-compromise). זהות נשמרת במלואה: noteId,
+  // anchorId, continuationOf, wordRange, סמן ומספור — מוקזים בלבד.
+  const reconcileNotesAfterPlacement = () => {
+    if (!settings['footnotes-enabled']) return { moved: 0, blocked: 0, movedList: [] };
+    // מיפוי טוקן-עוגן → שורות הסמן בפועל (עמוד/טור/שורה + טקסט הסמן)
+    const markerLines = new Map();
+    for (const pg of pages) {
+      pg.columns.forEach((col, ci) => {
+        col.forEach((ln, li) => {
+          const tok = ln.tokenId != null ? String(ln.tokenId) : (ln.meta && ln.meta.tokenId != null ? String(ln.meta.tokenId) : null);
+          if (!tok) return;
+          for (const w of (ln.words || [])) {
+            const s = String(w);
+            const at = s.indexOf(MARK_TAG);
+            if (at < 0) continue;
+            if (!markerLines.has(tok)) markerLines.set(tok, []);
+            markerLines.get(tok).push({ page: pg, col: ci, li, marker: s.slice(at + MARK_TAG.length) });
+          }
+        });
+      });
+    }
+    const markerRecOf = (n) => {
+      const tok = n.tokenId != null ? String(n.tokenId) : (n.anchorId != null ? String(n.anchorId) : null);
+      if (!tok) return null;
+      const cands = markerLines.get(tok) || [];
+      if (!cands.length) return null;
+      const mk = String(n.marker != null ? n.marker : '');
+      if (mk) {
+        const hit = cands.find(m => m.marker === mk);
+        if (hit) return hit;
+        // טקסט הסמן לא זוהה — נפילה לסמן היחיד של הטוקן בלבד (חד-משמעי);
+        // ריבוי סמנים בלי התאמה ⇒ אין זיהוי בטוח — לא מזיזים (כיוון שמרני)
+        return cands.length === 1 ? cands[0] : null;
+      }
+      return cands.length === 1 ? cands[0] : null;
+    };
+    let movedCount = 0;
+    const movedList = [], blocked = [];
+    for (const pg of pages) {
+      if (!(pg.footnotes || []).length) continue;
+      const keep = [];
+      let changed = false;
+      for (const n of pg.footnotes) {
+        const isCont = n.isContinuation === true || n.mode === 'split-rest' || n.continuationOf != null;
+        const rec = isCont ? null : markerRecOf(n);
+        // חוקי: אין רשומת סמן / אותו עמוד / הסמן בעמוד מוקדם — אין מה לתקן
+        if (!rec || rec.page === pg || rec.page.index < pg.index) { keep.push(n); continue; }
+        const target = rec.page;
+        // הכנסה לפי מיקום הסמן בסדר הקריאה של עמוד היעד — הסדר החזותי במרזב
+        // עוקב אחר סדר הסמנים בגוף (מדויק ודטרמיניסטי; נפילה לסוף כשאין רשומות)
+        const tRec = markerRecOf(n);
+        let insertAt = target.footnotes.length;
+        for (let i = target.footnotes.length - 1; i >= 0; i--) {
+          const other = markerRecOf(target.footnotes[i]);
+          if (other && other.page === target && (other.col < tRec.col || (other.col === tRec.col && other.li <= tRec.li))) {
+            insertAt = i + 1;
+            break;
+          }
+          if (!other) { insertAt = i + 1; break; }
+        }
+        target.footnotes.splice(insertAt, 0, n);
+        recomputeFnBudget(target);
+        // **קיבולת מצטברת אמיתית:** הטור האחרון של היעד (כולל התקציב המעודכן —
+        // כולל הערות שהועברו קודם לאותו עמוד באותה סריקה) אינו עובר את הקיבולת.
+        const capNoFn = colCapacityOf(target, { fnBudget: false });
+        const usedLast = planningUsedHeight(target.columns[target.columns.length - 1], target);
+        if (usedLast <= capNoFn + CM.CAPACITY_EPS) {
+          changed = true;
+          movedCount++;
+          movedList.push({ noteId: n.noteId || null, marker: n.marker, from: pg.index, to: target.index });
+          eventLog.emit('notes-budget', 'fn-anchor-reconciled', { token: n.tokenId, marker: n.marker, from: pg.index, to: target.index }, target.index);
+          trace.emit(target.index, 'note-anchor-reconciled', { token: n.tokenId, marker: n.marker, from: pg.index });
+        } else {
+          // אין מקום חוקי — לא מעבירים בכוח: נסיגה דטרמיניסטית + פשרה מדווחת
+          target.footnotes.splice(insertAt, 1);
+          recomputeFnBudget(target);
+          keep.push(n);
+          blocked.push({ noteId: n.noteId || null, marker: n.marker, notePage: pg.index, markerPage: target.index });
+          const rec2 = ledger.create('fn-anchor-compromise', `${n.noteId || n.tokenId}@p${pg.index}`, pg.index,
+            { marker: n.marker, notePage: pg.index, markerPage: target.index, reason: 'no-capacity-at-marker-page' }, 'notes-budget');
+          ledger.transition(rec2.issue_id, 'persists', 'notes-budget',
+            `note cannot move to marker page (capacity): marker p${target.index} > note p${pg.index}`);
+        }
+      }
+      if (changed) {
+        pg.footnotes = keep; // הוסרו רק המועברות; הסדר של הנשארות נשמר
+        recomputeFnBudget(pg);
+      }
+    }
+    if (movedCount || blocked.length) {
+      eventLog.emit('notes-budget', 'fn-anchor-reconciliation', { moved: movedCount, blocked: blocked.length });
+    }
+    return { moved: movedCount, blocked: blocked.length, movedList };
+  };
+  const noteAnchorReconciliation = reconcileNotesAfterPlacement();
+
   // S5.1.4 + S5.1.5: הגנות AFTER every mutation, ואז לולאת נסיגה מאוחדת עם גלאי תנודה
   const assess = (page, s, lg) => runProtections(page, s, lg).violations;
   const retreat = runRetreatLoop({
@@ -9254,7 +9362,7 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
     assess
   });
 
-  return { pages, ledger, retreat, hash: layoutHash(pages), bodyHash: bodyGeometryHash(pages), trace };
+  return { pages, ledger, retreat, hash: layoutHash(pages), bodyHash: bodyGeometryHash(pages), trace, noteAnchorReconciliation };
 }
 
 /** איזון בטוח עם rollback (REQ-BAL-09): snapshot כולל footnotes/sideNotes.
@@ -9562,6 +9670,11 @@ __modules["src/engine/layout/protections-matrix.js"] = function (require, module
 const { usedHeight, pageImbalance } = require('./balancing');
 const { colCapacityOf } = require('./column-flow'); // **S5.2 (P-2):** קיבולת טור — מקור יחיד
 const { MARK_TAG } = require('../notes/markers');
+// **ביקורת ממוקדת PR #17 (שארית שהועברה):** ספי ה-widow/orphan/ליווי כאן
+// נצרכים ממטריצת האילוצים (constraint-matrix) — אותו מקור סמכות שממנו
+// dp-planner ו-candidate-generator קוראים. בעבר נותרו מילולים `2` מקומיים
+// (ערך זהה, אך שני מקורות לאותה עובדה — בדיוק הכפילות שהתוכנית אוסרת).
+const { WIDOW_ORPHAN_MIN, ESCORT_MIN_LINES } = require('./constraint-matrix');
 
 /** עמודים מבניים שאינם זרימת-תוכן — כותרת בודדת בהם היא מכוונת-עיצוב,
  * לא הפרת ליווי (S4.21/EXT-11: פותחי-החלקים H1 על עמוד פתיחה ייעודי — D-36/PT-04). */
@@ -9609,7 +9722,7 @@ const CHECKS = {
       if (first.meta && first.meta.part === 'rest') {
         let run = 0;
         for (const l of col) { if (l.meta && l.meta.tokenId === first.meta.tokenId) run++; else break; }
-        if (run < 2) {
+        if (run < WIDOW_ORPHAN_MIN) {
           if (settings['prevent-widows-top'] && first.isLast) {
             violations.push({ kind: 'widow-top', target: `page#${page.index}c${c}`, page: page.index, evidence: { run }, ledgerRef: ledger.create('widow-top', `p${page.index}c${c}`, page.index, { run }, 'protections').issue_id });
           } else if (settings['prevent-orphans-top'] && settings['widow-strictness'] !== 'relaxed') {
@@ -9649,7 +9762,7 @@ const CHECKS = {
         const ln = col[i];
         if (ln.kind === 'heading' && ln.level <= 6) {
           const after = col.slice(i + 1).filter(x => x.kind !== 'heading').length;
-          if (after < 2) {
+          if (after < ESCORT_MIN_LINES) {
             violations.push({ kind: 'heading-escort', target: `${ln.tokenId || lineToken(ln)}@p${page.index}c${c}`, page: page.index, evidence: { linesAfter: after }, ledgerRef: ledger.create('heading-escort', ln.tokenId || lineToken(ln), page.index, { linesAfter: after }, 'protections').issue_id });
           }
         }
@@ -18238,6 +18351,7 @@ const {
   sideOrnamentOffsetY, sideOrnamentLiftPx, assertSingleSourceSizing
 } = require('./ornament-fit');
 const { headingDividerDecision, shaarDividerDecision, createDividerCounters } = require('./dividers');
+const { ornamentInk } = require('./ornament-ink'); // **השלמת שלב 6 (§6.1-6/§6.1-10):** זהות הדיו נקבעת בהצבה — המקרינים צורכים
 
 /** גובה ברירת־מחדל לעיטור סיום פרק (em של גוף הטקסט). */
 const ORN_NATURAL_W_EM = 4, ORN_NATURAL_H_EM = 1.2;
@@ -18335,12 +18449,31 @@ function planPageOrnaments(pages, settings, measureFn, io = {}) {
 
         if (scope.signTop) {
           const y = titleTop - ornMargins.top - h; // בתוך האזור שהוזמן (F-08)
-          pushOrnament(page, { kind: 'h2-ornament', slot: 'h2-top', kindStyle: settings['h2-orn-top'], x: Math.round(cx - w / 2), y, w, h, marginGapTop: titleTop - (y + h) }, rejected, pi, settings);
+          pushOrnament(page, { kind: 'h2-ornament', slot: 'h2-top', kindStyle: settings['h2-orn-top'], x: Math.round(cx - w / 2), y, w, h, marginGapTop: titleTop - (y + h) }, rejected, pi, settings, { ledger }, {
+            naturalW: Math.round(H2_ORN_W_EM * fontPx), naturalH: Math.round(H2_ORN_H_EM * fontPx),
+            scale: orn ? (orn.scale || 1) : 1, fitMode: 'fit-to-text', fitReason: settings['h2-orn-fit-to-text'] !== false ? 'fit-to-text' : 'disabled',
+            anchorTokenId: titleLines[0] && (titleLines[0].tokenId != null ? titleLines[0].tokenId : (titleLines[0].meta && titleLines[0].meta.tokenId)),
+            semantic: 'above-heading', relativeTo: 'heading',
+            reservationMode: 'row-padding', reservedPx: topPad,
+            reservationWhere: spanLines.length ? 'spanning.titleTopPadPx' : 'line.h2OrnPadTop'
+          });
           planted.h2Top++;
         }
         if (scope.signBottom) {
           const y = titleBottom + ornMargins.bottom; // בתוך ההזמנה התחתונה
-          pushOrnament(page, { kind: 'h2-ornament', slot: 'h2-bottom', kindStyle: settings['h2-orn-bottom'], x: Math.round(cx - w / 2), y, w, h, marginGapBottom: y - titleBottom }, rejected, pi, settings);
+          // ההזמנה התחתונה בפועל: בפס חוצה-טורים — bottomPx מההזמנה שנקבעה בפריסה
+          // (spanning.heightPx = topPad+bandH+bottomPad); בטור — padding השורה.
+          const bottomPadActual = spanLines.length
+            ? (orn && orn.scope && orn.scope.signBottom ? orn.bottomPx : 0)
+            : (titleLines[titleLines.length - 1].h2OrnPadBottom || 0);
+          pushOrnament(page, { kind: 'h2-ornament', slot: 'h2-bottom', kindStyle: settings['h2-orn-bottom'], x: Math.round(cx - w / 2), y, w, h, marginGapBottom: y - titleBottom }, rejected, pi, settings, { ledger }, {
+            naturalW: Math.round(H2_ORN_W_EM * fontPx), naturalH: Math.round(H2_ORN_H_EM * fontPx),
+            scale: orn ? (orn.scale || 1) : 1, fitMode: 'fit-to-text', fitReason: settings['h2-orn-fit-to-text'] !== false ? 'fit-to-text' : 'disabled',
+            anchorTokenId: titleLines[0] && (titleLines[0].tokenId != null ? titleLines[0].tokenId : (titleLines[0].meta && titleLines[0].meta.tokenId)),
+            semantic: 'below-heading', relativeTo: 'heading',
+            reservationMode: 'row-padding', reservedPx: bottomPadActual,
+            reservationWhere: spanLines.length ? 'spanning.heightPx (bottomPad)' : 'line.h2OrnPadBottom'
+          });
           planted.h2Bottom++;
         }
         if (scope.titleSide) {
@@ -18348,8 +18481,15 @@ function planPageOrnaments(pages, settings, measureFn, io = {}) {
           const sideH = Math.min(h, Math.round(titleH));
           const lift = sideOrnamentLiftPx(fontPx);
           const gap = Math.round(fontPx * 0.35);
-          pushOrnament(page, { kind: 'h2-ornament', slot: 'h2-side-right', kindStyle: settings['h2-orn-side'], x: Math.round(colX + colW - titleW - gap - w), y: titleTop + sideOrnamentOffsetY(titleH, sideH) + lift, w, h: sideH }, rejected, pi, settings);
-          pushOrnament(page, { kind: 'h2-ornament', slot: 'h2-side-left', kindStyle: settings['h2-orn-side'], x: Math.round(colX + titleW + gap), y: titleTop + sideOrnamentOffsetY(titleH, sideH) + lift, w, h: sideH }, rejected, pi, settings);
+          const sideDecl = {
+            naturalW: Math.round(H2_ORN_W_EM * fontPx), naturalH: Math.round(H2_ORN_H_EM * fontPx),
+            scale: h > 0 ? sideH / h : 1, fitMode: 'fit-to-heading-height', fitReason: 'side-height-capped-by-title',
+            anchorTokenId: titleLines[0] && (titleLines[0].tokenId != null ? titleLines[0].tokenId : (titleLines[0].meta && titleLines[0].meta.tokenId)),
+            semantic: 'beside-heading', relativeTo: 'heading',
+            reservationMode: 'overlay', reservedPx: 0, reservationWhere: null
+          };
+          pushOrnament(page, { kind: 'h2-ornament', slot: 'h2-side-right', kindStyle: settings['h2-orn-side'], x: Math.round(colX + colW - titleW - gap - w), y: titleTop + sideOrnamentOffsetY(titleH, sideH) + lift, w, h: sideH }, rejected, pi, settings, { ledger }, sideDecl);
+          pushOrnament(page, { kind: 'h2-ornament', slot: 'h2-side-left', kindStyle: settings['h2-orn-side'], x: Math.round(colX + titleW + gap), y: titleTop + sideOrnamentOffsetY(titleH, sideH) + lift, w, h: sideH }, rejected, pi, settings, { ledger }, sideDecl);
           planted.h2Side += 2;
         }
       }
@@ -18369,8 +18509,15 @@ function planPageOrnaments(pages, settings, measureFn, io = {}) {
           const lift = sideOrnamentLiftPx(fontPx);
           const yy = tpl.contentBox.top + sideOrnamentOffsetY(lineH, sideH) + lift;
           const wSide = Math.round(fontPx * 1.2);
-          pushOrnament(page, { kind: 'h3-side-ornament', slot: 'h3-side-right', kindStyle: settings['h3-side-orn'], x: Math.round(right - wSide), y: yy, w: wSide, h: Math.min(sideH, lineH) }, rejected, pi, settings);
-          pushOrnament(page, { kind: 'h3-side-ornament', slot: 'h3-side-left', kindStyle: settings['h3-side-orn'], x: Math.round(left), y: yy, w: wSide, h: Math.min(sideH, lineH) }, rejected, pi, settings);
+          const h3Decl = {
+            naturalW: wSide, naturalH: sideH,
+            scale: sideH > 0 ? Math.min(sideH, lineH) / sideH : 1, fitMode: 'fit-to-line', fitReason: 'side-height-capped-by-line',
+            anchorTokenId: bln.tokenId != null ? bln.tokenId : (bln.meta && bln.meta.tokenId),
+            semantic: 'beside-heading', relativeTo: 'heading',
+            reservationMode: 'overlay', reservedPx: 0, reservationWhere: null
+          };
+          pushOrnament(page, { kind: 'h3-side-ornament', slot: 'h3-side-right', kindStyle: settings['h3-side-orn'], x: Math.round(right - wSide), y: yy, w: wSide, h: Math.min(sideH, lineH) }, rejected, pi, settings, { ledger }, h3Decl);
+          pushOrnament(page, { kind: 'h3-side-ornament', slot: 'h3-side-left', kindStyle: settings['h3-side-orn'], x: Math.round(left), y: yy, w: wSide, h: Math.min(sideH, lineH) }, rejected, pi, settings, { ledger }, h3Decl);
           planted.h3Side += 2;
         }
       }
@@ -18387,8 +18534,15 @@ function planPageOrnaments(pages, settings, measureFn, io = {}) {
           const lift = sideOrnamentLiftPx(fontPx);
           const yy = yTop + sideOrnamentOffsetY(lineH, sideH) + lift;
           const wSide = Math.round(fontPx * 1.2);
-          pushOrnament(page, { kind: 'h3-side-ornament', slot: 'h3-side-right', kindStyle: settings['h3-side-orn'], x: Math.round(colX + colW - wSide), y: yy, w: wSide, h: Math.min(sideH, lineH) }, rejected, pi, settings);
-          pushOrnament(page, { kind: 'h3-side-ornament', slot: 'h3-side-left', kindStyle: settings['h3-side-orn'], x: Math.round(colX), y: yy, w: wSide, h: Math.min(sideH, lineH) }, rejected, pi, settings);
+          const h3ColDecl = {
+            naturalW: wSide, naturalH: sideH,
+            scale: sideH > 0 ? Math.min(sideH, lineH) / sideH : 1, fitMode: 'fit-to-line', fitReason: 'side-height-capped-by-line',
+            anchorTokenId: ln.tokenId != null ? ln.tokenId : (ln.meta && ln.meta.tokenId),
+            semantic: 'beside-heading', relativeTo: 'heading',
+            reservationMode: 'overlay', reservedPx: 0, reservationWhere: null
+          };
+          pushOrnament(page, { kind: 'h3-side-ornament', slot: 'h3-side-right', kindStyle: settings['h3-side-orn'], x: Math.round(colX + colW - wSide), y: yy, w: wSide, h: Math.min(sideH, lineH) }, rejected, pi, settings, { ledger }, h3ColDecl);
+          pushOrnament(page, { kind: 'h3-side-ornament', slot: 'h3-side-left', kindStyle: settings['h3-side-orn'], x: Math.round(colX), y: yy, w: wSide, h: Math.min(sideH, lineH) }, rejected, pi, settings, { ledger }, h3ColDecl);
           planted.h3Side += 2;
         }
       }
@@ -18413,7 +18567,12 @@ function planPageOrnaments(pages, settings, measureFn, io = {}) {
           counters.record(dec.rollbackKey);
           const wDiv = Math.min(Math.round(fullW * 0.5), Math.round(fontPx * 6));
           const y = tpl.contentBox.top + used - Math.round((bln.heightPx || 0) / 2) - 1;
-          pushOrnament(page, { kind: 'heading-divider', slot: `hdr-div-l${bln.level}`, kindStyle: 'thin', x: Math.round(left + (fullW - wDiv) / 2), y, w: wDiv, h: DIVIDER_H_PX, rollbackKey: dec.rollbackKey }, rejected, pi, settings);
+          pushOrnament(page, { kind: 'heading-divider', slot: `hdr-div-l${bln.level}`, kindStyle: 'thin', x: Math.round(left + (fullW - wDiv) / 2), y, w: wDiv, h: DIVIDER_H_PX, rollbackKey: dec.rollbackKey }, rejected, pi, settings, { ledger }, {
+            naturalW: wDiv, naturalH: DIVIDER_H_PX, scale: 1, fitMode: 'fixed', fitReason: 'fixed-divider',
+            anchorTokenId: (bln.meta && bln.meta.tokenId) || bln.tokenId,
+            semantic: 'below-heading', relativeTo: 'heading',
+            reservationMode: 'overlay', reservedPx: 0, reservationWhere: null
+          });
           planted.headingDivider++;
         } else if (dec.why !== 'disabled' && dec.why !== 'column-head-or-empty') {
           rejected.push({ page: pi, kind: 'heading-divider', why: dec.why });
@@ -18446,7 +18605,12 @@ function planPageOrnaments(pages, settings, measureFn, io = {}) {
             counters.record(dec.rollbackKey);
             const y = tpl.contentBox.top + usedSoFar - Math.round((ln.heightPx || 0) / 2) - 1;
             const wDiv = Math.min(Math.round(colW * 0.5), Math.round(fontPx * 6));
-            pushOrnament(page, { kind: 'heading-divider', slot: `hdr-div-l${ln.level}`, kindStyle: 'thin', x: Math.round(colX + (colW - wDiv) / 2), y, w: wDiv, h: DIVIDER_H_PX, rollbackKey: dec.rollbackKey }, rejected, pi, settings);
+            pushOrnament(page, { kind: 'heading-divider', slot: `hdr-div-l${ln.level}`, kindStyle: 'thin', x: Math.round(colX + (colW - wDiv) / 2), y, w: wDiv, h: DIVIDER_H_PX, rollbackKey: dec.rollbackKey }, rejected, pi, settings, { ledger }, {
+              naturalW: wDiv, naturalH: DIVIDER_H_PX, scale: 1, fitMode: 'fixed', fitReason: 'fixed-divider',
+              anchorTokenId: (ln.meta && ln.meta.tokenId) || ln.tokenId,
+              semantic: 'below-heading', relativeTo: 'heading',
+              reservationMode: 'overlay', reservedPx: 0, reservationWhere: null
+            });
             planted.headingDivider++;
           } else if (dec.why !== 'disabled' && dec.why !== 'column-head-or-empty') {
             rejected.push({ page: pi, kind: 'heading-divider', why: dec.why });
@@ -18461,7 +18625,11 @@ function planPageOrnaments(pages, settings, measureFn, io = {}) {
       if (dec.insert) {
         const wDiv = Math.round(tpl.columns[0].w * 0.4);
         const y = tpl.contentBox.bottom - Math.round(fontPx * 2);
-        pushOrnament(page, { kind: 'shaar-divider', slot: `shaar-div-${page.type}`, kindStyle: dec.style, x: Math.round(tpl.columns[0].x + (tpl.columns[0].w - wDiv) / 2), y, w: wDiv, h: DIVIDER_H_PX }, rejected, pi, settings);
+        pushOrnament(page, { kind: 'shaar-divider', slot: `shaar-div-${page.type}`, kindStyle: dec.style, x: Math.round(tpl.columns[0].x + (tpl.columns[0].w - wDiv) / 2), y, w: wDiv, h: DIVIDER_H_PX }, rejected, pi, settings, { ledger }, {
+          naturalW: wDiv, naturalH: DIVIDER_H_PX, scale: 1, fitMode: 'fixed', fitReason: 'fixed-divider',
+          anchorTokenId: null, semantic: 'page-bottom', relativeTo: 'page',
+          reservationMode: 'overlay', reservedPx: 0, reservationWhere: null
+        });
         planted.shaarDivider++;
       }
     }
@@ -18486,7 +18654,12 @@ function planPageOrnaments(pages, settings, measureFn, io = {}) {
             kind: 'chapter-end-ornament', slot: 'chapter-end', kindStyle: settings['chapter-end-ornament'],
             x: Math.round(colX + (colW - fit.wPx) / 2), y: Math.round(tpl.contentBox.top + used + (budget - fit.hPx) / 2),
             w: fit.wPx, h: fit.hPx
-          }, rejected, pi, settings);
+          }, rejected, pi, settings, { ledger }, {
+            naturalW: wPx, naturalH: hPx,
+            scale: fit.scale, fitMode: 'fit-to-budget', fitReason: fit.reason,
+            anchorTokenId: null, semantic: 'column-end', relativeTo: 'column',
+            reservationMode: 'column-budget', reservedPx: fit.hPx, reservationWhere: 'remaining-column-budget'
+          });
           planted.chapterEnd++;
         } else if (fit.reason !== 'kind-none' && fit.reason !== 'kind-unknown') {
           rejected.push({ page: pi, kind: 'chapter-end-ornament', why: fit.reason, budget: Math.round(budget) });
@@ -18529,15 +18702,112 @@ function imageRefForOrnament(orn, settings) {
   return null;
 }
 
-/** הוספת rect עיטור עם אימות מקור־יחיד (F-09). */
-function pushOrnament(page, orn, rejected, pageIndex, settings) {
+/** מפתח ההגדרה שממנו נולד העיטור — חלק מהצהרת הזהות והמקור (§6.1-6). */
+function sourceSettingKeyOf(orn) {
+  const slot = String((orn && orn.slot) || '');
+  if (slot.startsWith('h2-top')) return 'h2-orn-top';
+  if (slot.startsWith('h2-bottom')) return 'h2-orn-bottom';
+  if (slot.startsWith('h2-side')) return 'h2-orn-side';
+  if (slot.startsWith('h3-side')) return 'h3-side-orn';
+  if (slot.startsWith('chapter-end')) return 'chapter-end-ornament';
+  if (slot.startsWith('hdr-div')) return 'heading-dividers-h3-h6';
+  if (slot.startsWith('shaar-div')) return 'shaar-divider-style';
+  return null;
+}
+
+/**
+ * **השלמת חוזה העיטורים (שלב 6 — §6.1-6/§6.1-10 בתוכנית):** הצהרה מלאה של
+ * עיטור אחד, כפי שחוזה פריט העמוד דורש — זהות ומקור, סוג ונכס, מידות טבעיות
+ * מול מידות יעד, מדיניות fit/scale, עוגן ומיקום סמנטי, גבולות clipping ו-z-order,
+ * דרישת שטח שמור, ואילוצי placement מול טקסט/כותרות/שערים/גבולות העמוד.
+ * כל אלה נקבעים **בזמן התכנון** — המקרינים (DOM/PDF/PageModel) קוראים ואינם
+ * מחשבים מחדש (F-09: מקור יחיד; הכרזה כאן היא המקור).
+ * @param {object} orn - העיטור עם ה-rect הסופי (x/y/w/h) + נתוני ההצבה
+ * @param {object} ctx - { page, seq, decl } — decl: {naturalW, naturalH, scale,
+ *   fitMode, fitReason, anchorTokenId, semantic, reservationMode, reservedPx,
+ *   reservationWhere, relativeTo }
+ * @returns {object} שדות ההצהרה למיזוג לרשומת העיטור
+ */
+function ornamentDeclarationOf(orn, ctx) {
+  const page = ctx.page;
+  const decl = ctx.decl || {};
+  const tpl = page.template || {};
+  const cb = tpl.contentBox || { top: 0, bottom: 0 };
+  const semantic = decl.semantic || 'overlay';
+  const relativeTo = decl.relativeTo || (semantic.includes('heading') ? 'heading' : 'page');
+  return {
+    // זהות ומקור — דטרמיניסטי (אין מונה-ריצה; אותו קלט ⇒ אותו מזהה)
+    ornId: `orn-p${page.index != null ? page.index : 'x'}-${orn.slot || 'slot'}-${ctx.seq}`,
+    source: sourceSettingKeyOf(orn),
+    // סוג ונכס: הדיו נפתר כאן פעם אחת — זהות בלבד; ה-URI של נכס חיצוני
+    // נפתח בזמן הרינדור (רישום הנכסים חי ב-UI) — ואז גם נבדק ומדווח
+    ink: inkOfOrnament(orn),
+    // מידות טבעיות מול מידות יעד + מדיניות fit/scale (§6.1-6)
+    natural: { w: Number(decl.naturalW) || orn.w, h: Number(decl.naturalH) || orn.h },
+    scale: Number.isFinite(Number(decl.scale)) && Number(decl.scale) > 0 ? Number(decl.scale) : 1,
+    fit: { mode: decl.fitMode || 'fixed', reason: decl.fitReason || 'natural-size' },
+    // עוגן ומיקום סמנטי (§6.1-6)
+    anchor: { tokenId: decl.anchorTokenId != null ? String(decl.anchorTokenId) : null, semantic },
+    // גבולות clipping ו-z-order — תיבת העיטורים של האודיט (content ± h2TopOffset)
+    clip: {
+      top: cb.top - (tpl.h2TopOffset || 0),
+      bottom: cb.bottom,
+      left: 0,
+      right: Number.isFinite(tpl.width) ? tpl.width : null
+    },
+    zOrder: 'overlay',
+    // דרישת שטח שמור: היכן הגובה תוקצב בפועל (F-08) — או 0 ל-overlay טהור
+    reservation: {
+      mode: decl.reservationMode || 'overlay',
+      px: Number(decl.reservedPx) || 0,
+      where: decl.reservationWhere || null
+    },
+    // אילוצי placement: יחס העיטור לטקסט/כותרות/גבולות — הצהרה, לא חישוב
+    constraints: {
+      relativeTo,
+      bounds: 'ornament-box', // content-box + שטח h2-top השמור (כמו האודיט)
+      keepsOut: decl.reservationMode === 'row-padding' || decl.reservationMode === 'column-budget' ? 'body-text' : 'none'
+    }
+  };
+}
+
+/** זהות הדיו של עיטור: תמונה חיצונית / SVG מובנה / כלל / מלבן — או null (חסר). */
+function inkOfOrnament(orn) {
+  if (!orn) return null;
+  if (orn.kindStyle === 'image') return { type: 'image', ref: null, uri: null };
+  const ink = ornamentInk(orn.kindStyle);
+  if (!ink) return null;
+  if (ink.type === 'svg' || ink.type === 'image') return { type: ink.type, ref: null, uri: ink.uri || null };
+  return { type: ink.type, ref: null, uri: null }; // rule / rect — דיו וקטורי ללא URI
+}
+
+/**
+ * הוספת rect עיטור עם אימות מקור־יחיד (F-09) **והצהרה מלאה** (השלמת שלב 6).
+ * עיטור עם kindStyle שאינו 'none' ובלי דיו פתיר ובלי תמונה — נצבע ריק אם
+ * יושתק; כאן הוא נרשם כ-diagnostic מפורש (ornament-ink-missing) ומסומן
+ * ברשומה (inkMissing) — הגיאומטריה נשמרת (T1), הדיווח גלוי.
+ */
+function pushOrnament(page, orn, rejected, pageIndex, settings, io = {}, decl = {}) {
   const check = assertSingleSourceSizing(orn);
   if (!check.ok) {
     rejected.push({ page: pageIndex, kind: orn.kind, why: `single-source-violation:${check.reason}` });
-    return;
+    return null;
   }
   const image = imageRefForOrnament(orn, settings);
-  page.decorations.push({ ...orn, image, cssClass: `orn orn--${orn.kind} orn--${orn.kindStyle || 'plain'}` });
+  const declaration = ornamentDeclarationOf(orn, { page, seq: page.decorations.length, decl });
+  if (image) declaration.ink = { type: 'image', ref: image, uri: null };
+  const inkMissing = !image && (!declaration.ink || (declaration.ink.type !== 'rule' && declaration.ink.type !== 'rect' && !declaration.ink.uri))
+    && orn.kindStyle && orn.kindStyle !== 'none';
+  if (inkMissing) {
+    declaration.inkMissing = true;
+    rejected.push({ page: pageIndex, kind: orn.kind, why: 'ink-missing', kindStyle: orn.kindStyle });
+    if (io.ledger) {
+      const rec = io.ledger.create('ornament-ink-missing', `p${pageIndex}:${orn.slot}`, pageIndex, { kindStyle: orn.kindStyle, slot: orn.slot }, 'ornaments');
+      io.ledger.transition(rec.issue_id, 'persists', 'ornaments', `ornament has no resolvable ink: ${orn.kindStyle}@${orn.slot}`);
+    }
+  }
+  page.decorations.push({ ...orn, image, cssClass: `orn orn--${orn.kind} orn--${orn.kindStyle || 'plain'}`, ...declaration });
+  return page.decorations[page.decorations.length - 1];
 }
 
 /**
@@ -18609,7 +18879,7 @@ function auditOrnaments(pages, ledger) {
   return { overflow, overlap, asymmetry };
 }
 
-module.exports = { planPageOrnaments, auditOrnaments, ORN_NATURAL_W_EM, ORN_NATURAL_H_EM, DIVIDER_H_PX };
+module.exports = { planPageOrnaments, auditOrnaments, ornamentDeclarationOf, ORN_NATURAL_W_EM, ORN_NATURAL_H_EM, DIVIDER_H_PX };
 
 };
 __modules["src/engine/decoration/dividers.js"] = function (require, module, exports) {
@@ -18723,6 +18993,742 @@ module.exports = {
   framePath, renderFolioFrame, columnDividerGeometry, headingDividerDecision,
   shaarDividerDecision, createDividerCounters
 };
+
+};
+__modules["src/engine/decoration/ornament-ink.js"] = function (require, module, exports) {
+// src/engine/decoration/ornament-ink.js — הדיו של העיטורים: מקור יחיד (EXT-4)
+'use strict';
+
+/**
+ * **EXT-4 (צביעת עיטורים):** עד כאן העיטורים היו rectים נכונים ומבוקרים
+ * (ornament-plan) בלי דיו — אין כללי .orn ב-CSS החי ו-pdf-writer לא צייר
+ * כלום. כאן מוגדר מקור הדיו היחיד: לכל kindStyle — צורה וקטורית מובנית
+ * (פורט מהמקור הצהוב) או SVG מספריית העיצובים (imud:...) או קו דק.
+ * שלושת הצרכנים — ה-DOM (רקע data-URI), הפרויקטור וה-PDF (פענוח וקטורי
+ * לפעולות מילוי) — שותפים לאותו מקור בדיוק.
+ */
+
+const { resolveAssetRef } = require('./asset-registry');
+
+/** הצורות המובנות — פורט נאמן מ-decorations.js של המקור הצהוב:
+ * pyramid = פירמידת וילנא (❖❖❖/❖❖/❖ — כאן כיהורים וקטוריים), lance = רומח
+ * (spear), shoshanta = שושנתא (flourish), scroll = סלסול (swash). */
+const BUILTIN_SVGS = {
+  // פירמידת וילנא — 3+2+1 מעוינים; המקור השתמש בגליף ❖ בגדלים 10/9/8pt.
+  pyramid: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 34">
+<path fill="#000" d="M20 2 L28 10 L20 18 L12 10 Z M60 2 L68 10 L60 18 L52 10 Z M100 2 L108 10 L100 18 L92 10 Z"/>
+<path fill="#000" d="M40 19 L47 26 L40 33 L33 26 Z M80 19 L87 26 L80 33 L73 26 Z"/>
+<path fill="#000" d="M60 24 L66 30 L60 36 L54 30 Z"/>
+</svg>`,
+  // רומח — פורט מהמקור (SECTION_DIVIDERS.spear) עם עיגולי הפתיחה.
+  lance: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 40">
+<circle cx="200" cy="20" r="10" fill="none" stroke="#000" stroke-width="4.5"/>
+<circle cx="200" cy="20" r="4.5" fill="#000"/>
+<path d="M182,20 C182,24 165,27 140,27 C90,27 40,22 5,20 C40,18 90,13 140,13 C165,13 182,16 182,20 Z" fill="#000"/>
+<path d="M165,20 C165,22 150,24 130,24 C95,24 55,21 30,20 C55,19 95,16 130,16 C150,16 165,18 165,20 Z" fill="#fff"/>
+<path d="M218,20 C218,24 235,27 260,27 C310,27 360,22 395,20 C360,18 310,13 260,13 C235,13 218,16 218,20 Z" fill="#000"/>
+<path d="M235,20 C235,22 250,24 270,24 C305,24 345,21 370,20 C345,19 305,16 270,16 C250,16 235,18 235,20 Z" fill="#fff"/>
+</svg>`,
+  // שושנתא — פורט מהמקור (flourish).
+  shoshanta: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 90">
+<path fill="#000" d="M110,48 C105,44 92,30 82,30 C68,30 55,42 42,42 C30,42 22,32 22,22 C22,12 32,5 45,5 C60,5 72,18 78,28 C82,20 88,10 100,10 C108,10 114,16 114,24 C114,35 102,44 88,44 C72,44 58,35 48,22 C42,28 35,35 25,48 C15,62 10,72 20,82 C30,90 48,85 62,72 C78,58 92,54 110,48 Z"/>
+<path fill="#000" d="M130,48 C135,44 148,30 158,30 C172,30 185,42 198,42 C210,42 218,32 218,22 C218,12 208,5 195,5 C180,5 168,18 162,28 C158,20 152,10 140,10 C132,10 126,16 126,24 C126,35 138,44 152,44 C168,44 182,35 192,22 C198,28 205,35 215,48 C225,62 230,72 220,82 C210,90 192,85 178,72 C162,58 148,54 130,48 Z"/>
+</svg>`,
+  // סלסול — פורט מהמקור (swash).
+  scroll: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 28">
+<path fill="#111" d="M10,14 C60,14 85,4 125,4 C145,4 152,11 160,17 C168,11 175,4 195,4 C235,4 260,14 310,14 C260,14 235,24 195,24 C175,24 168,17 160,11 C152,17 145,24 125,24 C85,24 60,14 10,14 Z M160,7 C157.2,7 155,9.2 155,12 C155,14.8 157.2,17 160,17 C162.8,17 165,14.8 165,12 C165,9.2 162.8,7 160,7 Z"/>
+</svg>`,
+  // **D-89 (עיצוב שערים):** גל השער-משנה המובנה של המקור — פורט מדויק
+  // מ-defaultSubShaarOrnament ב-decorations.js (רוחב 140px, דיו #222;
+  // מדגם הייחוס: מדדנו את הדיו ב-(33,33,33) ≈ #212121 על עמ' 7).
+  'shaar-wave': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 30">
+<path fill="#222" d="M10,15 Q75,5 140,15 Q145,10 150,5 Q155,10 160,15 Q225,5 290,15 Q225,25 160,15 Q155,20 150,25 Q145,20 140,15 Q75,25 10,15 Z"/>
+</svg>`,
+  // **D-89 (עיצוב שערים):** עיטור השער הראשי המובנה — פורט מ-defaultShaarMainOrnament
+  // (עיגול מוקף בשתי כנפיים, 180×24px). העיגול המקורי מוכתם (stroke) — כאן
+  // ממומש כטבעת בשכבות מילוי (שחור→לבן→שחור, סדר ציור = סדר מסמך) — אותו
+  // דיו בדיוק במדגם שלנו (חד-כיווני מילוי). מכויל מהייחוס עמ' 1: הדיו ב-x
+  // 231.5-363.3pt, y 265-272pt (מרכז 297.4pt = מרכז העמוד).
+  'shaar-main-orn': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 40">
+<circle cx="200" cy="20" r="12.25" fill="#000"/>
+<circle cx="200" cy="20" r="7.75" fill="#fff"/>
+<circle cx="200" cy="20" r="4.5" fill="#000"/>
+<path fill="#000" d="M182,20 C182,24 165,27 140,27 C90,27 40,22 5,20 C40,18 90,13 140,13 C165,13 182,16 182,20 Z"/>
+<path fill="#000" d="M218,20 C218,24 235,27 260,27 C310,27 360,22 395,20 C360,18 310,13 260,13 C235,13 218,16 218,20 Z"/>
+</svg>`,
+  // **D-89 (עיצוב שערים):** שרשרת העלים של מסגרת השער הראשי — דפוס הנושא
+  // של הייחוס (עמ' 1: פס העלים החוזר בשולי הפאנלים, x≈81-88pt, עלה ≈6.7pt
+  // רוחב, מחזור ≈7.8pt). נבנה דטרמיניסטית בטעינת המודול: עלי דפה מחודדים
+  // מתחלפים (מעלה/מטה) במפגש בסיס-בבסיס + נקודה בכל צומת, לכל גובה העמוד.
+  'shaar-frame-chain': null,
+};
+
+/** בניית שרשרת העלים (1122.5px גובה) — נקרא פעם אחת בטעינה.
+ * **D-89 (כיול מדוקדק מהייחוס, עמ' 1, רצועה x=73-95pt ב-300dpi):** המוטיב
+ * המדויק — אלמנטים רחבים מעוגלים (רימון/עלה, ~26px רוחב × 40px גובה,
+ * קודקוד-לקודקוד במפגשי הקצוות) באפור בהיר, עם "עין" עגולה בצבע הפס
+ * (#FAFAFA) בכל אלמנט שני. */
+function buildShaarFrameChain() {
+  // **המוטיב (מפוענח ממפת הדיו של הייחוס ב-ASCII):** יחידה בת ~56px — שתי
+  // אונות מעוגלות (שמאל+ימין) שמתמזגות לפס מלא-רוחב, מתחתיו הדיו מתפצל
+  // לשתי רגליים המתכנסות לנקודת מרכז, וממנה יורד מעוין מרכזי לקודקוד
+  // (שרשרת פלר-דה-ליס); "העין" הלבנה = הרווח בין הרגליים למעוין.
+  const W = 30, H = 1122.5, UNIT = 56, cx = W / 2, F = '#D8D8D8';
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}">`;
+  for (let y = 0; y + UNIT <= H + 0.01; y += UNIT) {
+    // שתי האונות העליונות
+    s += `<ellipse cx="${cx - 7.5}" cy="${y + 9}" rx="5.8" ry="7.5" fill="${F}"/>`;
+    s += `<ellipse cx="${cx + 7.5}" cy="${y + 9}" rx="5.8" ry="7.5" fill="${F}"/>`;
+    // הפס המלא-רוחב שאליו האונות מתמזגות
+    s += `<rect x="2" y="${y + 12}" width="26" height="11" rx="3.5" fill="${F}"/>`;
+    // שתי רגליים מתכנסות למרכז (שברון)
+    s += `<path fill="${F}" d="M2,${y + 22} L${cx},${y + 37} L28,${y + 22} L28,${y + 27} L${cx},${y + 42} L2,${y + 27} Z"/>`;
+    // המעוין המרכזי היורד לקודקוד
+    s += `<path fill="${F}" d="M${cx},${y + 35} L${cx + 5.5},${y + 43} L${cx},${y + 52} L${cx - 5.5},${y + 43} Z"/>`;
+  }
+  return s + '</svg>';
+}
+BUILTIN_SVGS['shaar-frame-chain'] = buildShaarFrameChain();
+
+/** הדיו של kindStyle — מקור יחיד.
+ * @returns {{type:'svg', svg:string, uri:string}|{type:'rule'}|{type:'rect', color:number[]}|{type:'image', uri:string}|null} */
+function ornamentInk(kindStyle) {
+  const s = String(kindStyle || '');
+  if (!s || s === 'none' || s === 'custom_img') return null;
+  if (s === 'thin' || s === 'line') return { type: 'rule' };
+  // **D-89 (עיצוב שערים):** מלבן בצבע אחיד — rect:<#hex> — רקעי הפאנלים
+  // (#F4F4F4 של שער המשנה/האחורי, מסגרות השער הראשי, כלל הכותרת).
+  if (s.startsWith('rect:')) {
+    const col = parseColor(s.slice(5).trim());
+    return col ? { type: 'rect', color: col } : null;
+  }
+  if (BUILTIN_SVGS[s]) {
+    return { type: 'svg', svg: BUILTIN_SVGS[s], uri: svgToDataUri(BUILTIN_SVGS[s]) };
+  }
+  // הפניית ספריית עיצובים (imud:<collection>:<id>) — ה-SVG החיטוי מהרישום
+  if (s.startsWith('imud:') || s.startsWith('data:image/svg') || /\.svg($|\?)/i.test(s)) {
+    const r = resolveAssetRef(s);
+    if (r && (r.uri || '').startsWith('data:image/svg')) {
+      return { type: 'svg', svg: r.item ? r.item.svg : decodeDataUriSvg(r.uri), uri: r.uri };
+    }
+    if ((r && r.uri || '').startsWith('data:')) return { type: 'image', uri: r.uri };
+    return null;
+  }
+  if (/^https?:|^data:image\/(png|jpe?g|gif|webp)/i.test(s)) return { type: 'image', uri: s };
+  return null;
+}
+
+/** data-URI ל-SVG (percent-encoding — תואם url("...") ב-CSS). */
+function svgToDataUri(svg) {
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(String(svg));
+}
+function decodeDataUriSvg(uri) {
+  try { return decodeURIComponent(String(uri).replace(/^data:image\/svg\+xml;charset=utf-8,/, '')); }
+  catch (e) { return null; }
+}
+
+// ---------------------------------------------------------------------------
+// פענוח SVG → רשימת ציור (תת-קבוצת ה-SVG שקיימת בפועל בקטלוגים ובצורות):
+// viewBox, <g transform="translate(a,b) scale(sx,sy)">, <path d> בפקודות
+// M m L l H h V v C c Q q S s T t A a Z, <circle>, <rect>, <ellipse>,
+// <polygon>, <polyline>; מילוי בלבד (stroke=none בכל הקטלוג — נבדק).
+// ---------------------------------------------------------------------------
+
+/** מפענח מספרים ממחרוזת פקודות נתיב. */
+function parsePathD(d) {
+  const segs = [];
+  const re = /([MmLlHhVvCcSsQqTtAaZz])|(-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)/g;
+  let m, cmd = null, args = [];
+  const flush = () => {
+    if (cmd) segs.push({ cmd: cmd.toUpperCase(), rel: cmd !== cmd.toUpperCase(), args });
+    cmd = null; args = [];
+  };
+  while ((m = re.exec(String(d || '')))) {
+    if (m[1]) { flush(); cmd = m[1]; }
+    else args.push(parseFloat(m[2]));
+  }
+  flush();
+  return segs;
+}
+
+/** המרת פקודות נתיב לרצף נקודות/בזייה במרחב ה-viewBox (absolute).
+ * @returns {{subpaths: Array<Array<{op:'M'|'L'|'C', pts:number[]}>>, x0:number,y0:number}} */
+function pathToSubpaths(d, transform) {
+  const segs = parsePathD(d);
+  const subpaths = [];
+  let cur = null;      // תת-נתיב נוכחי
+  let x = 0, y = 0;    // נקודה נוכחית (מרחב מקורי, לפני transform)
+  let sx = 0, sy = 0;  // נקודת פתיחה של תת-הנתיב
+  let lastC2x = 0, lastC2y = 0, haveLastC = false;
+  const push = (op, pts) => {
+    if (!cur) { cur = []; subpaths.push(cur); }
+    cur.push({ op, pts: transform(pts) });
+  };
+  const cubicTo = (x1, y1, x2, y2, x3, y3) => { push('C', [x, y, x1, y1, x2, y2, x3, y3]); x = x3; y = y3; };
+  const quadTo = (x1, y1, x2, y2) => {
+    // Q → שני C (עליית מדרגה הרמיטית)
+    const cx1 = x + 2 / 3 * (x1 - x), cy1 = y + 2 / 3 * (y1 - y);
+    const cx2 = x2 + 2 / 3 * (x1 - x2), cy2 = y2 + 2 / 3 * (y1 - y2);
+    cubicTo(cx1, cy1, cx2, cy2, x2, y2);
+  };
+  const arcTo = (rx, ry, rot, laf, sf, x2, y2) => {
+    // קירוב קשת ב-8 מקטעי בזייה (דיוק חזותי מלא בגדלי עיטור) — endpoint→center
+    const x1 = x, y1 = y;
+    if (rx === 0 || ry === 0 || (x1 === x2 && y1 === y2)) { push('L', [x1, y1, x2, y2]); x = x2; y = y2; return; }
+    rx = Math.abs(rx); ry = Math.abs(ry);
+    const phi = rot * Math.PI / 180;
+    const cosP = Math.cos(phi), sinP = Math.sin(phi);
+    const dx2 = (x1 - x2) / 2, dy2 = (y1 - y2) / 2;
+    const x1p = cosP * dx2 + sinP * dy2, y1p = -sinP * dx2 + cosP * dy2;
+    const lam = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry);
+    if (lam > 1) { const s = Math.sqrt(lam); rx *= s; ry *= s; }
+    let num = rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p;
+    const den = rx * rx * y1p * y1p + ry * ry * x1p * x1p;
+    let co = Math.sqrt(Math.max(0, num / den));
+    if (laf === sf) co = -co;
+    const cxp = co * rx * y1p / ry, cyp = -co * ry * x1p / rx;
+    const cx = cosP * cxp - sinP * cyp + (x1 + x2) / 2;
+    const cy = sinP * cxp + cosP * cyp + (y1 + y2) / 2;
+    const ang = (ux, uy, vx, vy) => {
+      const dot = ux * vx + uy * vy, len = Math.sqrt(ux * ux + uy * uy) * Math.sqrt(vx * vx + vy * vy);
+      let a = Math.acos(Math.max(-1, Math.min(1, dot / (len || 1))));
+      if (ux * vy - uy * vx < 0) a = -a;
+      return a;
+    };
+    const theta1 = ang(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry);
+    let dTheta = ang((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry);
+    if (!sf && dTheta > 0) dTheta -= 2 * Math.PI;
+    if (sf && dTheta < 0) dTheta += 2 * Math.PI;
+    const N = 8;
+    const delta = dTheta / N;
+    const t = theta1;
+    let px = x1, py = y1;
+    for (let i = 1; i <= N; i++) {
+      const t2 = t + delta * i;
+      const px2 = cx + rx * Math.cos(t2) * cosP - ry * Math.sin(t2) * sinP;
+      const py2 = cy + rx * Math.cos(t2) * sinP + ry * Math.sin(t2) * cosP;
+      const tm = t + delta * (i - 0.5);
+      const cmx = cx + rx * Math.cos(tm) * cosP - ry * Math.sin(tm) * sinP;
+      const cmy = cy + rx * Math.cos(tm) * sinP + ry * Math.sin(tm) * cosP;
+      // נקודת בקרה בזייה לקשת מעגלית: k = 4/3·tan(δ/4)
+      const k = 4 / 3 * Math.tan(delta / 4);
+      const c1x = px + k * (-rx * Math.cos(t + delta * (i - 1)) * sinP - ry * Math.sin(t + delta * (i - 1)) * cosP);
+      const c1y = py + k * (rx * Math.cos(t + delta * (i - 1)) * cosP - ry * Math.sin(t + delta * (i - 1)) * sinP);
+      const c2x = px2 - k * (-rx * Math.cos(t2) * sinP - ry * Math.sin(t2) * cosP);
+      const c2y = py2 - k * (rx * Math.cos(t2) * cosP - ry * Math.sin(t2) * sinP);
+      void cmx; void cmy;
+      cubicTo(c1x, c1y, c2x, c2y, px2, py2);
+      px = px2; py = py2;
+    }
+  };
+  for (const { cmd, rel, args } of segs) {
+    const a = args;
+    switch (cmd) {
+      case 'M':
+        for (let i = 0; i + 1 < a.length; i += 2) {
+          x = rel ? x + a[i] : a[i]; y = rel ? y + a[i + 1] : a[i + 1];
+          if (i === 0) { cur = null; push('M', [x, y]); sx = x; sy = y; }
+          else push('L', [x, y, x, y]);
+        }
+        haveLastC = false;
+        break;
+      case 'L':
+        for (let i = 0; i + 1 < a.length; i += 2) {
+          const nx = rel ? x + a[i] : a[i], ny = rel ? y + a[i + 1] : a[i + 1];
+          push('L', [x, y, nx, ny]); x = nx; y = ny;
+        }
+        haveLastC = false;
+        break;
+      case 'H':
+        for (const v of a) { const nx = rel ? x + v : v; push('L', [x, y, nx, y]); x = nx; }
+        haveLastC = false;
+        break;
+      case 'V':
+        for (const v of a) { const ny = rel ? y + v : v; push('L', [x, y, x, ny]); y = ny; }
+        haveLastC = false;
+        break;
+      case 'C':
+        for (let i = 0; i + 5 < a.length; i += 6) {
+          const x1 = rel ? x + a[i] : a[i], y1 = rel ? y + a[i + 1] : a[i + 1];
+          const x2 = rel ? x + a[i + 2] : a[i + 2], y2 = rel ? y + a[i + 3] : a[i + 3];
+          const x3 = rel ? x + a[i + 4] : a[i + 4], y3 = rel ? y + a[i + 5] : a[i + 5];
+          cubicTo(x1, y1, x2, y2, x3, y3);
+          lastC2x = x2; lastC2y = y2; haveLastC = true;
+        }
+        break;
+      case 'S':
+        for (let i = 0; i + 3 < a.length; i += 4) {
+          const x2 = rel ? x + a[i] : a[i], y2 = rel ? y + a[i + 1] : a[i + 1];
+          const x3 = rel ? x + a[i + 2] : a[i + 2], y3 = rel ? y + a[i + 3] : a[i + 3];
+          const x1 = haveLastC ? 2 * x - lastC2x : x, y1 = haveLastC ? 2 * y - lastC2y : y;
+          cubicTo(x1, y1, x2, y2, x3, y3);
+          lastC2x = x2; lastC2y = y2; haveLastC = true;
+        }
+        break;
+      case 'Q':
+        for (let i = 0; i + 3 < a.length; i += 4) {
+          const x1 = rel ? x + a[i] : a[i], y1 = rel ? y + a[i + 1] : a[i + 1];
+          const x2 = rel ? x + a[i + 2] : a[i + 2], y2 = rel ? y + a[i + 3] : a[i + 3];
+          quadTo(x1, y1, x2, y2);
+          lastC2x = x1; lastC2y = y1; haveLastC = false;
+        }
+        break;
+      case 'T':
+        for (let i = 0; i + 1 < a.length; i += 2) {
+          const x2 = rel ? x + a[i] : a[i], y2 = rel ? y + a[i + 1] : a[i + 1];
+          const x1 = haveLastC ? 2 * x - lastC2x : x, y1 = haveLastC ? 2 * y - lastC2y : y;
+          quadTo(x1, y1, x2, y2);
+          lastC2x = x1; lastC2y = y1;
+        }
+        break;
+      case 'A':
+        for (let i = 0; i + 6 < a.length; i += 7) {
+          const rx = a[i], ry = a[i + 1], rot = a[i + 2];
+          const laf = a[i + 3], sf = a[i + 4];
+          const x2 = rel ? x + a[i + 5] : a[i + 5], y2 = rel ? y + a[i + 6] : a[i + 6];
+          arcTo(rx, ry, rot, laf, sf, x2, y2);
+        }
+        haveLastC = false;
+        break;
+      case 'Z':
+        if (cur && cur.length) push('L', [x, y, sx, sy]);
+        x = sx; y = sy;
+        haveLastC = false;
+        break;
+    }
+  }
+  return { subpaths, x, y };
+}
+
+/** פענוח SVG שלם → { vbW, vbH, shapes: [{subpaths, fill}] } (מרחב viewBox). */
+function parseSvgPaint(svg) {
+  const s = String(svg || '');
+  if (!s) return null;
+  const vb = /viewBox\s*=\s*"([^"]+)"/.exec(s);
+  let vbW = 0, vbH = 0;
+  if (vb) {
+    const p = vb[1].trim().split(/[\s,]+/).map(Number);
+    vbW = p[2] || 0; vbH = p[3] || 0;
+  }
+  const wm = /width\s*=\s*"([\d.]+)/.exec(s), hm = /height\s*=\s*"([\d.]+)/.exec(s);
+  if (!vbW && wm) vbW = parseFloat(wm[1]);
+  if (!vbH && hm) vbH = parseFloat(hm[1]);
+  if (!vbW || !vbH) return null;
+
+  // transform של <g> — **S70 (R6):** תמיכה מלאה ב-translate/scale/matrix
+  // (כולל רשימות) עם הרכבה לפי סדר SVG: הפונקציה השמאלית מוחלת אחרונה.
+  let tx = 0, ty = 0, sx = 1, sy = 1;
+  let mtx = null; // [a,b,c,d,e,f] כאשר x' = a·x + c·y + e ; y' = b·x + d·y + f
+  const gt = /<g\b[^>]*transform\s*=\s*"([^"]+)"/.exec(s);
+  if (gt) {
+    const tr = gt[1];
+    const funcs = [];
+    const fre = /(matrix|translate|scale)\s*\(\s*([^)]+)\)/g;
+    let fm;
+    while ((fm = fre.exec(tr))) {
+      const a = fm[2].split(/[\s,]+/).map(Number);
+      if (fm[1] === 'matrix' && a.length >= 6) funcs.push([a[0], a[1], a[2], a[3], a[4], a[5]]);
+      else if (fm[1] === 'translate') funcs.push([1, 0, 0, 1, a[0] || 0, a[1] || 0]);
+      else if (fm[1] === 'scale') {
+        const kx = a[0] != null ? a[0] : 1, ky = a[1] != null ? a[1] : (a[0] != null ? a[0] : 1);
+        funcs.push([kx, 0, 0, ky, 0, 0]);
+      }
+    }
+    // הרכבה לפי סדר SVG: השמאלית חיצונית (מוחלת אחרונה) — acc_new = acc ∘ F
+    // (אימות: "translate(10,0) scale(2)" ⇒ x'=2x+10 ✓)
+    let acc = [1, 0, 0, 1, 0, 0];
+    for (const F of funcs) {
+      acc = [
+        acc[0] * F[0] + acc[2] * F[1],
+        acc[1] * F[0] + acc[3] * F[1],
+        acc[0] * F[2] + acc[2] * F[3],
+        acc[1] * F[2] + acc[3] * F[3],
+        acc[0] * F[4] + acc[2] * F[5] + acc[4],
+        acc[1] * F[4] + acc[3] * F[5] + acc[5],
+      ];
+    }
+    mtx = acc;
+    // תאימות לאחור: טרנספורמציה בודדת translate/scale — שמירת tx/ty/sx/sy
+    const tm = /translate\(\s*([-\d.]+)[\s,]+([-\d.]+)/.exec(tr);
+    if (tm) { tx = parseFloat(tm[1]); ty = parseFloat(tm[2]); }
+    const sm = /scale\(\s*([-\d.]+)(?:[\s,]+([-\d.]+))?\)/.exec(tr);
+    if (sm) { sx = parseFloat(sm[1]); sy = sm[2] != null ? parseFloat(sm[2]) : sx; }
+  }
+  const transform = (pts) => {
+    const out = [];
+    for (let i = 0; i + 1 < pts.length; i += 2) {
+      if (mtx) {
+        out.push(mtx[0] * pts[i] + mtx[2] * pts[i + 1] + mtx[4], mtx[1] * pts[i] + mtx[3] * pts[i + 1] + mtx[5]);
+      } else {
+        out.push(pts[i] * sx + tx, pts[i + 1] * sy + ty);
+      }
+    }
+    return out;
+  };
+
+  const shapes = [];
+  const pushShape = (d, fillAttr, strokeAttr) => {
+    if (strokeAttr && strokeAttr !== 'none') return; // קווים חיצוניים — מחוץ לתת-הקבוצה (לא קיימים בקטלוג)
+    const { subpaths } = pathToSubpaths(d, transform);
+    if (!subpaths.length) return;
+    shapes.push({ subpaths, fill: parseColor(fillAttr) });
+  };
+
+  // <path> — fill מהאלמנט או מה-<g> שעוטף (inherit)
+  const gFill = /<g\b[^>]*\bfill\s*=\s*"([^"]+)"/.exec(s);
+  const gStroke = /<g\b[^>]*\bstroke\s*=\s*"([^"]+)"/.exec(s);
+  const pathRe = /<path\b([^>]*)>/g;
+  let m;
+  while ((m = pathRe.exec(s))) {
+    const attrs = m[1];
+    const d = /d\s*=\s*"([^"]+)"/.exec(attrs);
+    if (!d) continue;
+    const fill = /fill\s*=\s*"([^"]+)"/.exec(attrs);
+    const stroke = /stroke\s*=\s*"([^"]+)"/.exec(attrs);
+    pushShape(d[1], fill ? fill[1] : (gFill ? gFill[1] : '#000'), stroke ? stroke[1] : (gStroke ? gStroke[1] : 'none'));
+  }
+  // <circle>/<ellipse> — ארבע קשתות בזייה
+  const circRe = /<(circle|ellipse)\b([^>]*)>/g;
+  while ((m = circRe.exec(s))) {
+    const at = m[2];
+    const num = (k) => { const r = new RegExp(`\\b${k}\\s*=\\s*"([\\d.]+)"`).exec(at); return r ? parseFloat(r[1]) : null; };
+    const cx = num('cx') || 0, cy = num('cy') || 0;
+    const rx = m[1] === 'circle' ? (num('r') || 0) : (num('rx') || 0);
+    const ry = m[1] === 'circle' ? (num('r') || 0) : (num('ry') || 0);
+    if (!rx || !ry) continue;
+    const k = 0.5522847498;
+    const d = `M ${cx - rx} ${cy} C ${cx - rx} ${cy - ry * k} ${cx - rx * k} ${cy - ry} ${cx} ${cy - ry} `
+      + `C ${cx + rx * k} ${cy - ry} ${cx + rx} ${cy - ry * k} ${cx + rx} ${cy} `
+      + `C ${cx + rx} ${cy + ry * k} ${cx + rx * k} ${cy + ry} ${cx} ${cy + ry} `
+      + `C ${cx - rx * k} ${cy + ry} ${cx - rx} ${cy + ry * k} ${cx - rx} ${cy} Z`;
+    const fill = /fill\s*=\s*"([^"]+)"/.exec(at);
+    const stroke = /stroke\s*=\s*"([^"]+)"/.exec(at);
+    pushShape(d, fill ? fill[1] : '#000', stroke ? stroke[1] : 'none');
+  }
+  // <rect>
+  const rectRe = /<rect\b([^>]*)>/g;
+  while ((m = rectRe.exec(s))) {
+    const at = m[1];
+    const num = (k) => { const r = new RegExp(`\\b${k}\\s*=\\s*"([\\d.]+)"`).exec(at); return r ? parseFloat(r[1]) : 0; };
+    const x0 = num('x'), y0 = num('y'), w = num('width'), h = num('height');
+    if (!w || !h) continue;
+    const fill = /fill\s*=\s*"([^"]+)"/.exec(at);
+    pushShape(`M ${x0} ${y0} L ${x0 + w} ${y0} L ${x0 + w} ${y0 + h} L ${x0} ${y0 + h} Z`, fill ? fill[1] : '#000', 'none');
+  }
+  // **S70 (R6):** <polygon>/<polyline> — points לנתיב; polygon נסגר (Z)
+  // וממולא כברירת מחדל; polyline נצבע רק אם יש לו fill מפורש (קו-בלבד
+  // מחוץ לתת-הקבוצה — כמו stroked paths — תיעוד בראש המודול).
+  const polyRe = /<(polygon|polyline)\b([^>]*)>/g;
+  while ((m = polyRe.exec(s))) {
+    const at = m[2];
+    const ptsM = /points\s*=\s*"([^"]+)"/.exec(at);
+    if (!ptsM) continue;
+    const nums = ptsM[1].trim().split(/[\s,]+/).map(Number).filter((v) => Number.isFinite(v));
+    if (nums.length < 4) continue;
+    const fill = /fill\s*=\s*"([^"]+)"/.exec(at);
+    const stroke = /stroke\s*=\s*"([^"]+)"/.exec(at);
+    if (m[1] === 'polyline' && !fill && !gFill) continue;
+    let d = `M ${nums[0]} ${nums[1]}`;
+    for (let i = 2; i + 1 < nums.length; i += 2) d += ` L ${nums[i]} ${nums[i + 1]}`;
+    if (m[1] === 'polygon') d += ' Z';
+    pushShape(d, fill ? fill[1] : (gFill ? gFill[1] : '#000'), stroke ? stroke[1] : (gStroke ? gStroke[1] : 'none'));
+  }
+  if (!shapes.length) return null;
+  return { vbW, vbH, shapes };
+}
+
+/** צבע מילוי → [r,g,b] 0..1 ('#abc', '#aabbcc', שמות בסיסיים). */
+function parseColor(c) {
+  const s = String(c || '').trim();
+  if (!s || s === 'none' || s === 'transparent') return null;
+  if (s === 'currentColor') return [0, 0, 0];
+  let m = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(s);
+  if (m) return [parseInt(m[1] + m[1], 16) / 255, parseInt(m[2] + m[2], 16) / 255, parseInt(m[3] + m[3], 16) / 255];
+  m = /^#([0-9a-f]{6})$/i.exec(s);
+  if (m) {
+    const n = parseInt(m[1], 16);
+    return [(n >> 16) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+  }
+  const named = { black: [0, 0, 0], white: [1, 1, 1], red: [1, 0, 0], blue: [0, 0, 1] };
+  if (named[s.toLowerCase()]) return named[s.toLowerCase()];
+  return [0, 0, 0]; // ברירת מחדל — שחור (כמו SVG)
+}
+
+/** פליטת פעולות PDF לציור העיטור בתוך rect (px, מרחב עמוד) עם התאמת
+ * 'meet' (preserveAspectRatio) — מרכז התמונה במרכז התיבה בלי עיוות.
+ * @param {object} paint — פלט parseSvgPaint
+ * @param {{x,y,w,h}} rectPx — יעד בפיקסלים (שיטת הפרויקטור)
+ * @param {number} hPt — גובה העמוד ב-pt (היפוך y)
+ * @param {number} PX_TO_PT
+ * @returns {string[]} פעולות PDF (m/l/c/h/f + rg) */
+function svgToPdfOps(paint, rectPx, hPt, PX_TO_PT) {
+  const { vbW, vbH, shapes } = paint;
+  // meet: סקייל אחיד מרבי שנכנס, ממורכז
+  const s = Math.min(rectPx.w / vbW, rectPx.h / vbH);
+  const drawW = vbW * s, drawH = vbH * s;
+  const offX = rectPx.x + (rectPx.w - drawW) / 2;
+  const offY = rectPx.y + (rectPx.h - drawH) / 2;
+  const X = (vx) => (offX + vx * s) * PX_TO_PT;
+  const Y = (vy) => hPt - (offY + vy * s) * PX_TO_PT;
+  const r2 = (v) => Math.round(v * 100) / 100;
+  const ops = [];
+  for (const sh of shapes) {
+    const col = sh.fill || [0, 0, 0];
+    ops.push(`${r2(col[0])} ${r2(col[1])} ${r2(col[2])} rg`);
+    for (const sub of sh.subpaths) {
+      let started = false;
+      for (const seg of sub) {
+        const p = seg.pts;
+        if (seg.op === 'M') {
+          if (started) ops.push('h f');
+          ops.push(`${r2(X(p[0]))} ${r2(Y(p[1]))} m`);
+          started = true;
+        } else if (seg.op === 'L') {
+          if (!started) { ops.push(`${r2(X(p[0]))} ${r2(Y(p[1]))} m`); started = true; }
+          ops.push(`${r2(X(p[2]))} ${r2(Y(p[3]))} l`);
+        } else if (seg.op === 'C') {
+          if (!started) { ops.push(`${r2(X(p[0]))} ${r2(Y(p[1]))} m`); started = true; }
+          ops.push(`${r2(X(p[2]))} ${r2(Y(p[3]))} ${r2(X(p[4]))} ${r2(Y(p[5]))} ${r2(X(p[6]))} ${r2(Y(p[7]))} c`);
+        }
+      }
+      if (started) ops.push('h f');
+    }
+  }
+  return ops;
+}
+
+/** תיבת הדיו **המדויקת** של הצורות הממוקמות בתוך rect (אותה התאמת
+ * 'meet' כמו svgToPdfOps) — לחישוב inkBounds של המודל מול הרסטר.
+ * @returns {{minX,minY,maxX,maxY}|null} בפיקסלים (מרחב עמוד) */
+function svgInkBBox(paint, rectPx) {
+  const { vbW, vbH, shapes } = paint;
+  const s = Math.min(rectPx.w / vbW, rectPx.h / vbH);
+  const drawW = vbW * s, drawH = vbH * s;
+  const offX = rectPx.x + (rectPx.w - drawW) / 2;
+  const offY = rectPx.y + (rectPx.h - drawH) / 2;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const sh of shapes) {
+    if (sh.fill == null) continue; // צורה בלי מילוי — אין דיו
+    for (const sub of sh.subpaths) {
+      for (const seg of sub) {
+        const p = seg.pts;
+        for (let i = 0; i + 1 < p.length; i += 2) {
+          const x = offX + p[i] * s, y = offY + p[i + 1] * s;
+          if (x < minX) minX = x; if (x > maxX) maxX = x;
+          if (y < minY) minY = y; if (y > maxY) maxY = y;
+        }
+      }
+    }
+  }
+  if (minX === Infinity) return null;
+  return { minX, minY, maxX, maxY };
+}
+
+module.exports = {
+  BUILTIN_SVGS, ornamentInk, svgToDataUri,
+  parseSvgPaint, svgToPdfOps, svgInkBBox, parsePathD, pathToSubpaths, parseColor
+};
+
+};
+__modules["src/engine/decoration/asset-registry.js"] = function (require, module, exports) {
+// src/engine/decoration/asset-registry.js — רישום נכסי עיצוב ופתרון הפניות (03.11, EXT-14)
+'use strict';
+
+/**
+ * רישום מרכזי של נכסי עיצוב (שערים/עיטורים/מפרידים — SVG + תיבות) ופתרון
+ * הפניות «imud:<collection>:<id>» ל-data-URI בטוח לשימוש כרקע/תמונה.
+ *
+ * **אבטחה:** כל SVG עובר חיטוי (svg-sanitize) בעת הרישום — לעולם לא נשמר כמו
+ * שהוא. רישום כפול של אותו מזהה — החדש מחליף (עדכון ספרייה); מזהים לא
+ * חוקיים נדחים ומדווחים — לא בשקט.
+ *
+ * **סביבת-אגנוסטיות:** אין DOM/פetch כאן — המודול טהור ונבדק גם ב-Node;
+ * הטעינה מהרשת חיה ב-UI (imud-library.js).
+ */
+
+const { sanitizeSvg } = require('./svg-sanitize');
+
+/** הרישום עצמו: collection → Map(id → item). */
+const collections = new Map();
+
+/** קידוד SVG כ-data-URI (UTF-8 percent-encoding — תואם url("...") ב-CSS). */
+function svgDataUri(svg) {
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(String(svg));
+}
+
+/** ולידציית שם אוסף/מזהה: [a-zA-Z0-9_-] בלבד — מונע הזרקת תווים להפניה. */
+function validToken(s) {
+  return typeof s === 'string' && /^[A-Za-z0-9_-]+$/.test(s);
+}
+
+/**
+ * רישום אוסף נכסים.
+ * @param {string} collection — שם האוסף (למשל 'shaar-main', 'orn-ud', 'divider')
+ * @param {Array<{id:string, name?:string, svg:string, box?:object}>} items
+ * @returns {{ok:boolean, registered:number, rejected:Array<{id:string, reason:string}>}}
+ */
+function registerAssets(collection, items) {
+  if (!validToken(collection)) return { ok: false, registered: 0, rejected: [{ id: String(collection), reason: 'bad-collection-name' }] };
+  if (!Array.isArray(items)) return { ok: false, registered: 0, rejected: [{ id: collection, reason: 'items-not-array' }] };
+  let map = collections.get(collection);
+  if (!map) { map = new Map(); collections.set(collection, map); }
+  const rejected = [];
+  let registered = 0;
+  for (const it of items) {
+    if (!it || !validToken(it.id)) { rejected.push({ id: it && String(it.id), reason: 'bad-id' }); continue; }
+    const clean = sanitizeSvg(String(it.svg || ''));
+    if (!clean.ok) { rejected.push({ id: it.id, reason: `svg-rejected:${clean.reason}` }); continue; }
+    map.set(it.id, {
+      id: it.id,
+      name: it.name || it.id,
+      svg: clean.svg,
+      dataUri: svgDataUri(clean.svg),
+      box: it.box || null
+    });
+    registered++;
+  }
+  return { ok: rejected.length === 0, registered, rejected };
+}
+
+/** מספר הנכסים הרשומים (לבדיקות ולתצוגה). */
+function assetCount() {
+  let n = 0;
+  for (const m of collections.values()) n += m.size;
+  return n;
+}
+
+/** רשימת פריטי אוסף (מזהה+שם+תיבה — בלי SVG, קל ל-UI). */
+function listCollection(collection) {
+  const map = collections.get(collection);
+  if (!map) return [];
+  return Array.from(map.values()).map((it) => ({ id: it.id, name: it.name, box: it.box }));
+}
+
+/**
+ * פתרון הפניה לפריט. פורמטים נתמכים:
+ *  - 'imud:<collection>:<id>' → פריט מהרישום
+ *  - כל ערך אחר → מוחזר כמו שהוא (URL/data-URI קיים — לא נוגעים)
+ * @returns {{resolved:boolean, uri:string|null, item:object|null}}
+ */
+function resolveAssetRef(ref) {
+  if (typeof ref !== 'string' || !ref.startsWith('imud:')) return { resolved: false, uri: ref || null, item: null };
+  const parts = ref.split(':');
+  if (parts.length !== 3) return { resolved: false, uri: null, item: null };
+  const [, col, id] = parts;
+  const map = collections.get(col);
+  const item = map && map.get(id);
+  if (!item) return { resolved: false, uri: null, item: null };
+  return { resolved: true, uri: item.dataUri, item };
+}
+
+/** האם הפניה היא הפניית imud (גם אם טרם נטענה — להודעות ברורות למשתמש). */
+function isImudRef(ref) {
+  return typeof ref === 'string' && ref.startsWith('imud:');
+}
+
+/** ניקוי מלא (בדיקות/isolation). */
+function resetAssets() {
+  collections.clear();
+}
+
+module.exports = { registerAssets, resolveAssetRef, isImudRef, listCollection, assetCount, resetAssets, svgDataUri };
+
+};
+__modules["src/engine/decoration/svg-sanitize.js"] = function (require, module, exports) {
+// src/engine/decoration/svg-sanitize.js — SVG sanitizer + CSP hook (S8.1 task 10; full pass S13)
+'use strict';
+
+/**
+ * חיטוי SVG (Spec §9.5 "sanitized SVG"): רשימת־היתרים, לא רשימת־חסימות.
+ * נשללים: <script>, <foreignObject>, תגי אנימציה עם לולאות (set/animate עם begin=never/indefinite
+ * אינם סיכון גיאומטרי אך נשללים כאן בשל דטרמיניזם), מאפייני on*, javascript:, data:text/html,
+ * והפניות חיצוניות (href/xlink:href למקור שאינו מקומי).
+ *
+ * מדיניות zero-randomness/דטרמיניזם: הפלט קבוע לקלט נתון.
+ */
+
+/** תגים מותרים (רשימת־היתרים). */
+const ALLOWED_TAGS = new Set([
+  'svg', 'g', 'defs', 'title', 'desc', 'path', 'rect', 'circle', 'ellipse', 'line',
+  'polyline', 'polygon', 'text', 'tspan', 'linearGradient', 'radialGradient', 'stop',
+  'clipPath', 'mask', 'pattern', 'use', 'symbol', 'image', 'marker', 'style'
+]);
+
+/** מאפיינים מותרים כללית (קידומות גם ב־xlink:). */
+const ALLOWED_ATTRS = new Set([
+  'id', 'class', 'd', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry',
+  'width', 'height', 'transform', 'viewBox', 'fill', 'fill-opacity', 'fill-rule',
+  'stroke', 'stroke-width', 'stroke-opacity', 'stroke-linecap', 'stroke-linejoin',
+  'stroke-dasharray', 'stroke-dashoffset', 'opacity', 'points', 'gradientUnits',
+  'gradientTransform', 'offset', 'stop-color', 'stop-opacity', 'clip-path',
+  'clip-rule', 'mask', 'clipPathUnits', 'patternUnits', 'preserveAspectRatio',
+  'font-family', 'font-size', 'font-weight', 'text-anchor', 'dominant-baseline',
+  'dx', 'dy', 'rotate', 'textLength', 'lengthAdjust', 'xmlns', 'xmlns:xlink',
+  'version', 'xml:space', 'style'
+]);
+
+/** @returns {{ok:boolean, svg:string, removed:string[], reason?:string}} */
+function sanitizeSvg(svgText) {
+  const src = String(svgText || '');
+  if (!src.trim()) return { ok: false, svg: '', removed: [], reason: 'empty' };
+  if (!/<svg[\s>]/i.test(src)) return { ok: false, svg: '', removed: [], reason: 'not-svg' };
+  const removed = [];
+  let out = src;
+
+  // 1) שלילת בלוקים מסוכנים תחילה (תגים שלמים עם תוכנם) — לפני כל פירוק
+  for (const tag of ['script', 'foreignobject', 'animate', 'animatetransform', 'animatemotion', 'set', 'handler', 'listener']) {
+    const re = new RegExp(`<${tag}(\\s[^>]*)?>[\\s\\S]*?<\\/${tag}\\s*>|<${tag}(\\s[^>]*)?\\/>`, 'gi');
+    out = out.replace(re, () => { removed.push(`tag:${tag}`); return ''; });
+  }
+
+  // 2) מעבר תג־תג: השמטת תגים שאינם ברשימת־ההיתרים (עם תוכנם ליחידים מסוכנים)
+  out = out.replace(/<\/?([a-zA-Z:][-a-zA-Z0-9:_]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g, (whole, tag) => {
+    const t = String(tag).toLowerCase();
+    if (ALLOWED_TAGS.has(t)) return whole;
+    removed.push(`tag:${t}`);
+    return '';
+  });
+
+  // 3) מאפיינים: on*, javascript:, והפניות חיצוניות
+  out = out.replace(/\s([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*("([^"]*)"|'([^']*)')/g, (whole, name, _q, dq, sq) => {
+    const n = String(name).toLowerCase();
+    const val = String(dq != null ? dq : sq);
+    if (n.startsWith('on')) { removed.push(`attr:${n}`); return ''; }
+    if (!ALLOWED_ATTRS.has(n) && !n.startsWith('xlink:')) { removed.push(`attr:${n}`); return ''; }
+    const v = val.trim().toLowerCase();
+    if (v.includes('javascript:') || v.includes('data:text/html') || v.startsWith('vbscript:')) {
+      removed.push(`attr-url:${n}`);
+      return '';
+    }
+    // href/xlink:href: מותרים רק עצמים פנימיים (#id) — אין מקורות חיצוניים
+    if (n === 'href' || n === 'xlink:href') {
+      if (!val.trim().startsWith('#')) { removed.push(`ext-ref:${n}`); return ''; }
+    }
+    return whole;
+  });
+
+  // 4) בלוקי <style>: הסרת url(...) חיצוניים ו־expression()
+  out = out.replace(/<style([^>]*)>([\s\S]*?)<\/style\s*>/gi, (whole, attrs, css) => {
+    if (/url\(\s*['"]?\s*(https?:|file:|\/\/)/i.test(css) || /expression\s*\(/i.test(css)) {
+      removed.push('style:external-url');
+      return '<style></style>';
+    }
+    return whole;
+  });
+
+  if (!/<svg[\s>]/i.test(out)) return { ok: false, svg: '', removed, reason: 'svg-stripped' };
+  return { ok: true, svg: out, removed };
+}
+
+/**
+ * CSP hook (S13 ישלים): מסמך CSP מומלץ להטמעת שערי SVG חיצוניים.
+ * אין eval, אין מקורות חיצוניים; blob/data לתמונות בלבד.
+ */
+function svgCspDirective() {
+  return "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; frame-src 'none'";
+}
+
+module.exports = { sanitizeSvg, svgCspDirective, ALLOWED_TAGS, ALLOWED_ATTRS };
 
 };
 __modules["src/engine/layout/endnote-pages.js"] = function (require, module, exports) {
@@ -19270,18 +20276,48 @@ registerPageItem('info-box', {
   projectPDF: 'geometry-projector.projectSideNotes (תיבה כעיטור + projectStampedRows)'
 });
 
+// **השלמת חוזה העיטורים (שלב 6 — §6.1-6/§6.1-10):** העיטור מצהיר דרך החוזה על
+// כל מה שהמקרינים צריכים — זהות ומקור (ornId/source), סוג ונכס (kindStyle/ink),
+// מידות טבעיות מול יעד (natural מול w/h), מדיניות fit/scale, עוגן ומיקום סמנטי,
+// גבולות clipping ו-z-order, דרישת שטח שמור (reservation.mode/px/where) ואילוצי
+// placement. ornament-fit נשאר מקור המדדים — אך אין עוד חישובי מידות/fit מקביליים
+// ב-DOM וב-PDF: הם קוראים את ההצהרה הזו (F-09). ה-Planner מקבל את האילוצים לפני
+// ההצבה — ההזמנה (reservation) נקבעה בזמן הפריסה ומוצהרת כאן; אין הזזת טקסט
+// אחרי התכנון לפנות מקום לעיטור.
 registerPageItem('ornament', {
   participation: PAGE_ITEM_PARTICIPATION.RESERVED,
   slot: 'variable',
-  schema: { kindStyle: 'string', x: 'number', y: 'number', w: 'number', h: 'number' },
-  validate: (d) => Boolean(d && d.kindStyle && Number.isFinite(d.x)),
-  reservation: { px: 0, scope: 'all-columns', reason: 'overlay-rects מהפאס (F-09); הזמנת גובה חיה בתוך גבהי השורות (F-08) — לא נספרת פעמיים' },
-  measurement: 'ornament-fit — מדדי התאמה בגודל סופי',
-  placement: 'ornament-plan — פאס עיטורים ניטרלי-גיאומטריה (T1 מוכח)',
-  diagnostics: ['ornament-overflow', 'ornament-overlap', 'ornament-asymmetry'],
-  authority: 'decoration/ornament-plan + ornament-ink',
-  projectDOM: 'dom-renderer.renderDecorations',
-  projectPDF: 'geometry-projector (decorations pdfOps)'
+  schema: {
+    ornId: 'string (deterministic)', kind: 'string', kindStyle: 'string',
+    x: 'number', y: 'number', w: 'number', h: 'number',
+    source: 'string|null (setting key)',
+    ink: '{ type: image|svg|rule|rect, ref?, uri? }|null — declared at plan time',
+    natural: '{ w, h }', scale: 'number>0',
+    fit: '{ mode: fixed|fit-to-text|fit-to-line|fit-to-heading-height|fit-to-budget, reason }',
+    anchor: '{ tokenId: string|null, semantic: above-heading|below-heading|beside-heading|below-line|column-end|page-bottom|overlay }',
+    clip: '{ top, bottom, left, right } — ornament box (content ± h2TopOffset)',
+    zOrder: 'overlay|infrastructure',
+    reservation: '{ mode: overlay|row-padding|column-budget, px, where } — px>0 ⇒ budgeted at layout time',
+    constraints: '{ relativeTo: heading|column|page, bounds, keepsOut }'
+  },
+  validate: (d) => Boolean(d && d.kindStyle && Number.isFinite(d.x)
+    && typeof d.ornId === 'string' && d.ornId.length > 0
+    && d.natural && Number.isFinite(d.natural.w) && Number.isFinite(d.natural.h)
+    && d.fit && typeof d.fit.mode === 'string'
+    && d.anchor && typeof d.anchor.semantic === 'string'
+    && d.clip && Number.isFinite(d.clip.top) && Number.isFinite(d.clip.bottom)
+    && (d.zOrder === 'overlay' || d.zOrder === 'infrastructure')
+    && d.reservation && typeof d.reservation.mode === 'string'
+    && d.constraints && typeof d.constraints.relativeTo === 'string'
+    && (d.ink == null || (d.ink && typeof d.ink.type === 'string'))
+    && (d.inkMissing === true || d.ink != null || d.kindStyle === 'none')),
+  reservation: { px: 0, scope: 'all-columns', reason: 'overlay-rects מהפאס (F-09); הזמנת גובה חיה בתוך גבהי השורות (F-08) — לא נספרת פעמיים; ההצהרה הפר-עיטור (reservation.mode/px/where) מתעדת היכן תוקצב בפועל' },
+  measurement: 'ornament-fit — מדדי התאמה בגודל סופי; ההצהרה (natural/scale/fit) מתעדת את ההחלטה',
+  placement: 'ornament-plan — פאס עיטורים ניטרלי-גיאומטריה (T1 מוכח); ההצהרה (anchor/clip/zOrder/reservation/constraints) מתעדת את האילוצים',
+  diagnostics: ['ornament-overflow', 'ornament-overlap', 'ornament-asymmetry', 'ornament-ink-missing'],
+  authority: 'decoration/ornament-plan + ornament-fit + ornament-ink',
+  projectDOM: 'dom-renderer.renderDecorations (מההצהרה: rect+ink+cssClass)',
+  projectPDF: 'geometry-projector (decorations pdfOps — מההצהרה)'
 });
 
 registerPageItem('shaar-gate', {
@@ -19579,6 +20615,11 @@ function buildPageModel(result, opts = {}) {
     // פריטי עוגן (הערות-צד/תיבות מידע) — הצבה סופית מהמקצה המשותף
     const sideNotes = (page.sideNotes || []).map(sn => anchorPlacement(sn, { page: page.index }));
 
+    // השלמת שלב 6: דיו עיטור חסר — diagnostic מפורש במודל (לא השתקה; הגיאומטריה נשמרת)
+    for (const d of ((pp && pp.decorations) || [])) {
+      if (d.inkMissing) diagnostics.push({ kind: 'page-model-ornament-ink-missing', page: page.index, ornId: d.ornId || null, slot: d.slot || null, kindStyle: d.kindStyle || null });
+    }
+
     return {
       index: page.index,
       type: page.type,
@@ -19591,7 +20632,24 @@ function buildPageModel(result, opts = {}) {
       sideNotes,
       decorations: (pp && pp.decorations ? pp.decorations.map(d => ({
         x: r2(d.x), y: r2(d.y), w: r2(d.w), h: r2(d.h),
-        kind: d.kind || null, slot: d.slot || null, inkType: d.inkType || null
+        kind: d.kind || null, slot: d.slot || null, inkType: d.inkType || null,
+        // **השלמת חוזה העיטורים (שלב 6 — §6.1-6/§6.1-10):** המודל נושא את מלוא
+        // ההצהרה — המקרינים (שלב 8) יקראו ולא יחשבו מחדש: זהות, מקור, דיו,
+        // מידות טבעיות מול יעד, fit/scale, עוגן, clipping, z-order, הזמנה
+        // ואילוצים. inkMissing מסומן גם כ-diagnostic למטה (אין השתקה).
+        ...(d.ornId ? { ornId: d.ornId } : {}),
+        ...(d.source != null ? { source: d.source } : {}),
+        ...(d.ink ? { ink: { ...d.ink } } : {}),
+        ...(d.inkMissing ? { inkMissing: true } : {}),
+        ...(d.natural ? { natural: { w: d.natural.w, h: d.natural.h } } : {}),
+        ...(d.scale != null ? { scale: d.scale } : {}),
+        ...(d.fit ? { fit: { ...d.fit } } : {}),
+        ...(d.anchor ? { anchor: { ...d.anchor } } : {}),
+        ...(d.clip ? { clip: { ...d.clip } } : {}),
+        ...(d.zOrder ? { zOrder: d.zOrder } : {}),
+        ...(d.reservation ? { reservation: { ...d.reservation } } : {}),
+        ...(d.constraints ? { constraints: { ...d.constraints } } : {}),
+        ...(d.cssClass ? { cssClass: d.cssClass } : {})
       })) : []),
       header: pp && pp.header ? { y: r2(pp.header.y) } : null,
       folio: pp && pp.folio ? { y: r2(pp.folio.y), text: pp.folio.text || null, baselineY: pp.folio.baselineY != null ? r2(pp.folio.baselineY) : null } : null,
@@ -20202,7 +21260,23 @@ function projectPage(page, settings, api) {
         x: d.x, y: d.y, w: d.w, h: d.h,
         kind: d.kind || null, slot: d.slot || null, kindStyle: d.kindStyle || null,
         inkType: ink ? ink.type : null, inkUri: ink && ink.uri ? ink.uri : null,
-        paint, pdfOps
+        paint, pdfOps,
+        // **השלמת חוזה העיטורים (שלב 6):** ההצהרה מהתוכנית עוברת בשלמותה —
+        // ההקרנה מוסיפה אריזת-ציור (paint/pdfOps) ואינה מפילה נתוני חוזה.
+        ...(d.ornId ? { ornId: d.ornId } : {}),
+        ...(d.source != null ? { source: d.source } : {}),
+        ...(d.image ? { image: d.image } : {}),
+        ...(d.ink ? { ink: { ...d.ink } } : {}),
+        ...(d.inkMissing ? { inkMissing: true } : {}),
+        ...(d.natural ? { natural: { w: d.natural.w, h: d.natural.h } } : {}),
+        ...(d.scale != null ? { scale: d.scale } : {}),
+        ...(d.fit ? { fit: { ...d.fit } } : {}),
+        ...(d.anchor ? { anchor: { ...d.anchor } } : {}),
+        ...(d.clip ? { clip: { ...d.clip } } : {}),
+        ...(d.zOrder ? { zOrder: d.zOrder } : {}),
+        ...(d.reservation ? { reservation: { ...d.reservation } } : {}),
+        ...(d.constraints ? { constraints: { ...d.constraints } } : {}),
+        ...(d.cssClass ? { cssClass: d.cssClass } : {})
       };
     });
   }
@@ -21364,34 +22438,35 @@ function renderDecorations(page, doc) {
     el.style.top = `${Math.round(d.y)}px`;
     el.style.width = `${Math.round(d.w)}px`;
     el.style.height = `${Math.round(d.h)}px`;
-    // **03.11 (EXT-14):** עיטור מסוג 'image' — רקע מההפניה הפתורה (asset-registry)
-    if (d.image) {
-      const uri = assetUri(d.image);
+    // **השלמת חוזה העיטורים (שלב 6 — §6.1-6/§6.1-10):** הדיו נצרך מההצהרה
+    // (ornId/ink) שנקבעה בתכנון — המקרן קורא ואינו מחליט מחדש (F-09). נכס
+    // חיצוני (imud:) נפתר כאן בזמן הציור — טעינת משאב, לא החלטת גיאומטריה.
+    // דיו שאינו פתיר — דיאגנוסטיק גלוי (dataset.inkMissing), לא השתקה.
+    if (d.ornId) el.dataset.ornId = d.ornId;
+    const ink = d.ink || (d.image ? { type: 'image', uri: null, ref: d.image } : null);
+    if (ink && ink.type === 'image') {
+      const uri = (ink.ref ? assetUri(ink.ref) : null) || ink.uri || (d.image ? assetUri(d.image) : null);
       if (uri) {
         el.style.backgroundImage = `url("${uri}")`;
         el.style.backgroundSize = '100% 100%';
         el.style.backgroundRepeat = 'no-repeat';
+      } else {
+        el.dataset.inkMissing = '1'; // asset חיצוני שלא נפתר — מדווח, לא ריק בשקט
       }
+    } else if (ink && ink.type === 'svg' && ink.uri) {
+      el.style.backgroundImage = `url("${ink.uri}")`;
+      el.style.backgroundSize = 'contain';
+      el.style.backgroundPosition = 'center center';
+      el.style.backgroundRepeat = 'no-repeat';
+    } else if (ink && ink.type === 'rule') {
+      el.style.borderTop = '0.75px solid #000';
+      el.style.height = '0px';
+    } else if (ink && ink.type === 'rect' && ink.color) {
+      el.style.backgroundColor = `rgb(${ink.color[0]}, ${ink.color[1]}, ${ink.color[2]})`;
     } else if (d.kindStyle && d.kindStyle !== 'none') {
-      // **EXT-4:** הדיו של kindStyle — מקור יחיד (ornament-ink): SVG מובנה
-      // (pyramid/lance/shoshanta/scroll) או מספריית העיצובים (imud:...) —
-      // רקע data-URI מותאם לתיבה; 'thin' — קו מפריד דק.
-      const ink = ornamentInk(d.kindStyle);
-      if (ink && ink.type === 'svg') {
-        el.style.backgroundImage = `url("${ink.uri}")`;
-        el.style.backgroundSize = 'contain';
-        el.style.backgroundPosition = 'center center';
-        el.style.backgroundRepeat = 'no-repeat';
-      } else if (ink && ink.type === 'rule') {
-        el.style.borderTop = '0.75px solid #000';
-        el.style.height = '0px';
-      } else if (ink && ink.type === 'image') {
-        el.style.backgroundImage = `url("${ink.uri}")`;
-        el.style.backgroundSize = 'contain';
-        el.style.backgroundPosition = 'center center';
-        el.style.backgroundRepeat = 'no-repeat';
-      }
+      el.dataset.inkMissing = '1'; // הצהרה בלי דיו פתיר — גלוי, לא ריק בשקט
     }
+    if (d.inkMissing) el.dataset.inkMissing = '1';
     els.push(el);
   }
   return els;
@@ -22787,742 +23862,6 @@ function headerGeometry(page) {
 module.exports = {
   FOLIO_BOTTOM_PX, FOLIO_TOP_PX, FOLIO_IN_HEADER_PX,
   folioGeometry, headerGeometry
-};
-
-};
-__modules["src/engine/decoration/asset-registry.js"] = function (require, module, exports) {
-// src/engine/decoration/asset-registry.js — רישום נכסי עיצוב ופתרון הפניות (03.11, EXT-14)
-'use strict';
-
-/**
- * רישום מרכזי של נכסי עיצוב (שערים/עיטורים/מפרידים — SVG + תיבות) ופתרון
- * הפניות «imud:<collection>:<id>» ל-data-URI בטוח לשימוש כרקע/תמונה.
- *
- * **אבטחה:** כל SVG עובר חיטוי (svg-sanitize) בעת הרישום — לעולם לא נשמר כמו
- * שהוא. רישום כפול של אותו מזהה — החדש מחליף (עדכון ספרייה); מזהים לא
- * חוקיים נדחים ומדווחים — לא בשקט.
- *
- * **סביבת-אגנוסטיות:** אין DOM/פetch כאן — המודול טהור ונבדק גם ב-Node;
- * הטעינה מהרשת חיה ב-UI (imud-library.js).
- */
-
-const { sanitizeSvg } = require('./svg-sanitize');
-
-/** הרישום עצמו: collection → Map(id → item). */
-const collections = new Map();
-
-/** קידוד SVG כ-data-URI (UTF-8 percent-encoding — תואם url("...") ב-CSS). */
-function svgDataUri(svg) {
-  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(String(svg));
-}
-
-/** ולידציית שם אוסף/מזהה: [a-zA-Z0-9_-] בלבד — מונע הזרקת תווים להפניה. */
-function validToken(s) {
-  return typeof s === 'string' && /^[A-Za-z0-9_-]+$/.test(s);
-}
-
-/**
- * רישום אוסף נכסים.
- * @param {string} collection — שם האוסף (למשל 'shaar-main', 'orn-ud', 'divider')
- * @param {Array<{id:string, name?:string, svg:string, box?:object}>} items
- * @returns {{ok:boolean, registered:number, rejected:Array<{id:string, reason:string}>}}
- */
-function registerAssets(collection, items) {
-  if (!validToken(collection)) return { ok: false, registered: 0, rejected: [{ id: String(collection), reason: 'bad-collection-name' }] };
-  if (!Array.isArray(items)) return { ok: false, registered: 0, rejected: [{ id: collection, reason: 'items-not-array' }] };
-  let map = collections.get(collection);
-  if (!map) { map = new Map(); collections.set(collection, map); }
-  const rejected = [];
-  let registered = 0;
-  for (const it of items) {
-    if (!it || !validToken(it.id)) { rejected.push({ id: it && String(it.id), reason: 'bad-id' }); continue; }
-    const clean = sanitizeSvg(String(it.svg || ''));
-    if (!clean.ok) { rejected.push({ id: it.id, reason: `svg-rejected:${clean.reason}` }); continue; }
-    map.set(it.id, {
-      id: it.id,
-      name: it.name || it.id,
-      svg: clean.svg,
-      dataUri: svgDataUri(clean.svg),
-      box: it.box || null
-    });
-    registered++;
-  }
-  return { ok: rejected.length === 0, registered, rejected };
-}
-
-/** מספר הנכסים הרשומים (לבדיקות ולתצוגה). */
-function assetCount() {
-  let n = 0;
-  for (const m of collections.values()) n += m.size;
-  return n;
-}
-
-/** רשימת פריטי אוסף (מזהה+שם+תיבה — בלי SVG, קל ל-UI). */
-function listCollection(collection) {
-  const map = collections.get(collection);
-  if (!map) return [];
-  return Array.from(map.values()).map((it) => ({ id: it.id, name: it.name, box: it.box }));
-}
-
-/**
- * פתרון הפניה לפריט. פורמטים נתמכים:
- *  - 'imud:<collection>:<id>' → פריט מהרישום
- *  - כל ערך אחר → מוחזר כמו שהוא (URL/data-URI קיים — לא נוגעים)
- * @returns {{resolved:boolean, uri:string|null, item:object|null}}
- */
-function resolveAssetRef(ref) {
-  if (typeof ref !== 'string' || !ref.startsWith('imud:')) return { resolved: false, uri: ref || null, item: null };
-  const parts = ref.split(':');
-  if (parts.length !== 3) return { resolved: false, uri: null, item: null };
-  const [, col, id] = parts;
-  const map = collections.get(col);
-  const item = map && map.get(id);
-  if (!item) return { resolved: false, uri: null, item: null };
-  return { resolved: true, uri: item.dataUri, item };
-}
-
-/** האם הפניה היא הפניית imud (גם אם טרם נטענה — להודעות ברורות למשתמש). */
-function isImudRef(ref) {
-  return typeof ref === 'string' && ref.startsWith('imud:');
-}
-
-/** ניקוי מלא (בדיקות/isolation). */
-function resetAssets() {
-  collections.clear();
-}
-
-module.exports = { registerAssets, resolveAssetRef, isImudRef, listCollection, assetCount, resetAssets, svgDataUri };
-
-};
-__modules["src/engine/decoration/svg-sanitize.js"] = function (require, module, exports) {
-// src/engine/decoration/svg-sanitize.js — SVG sanitizer + CSP hook (S8.1 task 10; full pass S13)
-'use strict';
-
-/**
- * חיטוי SVG (Spec §9.5 "sanitized SVG"): רשימת־היתרים, לא רשימת־חסימות.
- * נשללים: <script>, <foreignObject>, תגי אנימציה עם לולאות (set/animate עם begin=never/indefinite
- * אינם סיכון גיאומטרי אך נשללים כאן בשל דטרמיניזם), מאפייני on*, javascript:, data:text/html,
- * והפניות חיצוניות (href/xlink:href למקור שאינו מקומי).
- *
- * מדיניות zero-randomness/דטרמיניזם: הפלט קבוע לקלט נתון.
- */
-
-/** תגים מותרים (רשימת־היתרים). */
-const ALLOWED_TAGS = new Set([
-  'svg', 'g', 'defs', 'title', 'desc', 'path', 'rect', 'circle', 'ellipse', 'line',
-  'polyline', 'polygon', 'text', 'tspan', 'linearGradient', 'radialGradient', 'stop',
-  'clipPath', 'mask', 'pattern', 'use', 'symbol', 'image', 'marker', 'style'
-]);
-
-/** מאפיינים מותרים כללית (קידומות גם ב־xlink:). */
-const ALLOWED_ATTRS = new Set([
-  'id', 'class', 'd', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry',
-  'width', 'height', 'transform', 'viewBox', 'fill', 'fill-opacity', 'fill-rule',
-  'stroke', 'stroke-width', 'stroke-opacity', 'stroke-linecap', 'stroke-linejoin',
-  'stroke-dasharray', 'stroke-dashoffset', 'opacity', 'points', 'gradientUnits',
-  'gradientTransform', 'offset', 'stop-color', 'stop-opacity', 'clip-path',
-  'clip-rule', 'mask', 'clipPathUnits', 'patternUnits', 'preserveAspectRatio',
-  'font-family', 'font-size', 'font-weight', 'text-anchor', 'dominant-baseline',
-  'dx', 'dy', 'rotate', 'textLength', 'lengthAdjust', 'xmlns', 'xmlns:xlink',
-  'version', 'xml:space', 'style'
-]);
-
-/** @returns {{ok:boolean, svg:string, removed:string[], reason?:string}} */
-function sanitizeSvg(svgText) {
-  const src = String(svgText || '');
-  if (!src.trim()) return { ok: false, svg: '', removed: [], reason: 'empty' };
-  if (!/<svg[\s>]/i.test(src)) return { ok: false, svg: '', removed: [], reason: 'not-svg' };
-  const removed = [];
-  let out = src;
-
-  // 1) שלילת בלוקים מסוכנים תחילה (תגים שלמים עם תוכנם) — לפני כל פירוק
-  for (const tag of ['script', 'foreignobject', 'animate', 'animatetransform', 'animatemotion', 'set', 'handler', 'listener']) {
-    const re = new RegExp(`<${tag}(\\s[^>]*)?>[\\s\\S]*?<\\/${tag}\\s*>|<${tag}(\\s[^>]*)?\\/>`, 'gi');
-    out = out.replace(re, () => { removed.push(`tag:${tag}`); return ''; });
-  }
-
-  // 2) מעבר תג־תג: השמטת תגים שאינם ברשימת־ההיתרים (עם תוכנם ליחידים מסוכנים)
-  out = out.replace(/<\/?([a-zA-Z:][-a-zA-Z0-9:_]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g, (whole, tag) => {
-    const t = String(tag).toLowerCase();
-    if (ALLOWED_TAGS.has(t)) return whole;
-    removed.push(`tag:${t}`);
-    return '';
-  });
-
-  // 3) מאפיינים: on*, javascript:, והפניות חיצוניות
-  out = out.replace(/\s([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*("([^"]*)"|'([^']*)')/g, (whole, name, _q, dq, sq) => {
-    const n = String(name).toLowerCase();
-    const val = String(dq != null ? dq : sq);
-    if (n.startsWith('on')) { removed.push(`attr:${n}`); return ''; }
-    if (!ALLOWED_ATTRS.has(n) && !n.startsWith('xlink:')) { removed.push(`attr:${n}`); return ''; }
-    const v = val.trim().toLowerCase();
-    if (v.includes('javascript:') || v.includes('data:text/html') || v.startsWith('vbscript:')) {
-      removed.push(`attr-url:${n}`);
-      return '';
-    }
-    // href/xlink:href: מותרים רק עצמים פנימיים (#id) — אין מקורות חיצוניים
-    if (n === 'href' || n === 'xlink:href') {
-      if (!val.trim().startsWith('#')) { removed.push(`ext-ref:${n}`); return ''; }
-    }
-    return whole;
-  });
-
-  // 4) בלוקי <style>: הסרת url(...) חיצוניים ו־expression()
-  out = out.replace(/<style([^>]*)>([\s\S]*?)<\/style\s*>/gi, (whole, attrs, css) => {
-    if (/url\(\s*['"]?\s*(https?:|file:|\/\/)/i.test(css) || /expression\s*\(/i.test(css)) {
-      removed.push('style:external-url');
-      return '<style></style>';
-    }
-    return whole;
-  });
-
-  if (!/<svg[\s>]/i.test(out)) return { ok: false, svg: '', removed, reason: 'svg-stripped' };
-  return { ok: true, svg: out, removed };
-}
-
-/**
- * CSP hook (S13 ישלים): מסמך CSP מומלץ להטמעת שערי SVG חיצוניים.
- * אין eval, אין מקורות חיצוניים; blob/data לתמונות בלבד.
- */
-function svgCspDirective() {
-  return "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; frame-src 'none'";
-}
-
-module.exports = { sanitizeSvg, svgCspDirective, ALLOWED_TAGS, ALLOWED_ATTRS };
-
-};
-__modules["src/engine/decoration/ornament-ink.js"] = function (require, module, exports) {
-// src/engine/decoration/ornament-ink.js — הדיו של העיטורים: מקור יחיד (EXT-4)
-'use strict';
-
-/**
- * **EXT-4 (צביעת עיטורים):** עד כאן העיטורים היו rectים נכונים ומבוקרים
- * (ornament-plan) בלי דיו — אין כללי .orn ב-CSS החי ו-pdf-writer לא צייר
- * כלום. כאן מוגדר מקור הדיו היחיד: לכל kindStyle — צורה וקטורית מובנית
- * (פורט מהמקור הצהוב) או SVG מספריית העיצובים (imud:...) או קו דק.
- * שלושת הצרכנים — ה-DOM (רקע data-URI), הפרויקטור וה-PDF (פענוח וקטורי
- * לפעולות מילוי) — שותפים לאותו מקור בדיוק.
- */
-
-const { resolveAssetRef } = require('./asset-registry');
-
-/** הצורות המובנות — פורט נאמן מ-decorations.js של המקור הצהוב:
- * pyramid = פירמידת וילנא (❖❖❖/❖❖/❖ — כאן כיהורים וקטוריים), lance = רומח
- * (spear), shoshanta = שושנתא (flourish), scroll = סלסול (swash). */
-const BUILTIN_SVGS = {
-  // פירמידת וילנא — 3+2+1 מעוינים; המקור השתמש בגליף ❖ בגדלים 10/9/8pt.
-  pyramid: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 34">
-<path fill="#000" d="M20 2 L28 10 L20 18 L12 10 Z M60 2 L68 10 L60 18 L52 10 Z M100 2 L108 10 L100 18 L92 10 Z"/>
-<path fill="#000" d="M40 19 L47 26 L40 33 L33 26 Z M80 19 L87 26 L80 33 L73 26 Z"/>
-<path fill="#000" d="M60 24 L66 30 L60 36 L54 30 Z"/>
-</svg>`,
-  // רומח — פורט מהמקור (SECTION_DIVIDERS.spear) עם עיגולי הפתיחה.
-  lance: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 40">
-<circle cx="200" cy="20" r="10" fill="none" stroke="#000" stroke-width="4.5"/>
-<circle cx="200" cy="20" r="4.5" fill="#000"/>
-<path d="M182,20 C182,24 165,27 140,27 C90,27 40,22 5,20 C40,18 90,13 140,13 C165,13 182,16 182,20 Z" fill="#000"/>
-<path d="M165,20 C165,22 150,24 130,24 C95,24 55,21 30,20 C55,19 95,16 130,16 C150,16 165,18 165,20 Z" fill="#fff"/>
-<path d="M218,20 C218,24 235,27 260,27 C310,27 360,22 395,20 C360,18 310,13 260,13 C235,13 218,16 218,20 Z" fill="#000"/>
-<path d="M235,20 C235,22 250,24 270,24 C305,24 345,21 370,20 C345,19 305,16 270,16 C250,16 235,18 235,20 Z" fill="#fff"/>
-</svg>`,
-  // שושנתא — פורט מהמקור (flourish).
-  shoshanta: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 90">
-<path fill="#000" d="M110,48 C105,44 92,30 82,30 C68,30 55,42 42,42 C30,42 22,32 22,22 C22,12 32,5 45,5 C60,5 72,18 78,28 C82,20 88,10 100,10 C108,10 114,16 114,24 C114,35 102,44 88,44 C72,44 58,35 48,22 C42,28 35,35 25,48 C15,62 10,72 20,82 C30,90 48,85 62,72 C78,58 92,54 110,48 Z"/>
-<path fill="#000" d="M130,48 C135,44 148,30 158,30 C172,30 185,42 198,42 C210,42 218,32 218,22 C218,12 208,5 195,5 C180,5 168,18 162,28 C158,20 152,10 140,10 C132,10 126,16 126,24 C126,35 138,44 152,44 C168,44 182,35 192,22 C198,28 205,35 215,48 C225,62 230,72 220,82 C210,90 192,85 178,72 C162,58 148,54 130,48 Z"/>
-</svg>`,
-  // סלסול — פורט מהמקור (swash).
-  scroll: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 28">
-<path fill="#111" d="M10,14 C60,14 85,4 125,4 C145,4 152,11 160,17 C168,11 175,4 195,4 C235,4 260,14 310,14 C260,14 235,24 195,24 C175,24 168,17 160,11 C152,17 145,24 125,24 C85,24 60,14 10,14 Z M160,7 C157.2,7 155,9.2 155,12 C155,14.8 157.2,17 160,17 C162.8,17 165,14.8 165,12 C165,9.2 162.8,7 160,7 Z"/>
-</svg>`,
-  // **D-89 (עיצוב שערים):** גל השער-משנה המובנה של המקור — פורט מדויק
-  // מ-defaultSubShaarOrnament ב-decorations.js (רוחב 140px, דיו #222;
-  // מדגם הייחוס: מדדנו את הדיו ב-(33,33,33) ≈ #212121 על עמ' 7).
-  'shaar-wave': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 30">
-<path fill="#222" d="M10,15 Q75,5 140,15 Q145,10 150,5 Q155,10 160,15 Q225,5 290,15 Q225,25 160,15 Q155,20 150,25 Q145,20 140,15 Q75,25 10,15 Z"/>
-</svg>`,
-  // **D-89 (עיצוב שערים):** עיטור השער הראשי המובנה — פורט מ-defaultShaarMainOrnament
-  // (עיגול מוקף בשתי כנפיים, 180×24px). העיגול המקורי מוכתם (stroke) — כאן
-  // ממומש כטבעת בשכבות מילוי (שחור→לבן→שחור, סדר ציור = סדר מסמך) — אותו
-  // דיו בדיוק במדגם שלנו (חד-כיווני מילוי). מכויל מהייחוס עמ' 1: הדיו ב-x
-  // 231.5-363.3pt, y 265-272pt (מרכז 297.4pt = מרכז העמוד).
-  'shaar-main-orn': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 40">
-<circle cx="200" cy="20" r="12.25" fill="#000"/>
-<circle cx="200" cy="20" r="7.75" fill="#fff"/>
-<circle cx="200" cy="20" r="4.5" fill="#000"/>
-<path fill="#000" d="M182,20 C182,24 165,27 140,27 C90,27 40,22 5,20 C40,18 90,13 140,13 C165,13 182,16 182,20 Z"/>
-<path fill="#000" d="M218,20 C218,24 235,27 260,27 C310,27 360,22 395,20 C360,18 310,13 260,13 C235,13 218,16 218,20 Z"/>
-</svg>`,
-  // **D-89 (עיצוב שערים):** שרשרת העלים של מסגרת השער הראשי — דפוס הנושא
-  // של הייחוס (עמ' 1: פס העלים החוזר בשולי הפאנלים, x≈81-88pt, עלה ≈6.7pt
-  // רוחב, מחזור ≈7.8pt). נבנה דטרמיניסטית בטעינת המודול: עלי דפה מחודדים
-  // מתחלפים (מעלה/מטה) במפגש בסיס-בבסיס + נקודה בכל צומת, לכל גובה העמוד.
-  'shaar-frame-chain': null,
-};
-
-/** בניית שרשרת העלים (1122.5px גובה) — נקרא פעם אחת בטעינה.
- * **D-89 (כיול מדוקדק מהייחוס, עמ' 1, רצועה x=73-95pt ב-300dpi):** המוטיב
- * המדויק — אלמנטים רחבים מעוגלים (רימון/עלה, ~26px רוחב × 40px גובה,
- * קודקוד-לקודקוד במפגשי הקצוות) באפור בהיר, עם "עין" עגולה בצבע הפס
- * (#FAFAFA) בכל אלמנט שני. */
-function buildShaarFrameChain() {
-  // **המוטיב (מפוענח ממפת הדיו של הייחוס ב-ASCII):** יחידה בת ~56px — שתי
-  // אונות מעוגלות (שמאל+ימין) שמתמזגות לפס מלא-רוחב, מתחתיו הדיו מתפצל
-  // לשתי רגליים המתכנסות לנקודת מרכז, וממנה יורד מעוין מרכזי לקודקוד
-  // (שרשרת פלר-דה-ליס); "העין" הלבנה = הרווח בין הרגליים למעוין.
-  const W = 30, H = 1122.5, UNIT = 56, cx = W / 2, F = '#D8D8D8';
-  let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}">`;
-  for (let y = 0; y + UNIT <= H + 0.01; y += UNIT) {
-    // שתי האונות העליונות
-    s += `<ellipse cx="${cx - 7.5}" cy="${y + 9}" rx="5.8" ry="7.5" fill="${F}"/>`;
-    s += `<ellipse cx="${cx + 7.5}" cy="${y + 9}" rx="5.8" ry="7.5" fill="${F}"/>`;
-    // הפס המלא-רוחב שאליו האונות מתמזגות
-    s += `<rect x="2" y="${y + 12}" width="26" height="11" rx="3.5" fill="${F}"/>`;
-    // שתי רגליים מתכנסות למרכז (שברון)
-    s += `<path fill="${F}" d="M2,${y + 22} L${cx},${y + 37} L28,${y + 22} L28,${y + 27} L${cx},${y + 42} L2,${y + 27} Z"/>`;
-    // המעוין המרכזי היורד לקודקוד
-    s += `<path fill="${F}" d="M${cx},${y + 35} L${cx + 5.5},${y + 43} L${cx},${y + 52} L${cx - 5.5},${y + 43} Z"/>`;
-  }
-  return s + '</svg>';
-}
-BUILTIN_SVGS['shaar-frame-chain'] = buildShaarFrameChain();
-
-/** הדיו של kindStyle — מקור יחיד.
- * @returns {{type:'svg', svg:string, uri:string}|{type:'rule'}|{type:'rect', color:number[]}|{type:'image', uri:string}|null} */
-function ornamentInk(kindStyle) {
-  const s = String(kindStyle || '');
-  if (!s || s === 'none' || s === 'custom_img') return null;
-  if (s === 'thin' || s === 'line') return { type: 'rule' };
-  // **D-89 (עיצוב שערים):** מלבן בצבע אחיד — rect:<#hex> — רקעי הפאנלים
-  // (#F4F4F4 של שער המשנה/האחורי, מסגרות השער הראשי, כלל הכותרת).
-  if (s.startsWith('rect:')) {
-    const col = parseColor(s.slice(5).trim());
-    return col ? { type: 'rect', color: col } : null;
-  }
-  if (BUILTIN_SVGS[s]) {
-    return { type: 'svg', svg: BUILTIN_SVGS[s], uri: svgToDataUri(BUILTIN_SVGS[s]) };
-  }
-  // הפניית ספריית עיצובים (imud:<collection>:<id>) — ה-SVG החיטוי מהרישום
-  if (s.startsWith('imud:') || s.startsWith('data:image/svg') || /\.svg($|\?)/i.test(s)) {
-    const r = resolveAssetRef(s);
-    if (r && (r.uri || '').startsWith('data:image/svg')) {
-      return { type: 'svg', svg: r.item ? r.item.svg : decodeDataUriSvg(r.uri), uri: r.uri };
-    }
-    if ((r && r.uri || '').startsWith('data:')) return { type: 'image', uri: r.uri };
-    return null;
-  }
-  if (/^https?:|^data:image\/(png|jpe?g|gif|webp)/i.test(s)) return { type: 'image', uri: s };
-  return null;
-}
-
-/** data-URI ל-SVG (percent-encoding — תואם url("...") ב-CSS). */
-function svgToDataUri(svg) {
-  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(String(svg));
-}
-function decodeDataUriSvg(uri) {
-  try { return decodeURIComponent(String(uri).replace(/^data:image\/svg\+xml;charset=utf-8,/, '')); }
-  catch (e) { return null; }
-}
-
-// ---------------------------------------------------------------------------
-// פענוח SVG → רשימת ציור (תת-קבוצת ה-SVG שקיימת בפועל בקטלוגים ובצורות):
-// viewBox, <g transform="translate(a,b) scale(sx,sy)">, <path d> בפקודות
-// M m L l H h V v C c Q q S s T t A a Z, <circle>, <rect>, <ellipse>,
-// <polygon>, <polyline>; מילוי בלבד (stroke=none בכל הקטלוג — נבדק).
-// ---------------------------------------------------------------------------
-
-/** מפענח מספרים ממחרוזת פקודות נתיב. */
-function parsePathD(d) {
-  const segs = [];
-  const re = /([MmLlHhVvCcSsQqTtAaZz])|(-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)/g;
-  let m, cmd = null, args = [];
-  const flush = () => {
-    if (cmd) segs.push({ cmd: cmd.toUpperCase(), rel: cmd !== cmd.toUpperCase(), args });
-    cmd = null; args = [];
-  };
-  while ((m = re.exec(String(d || '')))) {
-    if (m[1]) { flush(); cmd = m[1]; }
-    else args.push(parseFloat(m[2]));
-  }
-  flush();
-  return segs;
-}
-
-/** המרת פקודות נתיב לרצף נקודות/בזייה במרחב ה-viewBox (absolute).
- * @returns {{subpaths: Array<Array<{op:'M'|'L'|'C', pts:number[]}>>, x0:number,y0:number}} */
-function pathToSubpaths(d, transform) {
-  const segs = parsePathD(d);
-  const subpaths = [];
-  let cur = null;      // תת-נתיב נוכחי
-  let x = 0, y = 0;    // נקודה נוכחית (מרחב מקורי, לפני transform)
-  let sx = 0, sy = 0;  // נקודת פתיחה של תת-הנתיב
-  let lastC2x = 0, lastC2y = 0, haveLastC = false;
-  const push = (op, pts) => {
-    if (!cur) { cur = []; subpaths.push(cur); }
-    cur.push({ op, pts: transform(pts) });
-  };
-  const cubicTo = (x1, y1, x2, y2, x3, y3) => { push('C', [x, y, x1, y1, x2, y2, x3, y3]); x = x3; y = y3; };
-  const quadTo = (x1, y1, x2, y2) => {
-    // Q → שני C (עליית מדרגה הרמיטית)
-    const cx1 = x + 2 / 3 * (x1 - x), cy1 = y + 2 / 3 * (y1 - y);
-    const cx2 = x2 + 2 / 3 * (x1 - x2), cy2 = y2 + 2 / 3 * (y1 - y2);
-    cubicTo(cx1, cy1, cx2, cy2, x2, y2);
-  };
-  const arcTo = (rx, ry, rot, laf, sf, x2, y2) => {
-    // קירוב קשת ב-8 מקטעי בזייה (דיוק חזותי מלא בגדלי עיטור) — endpoint→center
-    const x1 = x, y1 = y;
-    if (rx === 0 || ry === 0 || (x1 === x2 && y1 === y2)) { push('L', [x1, y1, x2, y2]); x = x2; y = y2; return; }
-    rx = Math.abs(rx); ry = Math.abs(ry);
-    const phi = rot * Math.PI / 180;
-    const cosP = Math.cos(phi), sinP = Math.sin(phi);
-    const dx2 = (x1 - x2) / 2, dy2 = (y1 - y2) / 2;
-    const x1p = cosP * dx2 + sinP * dy2, y1p = -sinP * dx2 + cosP * dy2;
-    const lam = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry);
-    if (lam > 1) { const s = Math.sqrt(lam); rx *= s; ry *= s; }
-    let num = rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p;
-    const den = rx * rx * y1p * y1p + ry * ry * x1p * x1p;
-    let co = Math.sqrt(Math.max(0, num / den));
-    if (laf === sf) co = -co;
-    const cxp = co * rx * y1p / ry, cyp = -co * ry * x1p / rx;
-    const cx = cosP * cxp - sinP * cyp + (x1 + x2) / 2;
-    const cy = sinP * cxp + cosP * cyp + (y1 + y2) / 2;
-    const ang = (ux, uy, vx, vy) => {
-      const dot = ux * vx + uy * vy, len = Math.sqrt(ux * ux + uy * uy) * Math.sqrt(vx * vx + vy * vy);
-      let a = Math.acos(Math.max(-1, Math.min(1, dot / (len || 1))));
-      if (ux * vy - uy * vx < 0) a = -a;
-      return a;
-    };
-    const theta1 = ang(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry);
-    let dTheta = ang((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry);
-    if (!sf && dTheta > 0) dTheta -= 2 * Math.PI;
-    if (sf && dTheta < 0) dTheta += 2 * Math.PI;
-    const N = 8;
-    const delta = dTheta / N;
-    const t = theta1;
-    let px = x1, py = y1;
-    for (let i = 1; i <= N; i++) {
-      const t2 = t + delta * i;
-      const px2 = cx + rx * Math.cos(t2) * cosP - ry * Math.sin(t2) * sinP;
-      const py2 = cy + rx * Math.cos(t2) * sinP + ry * Math.sin(t2) * cosP;
-      const tm = t + delta * (i - 0.5);
-      const cmx = cx + rx * Math.cos(tm) * cosP - ry * Math.sin(tm) * sinP;
-      const cmy = cy + rx * Math.cos(tm) * sinP + ry * Math.sin(tm) * cosP;
-      // נקודת בקרה בזייה לקשת מעגלית: k = 4/3·tan(δ/4)
-      const k = 4 / 3 * Math.tan(delta / 4);
-      const c1x = px + k * (-rx * Math.cos(t + delta * (i - 1)) * sinP - ry * Math.sin(t + delta * (i - 1)) * cosP);
-      const c1y = py + k * (rx * Math.cos(t + delta * (i - 1)) * cosP - ry * Math.sin(t + delta * (i - 1)) * sinP);
-      const c2x = px2 - k * (-rx * Math.cos(t2) * sinP - ry * Math.sin(t2) * cosP);
-      const c2y = py2 - k * (rx * Math.cos(t2) * cosP - ry * Math.sin(t2) * sinP);
-      void cmx; void cmy;
-      cubicTo(c1x, c1y, c2x, c2y, px2, py2);
-      px = px2; py = py2;
-    }
-  };
-  for (const { cmd, rel, args } of segs) {
-    const a = args;
-    switch (cmd) {
-      case 'M':
-        for (let i = 0; i + 1 < a.length; i += 2) {
-          x = rel ? x + a[i] : a[i]; y = rel ? y + a[i + 1] : a[i + 1];
-          if (i === 0) { cur = null; push('M', [x, y]); sx = x; sy = y; }
-          else push('L', [x, y, x, y]);
-        }
-        haveLastC = false;
-        break;
-      case 'L':
-        for (let i = 0; i + 1 < a.length; i += 2) {
-          const nx = rel ? x + a[i] : a[i], ny = rel ? y + a[i + 1] : a[i + 1];
-          push('L', [x, y, nx, ny]); x = nx; y = ny;
-        }
-        haveLastC = false;
-        break;
-      case 'H':
-        for (const v of a) { const nx = rel ? x + v : v; push('L', [x, y, nx, y]); x = nx; }
-        haveLastC = false;
-        break;
-      case 'V':
-        for (const v of a) { const ny = rel ? y + v : v; push('L', [x, y, x, ny]); y = ny; }
-        haveLastC = false;
-        break;
-      case 'C':
-        for (let i = 0; i + 5 < a.length; i += 6) {
-          const x1 = rel ? x + a[i] : a[i], y1 = rel ? y + a[i + 1] : a[i + 1];
-          const x2 = rel ? x + a[i + 2] : a[i + 2], y2 = rel ? y + a[i + 3] : a[i + 3];
-          const x3 = rel ? x + a[i + 4] : a[i + 4], y3 = rel ? y + a[i + 5] : a[i + 5];
-          cubicTo(x1, y1, x2, y2, x3, y3);
-          lastC2x = x2; lastC2y = y2; haveLastC = true;
-        }
-        break;
-      case 'S':
-        for (let i = 0; i + 3 < a.length; i += 4) {
-          const x2 = rel ? x + a[i] : a[i], y2 = rel ? y + a[i + 1] : a[i + 1];
-          const x3 = rel ? x + a[i + 2] : a[i + 2], y3 = rel ? y + a[i + 3] : a[i + 3];
-          const x1 = haveLastC ? 2 * x - lastC2x : x, y1 = haveLastC ? 2 * y - lastC2y : y;
-          cubicTo(x1, y1, x2, y2, x3, y3);
-          lastC2x = x2; lastC2y = y2; haveLastC = true;
-        }
-        break;
-      case 'Q':
-        for (let i = 0; i + 3 < a.length; i += 4) {
-          const x1 = rel ? x + a[i] : a[i], y1 = rel ? y + a[i + 1] : a[i + 1];
-          const x2 = rel ? x + a[i + 2] : a[i + 2], y2 = rel ? y + a[i + 3] : a[i + 3];
-          quadTo(x1, y1, x2, y2);
-          lastC2x = x1; lastC2y = y1; haveLastC = false;
-        }
-        break;
-      case 'T':
-        for (let i = 0; i + 1 < a.length; i += 2) {
-          const x2 = rel ? x + a[i] : a[i], y2 = rel ? y + a[i + 1] : a[i + 1];
-          const x1 = haveLastC ? 2 * x - lastC2x : x, y1 = haveLastC ? 2 * y - lastC2y : y;
-          quadTo(x1, y1, x2, y2);
-          lastC2x = x1; lastC2y = y1;
-        }
-        break;
-      case 'A':
-        for (let i = 0; i + 6 < a.length; i += 7) {
-          const rx = a[i], ry = a[i + 1], rot = a[i + 2];
-          const laf = a[i + 3], sf = a[i + 4];
-          const x2 = rel ? x + a[i + 5] : a[i + 5], y2 = rel ? y + a[i + 6] : a[i + 6];
-          arcTo(rx, ry, rot, laf, sf, x2, y2);
-        }
-        haveLastC = false;
-        break;
-      case 'Z':
-        if (cur && cur.length) push('L', [x, y, sx, sy]);
-        x = sx; y = sy;
-        haveLastC = false;
-        break;
-    }
-  }
-  return { subpaths, x, y };
-}
-
-/** פענוח SVG שלם → { vbW, vbH, shapes: [{subpaths, fill}] } (מרחב viewBox). */
-function parseSvgPaint(svg) {
-  const s = String(svg || '');
-  if (!s) return null;
-  const vb = /viewBox\s*=\s*"([^"]+)"/.exec(s);
-  let vbW = 0, vbH = 0;
-  if (vb) {
-    const p = vb[1].trim().split(/[\s,]+/).map(Number);
-    vbW = p[2] || 0; vbH = p[3] || 0;
-  }
-  const wm = /width\s*=\s*"([\d.]+)/.exec(s), hm = /height\s*=\s*"([\d.]+)/.exec(s);
-  if (!vbW && wm) vbW = parseFloat(wm[1]);
-  if (!vbH && hm) vbH = parseFloat(hm[1]);
-  if (!vbW || !vbH) return null;
-
-  // transform של <g> — **S70 (R6):** תמיכה מלאה ב-translate/scale/matrix
-  // (כולל רשימות) עם הרכבה לפי סדר SVG: הפונקציה השמאלית מוחלת אחרונה.
-  let tx = 0, ty = 0, sx = 1, sy = 1;
-  let mtx = null; // [a,b,c,d,e,f] כאשר x' = a·x + c·y + e ; y' = b·x + d·y + f
-  const gt = /<g\b[^>]*transform\s*=\s*"([^"]+)"/.exec(s);
-  if (gt) {
-    const tr = gt[1];
-    const funcs = [];
-    const fre = /(matrix|translate|scale)\s*\(\s*([^)]+)\)/g;
-    let fm;
-    while ((fm = fre.exec(tr))) {
-      const a = fm[2].split(/[\s,]+/).map(Number);
-      if (fm[1] === 'matrix' && a.length >= 6) funcs.push([a[0], a[1], a[2], a[3], a[4], a[5]]);
-      else if (fm[1] === 'translate') funcs.push([1, 0, 0, 1, a[0] || 0, a[1] || 0]);
-      else if (fm[1] === 'scale') {
-        const kx = a[0] != null ? a[0] : 1, ky = a[1] != null ? a[1] : (a[0] != null ? a[0] : 1);
-        funcs.push([kx, 0, 0, ky, 0, 0]);
-      }
-    }
-    // הרכבה לפי סדר SVG: השמאלית חיצונית (מוחלת אחרונה) — acc_new = acc ∘ F
-    // (אימות: "translate(10,0) scale(2)" ⇒ x'=2x+10 ✓)
-    let acc = [1, 0, 0, 1, 0, 0];
-    for (const F of funcs) {
-      acc = [
-        acc[0] * F[0] + acc[2] * F[1],
-        acc[1] * F[0] + acc[3] * F[1],
-        acc[0] * F[2] + acc[2] * F[3],
-        acc[1] * F[2] + acc[3] * F[3],
-        acc[0] * F[4] + acc[2] * F[5] + acc[4],
-        acc[1] * F[4] + acc[3] * F[5] + acc[5],
-      ];
-    }
-    mtx = acc;
-    // תאימות לאחור: טרנספורמציה בודדת translate/scale — שמירת tx/ty/sx/sy
-    const tm = /translate\(\s*([-\d.]+)[\s,]+([-\d.]+)/.exec(tr);
-    if (tm) { tx = parseFloat(tm[1]); ty = parseFloat(tm[2]); }
-    const sm = /scale\(\s*([-\d.]+)(?:[\s,]+([-\d.]+))?\)/.exec(tr);
-    if (sm) { sx = parseFloat(sm[1]); sy = sm[2] != null ? parseFloat(sm[2]) : sx; }
-  }
-  const transform = (pts) => {
-    const out = [];
-    for (let i = 0; i + 1 < pts.length; i += 2) {
-      if (mtx) {
-        out.push(mtx[0] * pts[i] + mtx[2] * pts[i + 1] + mtx[4], mtx[1] * pts[i] + mtx[3] * pts[i + 1] + mtx[5]);
-      } else {
-        out.push(pts[i] * sx + tx, pts[i + 1] * sy + ty);
-      }
-    }
-    return out;
-  };
-
-  const shapes = [];
-  const pushShape = (d, fillAttr, strokeAttr) => {
-    if (strokeAttr && strokeAttr !== 'none') return; // קווים חיצוניים — מחוץ לתת-הקבוצה (לא קיימים בקטלוג)
-    const { subpaths } = pathToSubpaths(d, transform);
-    if (!subpaths.length) return;
-    shapes.push({ subpaths, fill: parseColor(fillAttr) });
-  };
-
-  // <path> — fill מהאלמנט או מה-<g> שעוטף (inherit)
-  const gFill = /<g\b[^>]*\bfill\s*=\s*"([^"]+)"/.exec(s);
-  const gStroke = /<g\b[^>]*\bstroke\s*=\s*"([^"]+)"/.exec(s);
-  const pathRe = /<path\b([^>]*)>/g;
-  let m;
-  while ((m = pathRe.exec(s))) {
-    const attrs = m[1];
-    const d = /d\s*=\s*"([^"]+)"/.exec(attrs);
-    if (!d) continue;
-    const fill = /fill\s*=\s*"([^"]+)"/.exec(attrs);
-    const stroke = /stroke\s*=\s*"([^"]+)"/.exec(attrs);
-    pushShape(d[1], fill ? fill[1] : (gFill ? gFill[1] : '#000'), stroke ? stroke[1] : (gStroke ? gStroke[1] : 'none'));
-  }
-  // <circle>/<ellipse> — ארבע קשתות בזייה
-  const circRe = /<(circle|ellipse)\b([^>]*)>/g;
-  while ((m = circRe.exec(s))) {
-    const at = m[2];
-    const num = (k) => { const r = new RegExp(`\\b${k}\\s*=\\s*"([\\d.]+)"`).exec(at); return r ? parseFloat(r[1]) : null; };
-    const cx = num('cx') || 0, cy = num('cy') || 0;
-    const rx = m[1] === 'circle' ? (num('r') || 0) : (num('rx') || 0);
-    const ry = m[1] === 'circle' ? (num('r') || 0) : (num('ry') || 0);
-    if (!rx || !ry) continue;
-    const k = 0.5522847498;
-    const d = `M ${cx - rx} ${cy} C ${cx - rx} ${cy - ry * k} ${cx - rx * k} ${cy - ry} ${cx} ${cy - ry} `
-      + `C ${cx + rx * k} ${cy - ry} ${cx + rx} ${cy - ry * k} ${cx + rx} ${cy} `
-      + `C ${cx + rx} ${cy + ry * k} ${cx + rx * k} ${cy + ry} ${cx} ${cy + ry} `
-      + `C ${cx - rx * k} ${cy + ry} ${cx - rx} ${cy + ry * k} ${cx - rx} ${cy} Z`;
-    const fill = /fill\s*=\s*"([^"]+)"/.exec(at);
-    const stroke = /stroke\s*=\s*"([^"]+)"/.exec(at);
-    pushShape(d, fill ? fill[1] : '#000', stroke ? stroke[1] : 'none');
-  }
-  // <rect>
-  const rectRe = /<rect\b([^>]*)>/g;
-  while ((m = rectRe.exec(s))) {
-    const at = m[1];
-    const num = (k) => { const r = new RegExp(`\\b${k}\\s*=\\s*"([\\d.]+)"`).exec(at); return r ? parseFloat(r[1]) : 0; };
-    const x0 = num('x'), y0 = num('y'), w = num('width'), h = num('height');
-    if (!w || !h) continue;
-    const fill = /fill\s*=\s*"([^"]+)"/.exec(at);
-    pushShape(`M ${x0} ${y0} L ${x0 + w} ${y0} L ${x0 + w} ${y0 + h} L ${x0} ${y0 + h} Z`, fill ? fill[1] : '#000', 'none');
-  }
-  // **S70 (R6):** <polygon>/<polyline> — points לנתיב; polygon נסגר (Z)
-  // וממולא כברירת מחדל; polyline נצבע רק אם יש לו fill מפורש (קו-בלבד
-  // מחוץ לתת-הקבוצה — כמו stroked paths — תיעוד בראש המודול).
-  const polyRe = /<(polygon|polyline)\b([^>]*)>/g;
-  while ((m = polyRe.exec(s))) {
-    const at = m[2];
-    const ptsM = /points\s*=\s*"([^"]+)"/.exec(at);
-    if (!ptsM) continue;
-    const nums = ptsM[1].trim().split(/[\s,]+/).map(Number).filter((v) => Number.isFinite(v));
-    if (nums.length < 4) continue;
-    const fill = /fill\s*=\s*"([^"]+)"/.exec(at);
-    const stroke = /stroke\s*=\s*"([^"]+)"/.exec(at);
-    if (m[1] === 'polyline' && !fill && !gFill) continue;
-    let d = `M ${nums[0]} ${nums[1]}`;
-    for (let i = 2; i + 1 < nums.length; i += 2) d += ` L ${nums[i]} ${nums[i + 1]}`;
-    if (m[1] === 'polygon') d += ' Z';
-    pushShape(d, fill ? fill[1] : (gFill ? gFill[1] : '#000'), stroke ? stroke[1] : (gStroke ? gStroke[1] : 'none'));
-  }
-  if (!shapes.length) return null;
-  return { vbW, vbH, shapes };
-}
-
-/** צבע מילוי → [r,g,b] 0..1 ('#abc', '#aabbcc', שמות בסיסיים). */
-function parseColor(c) {
-  const s = String(c || '').trim();
-  if (!s || s === 'none' || s === 'transparent') return null;
-  if (s === 'currentColor') return [0, 0, 0];
-  let m = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(s);
-  if (m) return [parseInt(m[1] + m[1], 16) / 255, parseInt(m[2] + m[2], 16) / 255, parseInt(m[3] + m[3], 16) / 255];
-  m = /^#([0-9a-f]{6})$/i.exec(s);
-  if (m) {
-    const n = parseInt(m[1], 16);
-    return [(n >> 16) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
-  }
-  const named = { black: [0, 0, 0], white: [1, 1, 1], red: [1, 0, 0], blue: [0, 0, 1] };
-  if (named[s.toLowerCase()]) return named[s.toLowerCase()];
-  return [0, 0, 0]; // ברירת מחדל — שחור (כמו SVG)
-}
-
-/** פליטת פעולות PDF לציור העיטור בתוך rect (px, מרחב עמוד) עם התאמת
- * 'meet' (preserveAspectRatio) — מרכז התמונה במרכז התיבה בלי עיוות.
- * @param {object} paint — פלט parseSvgPaint
- * @param {{x,y,w,h}} rectPx — יעד בפיקסלים (שיטת הפרויקטור)
- * @param {number} hPt — גובה העמוד ב-pt (היפוך y)
- * @param {number} PX_TO_PT
- * @returns {string[]} פעולות PDF (m/l/c/h/f + rg) */
-function svgToPdfOps(paint, rectPx, hPt, PX_TO_PT) {
-  const { vbW, vbH, shapes } = paint;
-  // meet: סקייל אחיד מרבי שנכנס, ממורכז
-  const s = Math.min(rectPx.w / vbW, rectPx.h / vbH);
-  const drawW = vbW * s, drawH = vbH * s;
-  const offX = rectPx.x + (rectPx.w - drawW) / 2;
-  const offY = rectPx.y + (rectPx.h - drawH) / 2;
-  const X = (vx) => (offX + vx * s) * PX_TO_PT;
-  const Y = (vy) => hPt - (offY + vy * s) * PX_TO_PT;
-  const r2 = (v) => Math.round(v * 100) / 100;
-  const ops = [];
-  for (const sh of shapes) {
-    const col = sh.fill || [0, 0, 0];
-    ops.push(`${r2(col[0])} ${r2(col[1])} ${r2(col[2])} rg`);
-    for (const sub of sh.subpaths) {
-      let started = false;
-      for (const seg of sub) {
-        const p = seg.pts;
-        if (seg.op === 'M') {
-          if (started) ops.push('h f');
-          ops.push(`${r2(X(p[0]))} ${r2(Y(p[1]))} m`);
-          started = true;
-        } else if (seg.op === 'L') {
-          if (!started) { ops.push(`${r2(X(p[0]))} ${r2(Y(p[1]))} m`); started = true; }
-          ops.push(`${r2(X(p[2]))} ${r2(Y(p[3]))} l`);
-        } else if (seg.op === 'C') {
-          if (!started) { ops.push(`${r2(X(p[0]))} ${r2(Y(p[1]))} m`); started = true; }
-          ops.push(`${r2(X(p[2]))} ${r2(Y(p[3]))} ${r2(X(p[4]))} ${r2(Y(p[5]))} ${r2(X(p[6]))} ${r2(Y(p[7]))} c`);
-        }
-      }
-      if (started) ops.push('h f');
-    }
-  }
-  return ops;
-}
-
-/** תיבת הדיו **המדויקת** של הצורות הממוקמות בתוך rect (אותה התאמת
- * 'meet' כמו svgToPdfOps) — לחישוב inkBounds של המודל מול הרסטר.
- * @returns {{minX,minY,maxX,maxY}|null} בפיקסלים (מרחב עמוד) */
-function svgInkBBox(paint, rectPx) {
-  const { vbW, vbH, shapes } = paint;
-  const s = Math.min(rectPx.w / vbW, rectPx.h / vbH);
-  const drawW = vbW * s, drawH = vbH * s;
-  const offX = rectPx.x + (rectPx.w - drawW) / 2;
-  const offY = rectPx.y + (rectPx.h - drawH) / 2;
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const sh of shapes) {
-    if (sh.fill == null) continue; // צורה בלי מילוי — אין דיו
-    for (const sub of sh.subpaths) {
-      for (const seg of sub) {
-        const p = seg.pts;
-        for (let i = 0; i + 1 < p.length; i += 2) {
-          const x = offX + p[i] * s, y = offY + p[i + 1] * s;
-          if (x < minX) minX = x; if (x > maxX) maxX = x;
-          if (y < minY) minY = y; if (y > maxY) maxY = y;
-        }
-      }
-    }
-  }
-  if (minX === Infinity) return null;
-  return { minX, minY, maxX, maxY };
-}
-
-module.exports = {
-  BUILTIN_SVGS, ornamentInk, svgToDataUri,
-  parseSvgPaint, svgToPdfOps, svgInkBBox, parsePathD, pathToSubpaths, parseColor
 };
 
 };
