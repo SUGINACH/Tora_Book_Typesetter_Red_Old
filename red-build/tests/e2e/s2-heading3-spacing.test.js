@@ -3,6 +3,7 @@
 // כלומר: pitch טקסטואלי בלבד; top padding פעם אחת; bottom padding ו-margin פעם אחת בסוף.
 // 34px הישן היה line-height + top padding + bottom padding; אסור להשתמש בו כ-pitch.
 // בדיקה זו מכוונת לנתיב IMUD הפעיל; ה-DP יידרש לאותו חוזה לפני cutover.
+// בדיקת הקבלה כוללת גם התאמת cache-busting של CSS, app bundle ו-Worker.
 'use strict';
 const fs = require('fs');
 const path = require('path');
