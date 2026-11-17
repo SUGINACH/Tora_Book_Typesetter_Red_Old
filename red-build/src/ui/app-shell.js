@@ -661,6 +661,21 @@ function createApp(doc, opts = {}) {
     try {
       if (kind === 'html') {
         const fontCss = (typeof opts.getExportFontCss === 'function' && opts.getExportFontCss()) || '';
+        // **פרוסה 4 (§3 — HTML מה-PageModel):** בפרופיל המאוחד הייצוא מהמודל
+        // שכבר חושב — אותו מקרין כמו התצוגה החיה; אין typeset נוסף. חסר-מודל
+        // = כשל מפורש (אין נפילה לייצוא מהתוצאה הגולמית — §3). legacy ממשיך
+        // בנתיב הקיים עד שלב 9 (תקופת המעבר, כמו בתצוגה).
+        if (engineProfile === 'unified') {
+          if (!pageModelObj) {
+            status.setNotice('ייצוא HTML בפרופיל המאוחד דורש PageModel — אין נתיב חלופי (הפעילו עימוד מחדש).');
+            return { ok: false, kind, reason: 'no-page-model' };
+          }
+          const { exportHtmlFromModel } = require('../engine/output/export-api');
+          const html = exportHtmlFromModel(pageModelObj, settings, doc, { title: (result.metadata && result.metadata['ספר']) || 'ספר', fontCss });
+          if (opts.onExportFile) opts.onExportFile('html', html, 'book.html');
+          status.setNotice('יוצא HTML עצמאי מה-PageModel (חד־קובץ, offline, אין עימוד שני).');
+          return { ok: true, kind, data: html };
+        }
         const html = exportHtml(result, settings, doc, { title: (result.metadata && result.metadata['ספר']) || 'ספר', fontCss });
         if (opts.onExportFile) opts.onExportFile('html', html, 'book.html');
         status.setNotice('יוצא HTML עצמאי (חד־קובץ, offline).');

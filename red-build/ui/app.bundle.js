@@ -317,6 +317,7 @@ var __paths = {
   "src/ui/app-shell.js|../engine/core/settings-registry": "src/engine/core/settings-registry.js",
   "src/ui/app-shell.js|./inline-transport": "src/ui/inline-transport.js",
   "src/ui/app-shell.js|../engine/output/export-api": "src/engine/output/export-api.js",
+  "src/ui/app-shell.js|../engine/output/export-api": "src/engine/output/export-api.js",
   "src/ui/app-shell.js|../engine/core/settings-registry": "src/engine/core/settings-registry.js",
   "src/ui/app-shell.js|../engine/core/legacy-settings-map": "src/engine/core/legacy-settings-map.js",
   "src/ui/app-shell.js|../engine/layout/page-templates": "src/engine/layout/page-templates.js",
@@ -410,6 +411,7 @@ var __paths = {
   "src/engine/output/export-api.js|../core/settings-registry": "src/engine/core/settings-registry.js",
   "src/engine/output/export-api.js|./dom-renderer": "src/engine/output/dom-renderer.js",
   "src/engine/output/export-api.js|./html-export": "src/engine/output/html-export.js",
+  "src/engine/output/export-api.js|./pagemodel-dom-renderer": "src/engine/output/pagemodel-dom-renderer.js",
   "src/engine/output/export-api.js|../layout/page-templates": "src/engine/layout/page-templates.js",
   "src/engine/output/export-api.js|../import/zip-reader": "src/engine/import/zip-reader.js",
   "src/engine/output/export-api.js|./legacy-projector": "src/engine/output/legacy-projector.js",
@@ -1317,6 +1319,21 @@ function createApp(doc, opts = {}) {
     try {
       if (kind === 'html') {
         const fontCss = (typeof opts.getExportFontCss === 'function' && opts.getExportFontCss()) || '';
+        // **פרוסה 4 (§3 — HTML מה-PageModel):** בפרופיל המאוחד הייצוא מהמודל
+        // שכבר חושב — אותו מקרין כמו התצוגה החיה; אין typeset נוסף. חסר-מודל
+        // = כשל מפורש (אין נפילה לייצוא מהתוצאה הגולמית — §3). legacy ממשיך
+        // בנתיב הקיים עד שלב 9 (תקופת המעבר, כמו בתצוגה).
+        if (engineProfile === 'unified') {
+          if (!pageModelObj) {
+            status.setNotice('ייצוא HTML בפרופיל המאוחד דורש PageModel — אין נתיב חלופי (הפעילו עימוד מחדש).');
+            return { ok: false, kind, reason: 'no-page-model' };
+          }
+          const { exportHtmlFromModel } = require('../engine/output/export-api');
+          const html = exportHtmlFromModel(pageModelObj, settings, doc, { title: (result.metadata && result.metadata['ספר']) || 'ספר', fontCss });
+          if (opts.onExportFile) opts.onExportFile('html', html, 'book.html');
+          status.setNotice('יוצא HTML עצמאי מה-PageModel (חד־קובץ, offline, אין עימוד שני).');
+          return { ok: true, kind, data: html };
+        }
         const html = exportHtml(result, settings, doc, { title: (result.metadata && result.metadata['ספר']) || 'ספר', fontCss });
         if (opts.onExportFile) opts.onExportFile('html', html, 'book.html');
         status.setNotice('יוצא HTML עצמאי (חד־קובץ, offline).');
@@ -23892,6 +23909,10 @@ __modules["src/engine/output/export-api.js"] = function (require, module, export
 const getDefaultSettings = require('../core/settings-registry').getDefaultSettings;
 const { renderPage } = require('./dom-renderer');
 const { buildStandaloneHtml } = require('./html-export');
+// **פרוסה 4 (§3):** המקרין הטהור מה-PageModel — אותו מקור גיאומטריה כמו
+// התצוגה החיה בפרופיל המאוחד. הייצוא הוא צילום-מצב של המודל: אין typeset
+// נוסף, אין Parser/Planner, אין מדידה, אין חלוקת הערות — רק הקרנה.
+const { renderModelPage } = require('./pagemodel-dom-renderer');
 const { PAGE_SIZES, MM_TO_PX } = require('../layout/page-templates');
 const { utf8Decode } = require('../import/zip-reader'); // פענוח UTF-8 סביבת-אגנוסטי (רשומות zip = Uint8Array)
 
@@ -23944,6 +23965,60 @@ function exportHtml(result, settings, doc, meta = {}) {
     pageRules,
     // **03.11:** הטמעת הגופנים בקובץ העצמאי (@font-face data-URI) — מסופק ע"י ה־UI
     // מהספרייה (imud-library); ללא הגדרה — כמו קודם (fallback מערכת).
+    fontCss: meta.fontCss || ''
+  });
+  return html;
+}
+
+/**
+ * **פרוסה 4 (§3 — HTML מה-PageModel בלבד):** ייצוא HTML עצמאי מתוך PageModel
+ * שכבר חושב — אותו מקרין הקורא את אותו מודל שהתצוגה החיה מציגה בפרופיל
+ * המאוחד. אין כאן typeset/Parser/Planner/מדידה/חלוקת הערות — הקרנה טהורה
+ * של מה שכבר נקבע. קישורי תוכן-העניינים מוקרנים מ-tocLinks שבמודל.
+ * @param {object} model — PageModel (pagemodel-v1) שהועבר לצרכן ה-UI
+ * @param {object} settings — הגדרות ממוזגות (כרום תצוגה בלבד)
+ * @param {{createElement:Function}} doc — מפעל DOM
+ * @param {object} [meta] — {title, fontCss}
+ * @throws שגיאה מפורשת כשהמודל חסר/שגוי — אין fallback שקט (§3)
+ */
+function exportHtmlFromModel(model, settings, doc, meta = {}) {
+  if (!model || model.schema !== 'pagemodel-v1' || !Array.isArray(model.pages)) {
+    throw new Error('exportHtmlFromModel: נדרש PageModel תקין (pagemodel-v1) — ייצוא מהמודל בלבד, אין נתיב חלופי');
+  }
+  const pagesHtml = [];
+  const linkGetter = typeof doc.createElement === 'function' ? doc : null;
+  for (const mp of model.pages) {
+    const el = renderModelPage(mp, settings, doc);
+    // **קישורי TOC (§3 — bookmarks/קישורים):** מלבני הקישור מהמודל — הקרנה
+    // טהורה לעוגן <a href="#page-N">; היעדים הם ה-id של אלמנטי העמוד.
+    const links = (model.document && model.document.tocLinks || []).filter(l => l.page === mp.index);
+    if (links.length && linkGetter) {
+      for (const l of links) {
+        const a = doc.createElement('a');
+        a.className = 'toc-link';
+        a.setAttribute('href', `#page-${l.targetPage}`);
+        a.setAttribute('dir', 'rtl');
+        if (a.style) {
+          a.style.position = 'absolute';
+          a.style.left = `${Math.round(l.x * 100) / 100}px`;
+          a.style.top = `${Math.round(l.y * 100) / 100}px`;
+          a.style.width = `${Math.round(l.w * 100) / 100}px`;
+          a.style.height = `${Math.round(l.h * 100) / 100}px`;
+        }
+        el.appendChild(a);
+      }
+    }
+    pagesHtml.push(elementOuterHtml(el));
+  }
+  const sizeMm = pageMmOf(settings);
+  const pageRules = settings['export-html-page-rules'] !== false
+    ? `@page { size: ${round2mm(sizeMm.w)}mm ${round2mm(sizeMm.h)}mm; margin: 0 }\n`
+      + `.page{width:${Math.round(sizeMm.w * MM_TO_PX)}px;height:${Math.round(sizeMm.h * MM_TO_PX)}px}\n`
+      + `.toc-link{display:block}\n`
+    : '';
+  const html = buildStandaloneHtml(pagesHtml, settings, {
+    title: meta.title || 'ספר',
+    pageRules,
     fontCss: meta.fontCss || ''
   });
   return html;
@@ -24443,7 +24518,7 @@ function cleanSettings(settings) {
 }
 
 module.exports = {
-  exportHtml, exportPdf, exportProjectZip, importProjectZip, pageMmOf
+  exportHtml, exportHtmlFromModel, exportPdf, exportProjectZip, importProjectZip, pageMmOf
 };
 
 };

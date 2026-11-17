@@ -20,6 +20,10 @@
 const getDefaultSettings = require('../core/settings-registry').getDefaultSettings;
 const { renderPage } = require('./dom-renderer');
 const { buildStandaloneHtml } = require('./html-export');
+// **פרוסה 4 (§3):** המקרין הטהור מה-PageModel — אותו מקור גיאומטריה כמו
+// התצוגה החיה בפרופיל המאוחד. הייצוא הוא צילום-מצב של המודל: אין typeset
+// נוסף, אין Parser/Planner, אין מדידה, אין חלוקת הערות — רק הקרנה.
+const { renderModelPage } = require('./pagemodel-dom-renderer');
 const { PAGE_SIZES, MM_TO_PX } = require('../layout/page-templates');
 const { utf8Decode } = require('../import/zip-reader'); // פענוח UTF-8 סביבת-אגנוסטי (רשומות zip = Uint8Array)
 
@@ -72,6 +76,60 @@ function exportHtml(result, settings, doc, meta = {}) {
     pageRules,
     // **03.11:** הטמעת הגופנים בקובץ העצמאי (@font-face data-URI) — מסופק ע"י ה־UI
     // מהספרייה (imud-library); ללא הגדרה — כמו קודם (fallback מערכת).
+    fontCss: meta.fontCss || ''
+  });
+  return html;
+}
+
+/**
+ * **פרוסה 4 (§3 — HTML מה-PageModel בלבד):** ייצוא HTML עצמאי מתוך PageModel
+ * שכבר חושב — אותו מקרין הקורא את אותו מודל שהתצוגה החיה מציגה בפרופיל
+ * המאוחד. אין כאן typeset/Parser/Planner/מדידה/חלוקת הערות — הקרנה טהורה
+ * של מה שכבר נקבע. קישורי תוכן-העניינים מוקרנים מ-tocLinks שבמודל.
+ * @param {object} model — PageModel (pagemodel-v1) שהועבר לצרכן ה-UI
+ * @param {object} settings — הגדרות ממוזגות (כרום תצוגה בלבד)
+ * @param {{createElement:Function}} doc — מפעל DOM
+ * @param {object} [meta] — {title, fontCss}
+ * @throws שגיאה מפורשת כשהמודל חסר/שגוי — אין fallback שקט (§3)
+ */
+function exportHtmlFromModel(model, settings, doc, meta = {}) {
+  if (!model || model.schema !== 'pagemodel-v1' || !Array.isArray(model.pages)) {
+    throw new Error('exportHtmlFromModel: נדרש PageModel תקין (pagemodel-v1) — ייצוא מהמודל בלבד, אין נתיב חלופי');
+  }
+  const pagesHtml = [];
+  const linkGetter = typeof doc.createElement === 'function' ? doc : null;
+  for (const mp of model.pages) {
+    const el = renderModelPage(mp, settings, doc);
+    // **קישורי TOC (§3 — bookmarks/קישורים):** מלבני הקישור מהמודל — הקרנה
+    // טהורה לעוגן <a href="#page-N">; היעדים הם ה-id של אלמנטי העמוד.
+    const links = (model.document && model.document.tocLinks || []).filter(l => l.page === mp.index);
+    if (links.length && linkGetter) {
+      for (const l of links) {
+        const a = doc.createElement('a');
+        a.className = 'toc-link';
+        a.setAttribute('href', `#page-${l.targetPage}`);
+        a.setAttribute('dir', 'rtl');
+        if (a.style) {
+          a.style.position = 'absolute';
+          a.style.left = `${Math.round(l.x * 100) / 100}px`;
+          a.style.top = `${Math.round(l.y * 100) / 100}px`;
+          a.style.width = `${Math.round(l.w * 100) / 100}px`;
+          a.style.height = `${Math.round(l.h * 100) / 100}px`;
+        }
+        el.appendChild(a);
+      }
+    }
+    pagesHtml.push(elementOuterHtml(el));
+  }
+  const sizeMm = pageMmOf(settings);
+  const pageRules = settings['export-html-page-rules'] !== false
+    ? `@page { size: ${round2mm(sizeMm.w)}mm ${round2mm(sizeMm.h)}mm; margin: 0 }\n`
+      + `.page{width:${Math.round(sizeMm.w * MM_TO_PX)}px;height:${Math.round(sizeMm.h * MM_TO_PX)}px}\n`
+      + `.toc-link{display:block}\n`
+    : '';
+  const html = buildStandaloneHtml(pagesHtml, settings, {
+    title: meta.title || 'ספר',
+    pageRules,
     fontCss: meta.fontCss || ''
   });
   return html;
@@ -571,5 +629,5 @@ function cleanSettings(settings) {
 }
 
 module.exports = {
-  exportHtml, exportPdf, exportProjectZip, importProjectZip, pageMmOf
+  exportHtml, exportHtmlFromModel, exportPdf, exportProjectZip, importProjectZip, pageMmOf
 };
