@@ -26,7 +26,12 @@
     audited.set(idx, rec);
   };
   let scroller = null;
-  for (const cand of [document.querySelector('.tab-panel[data-tab="preview"]'), canvas]) {
+  // **S77 (תיקון רדום — נחשף עם F-BL1):** בתצוגה המפוצלת הגולל הוא root הקבוע
+  // .preview-pane — בדיוק כמו full-math-audit.js. עד כאן הסריקה חיפשה
+  // [tab-panel, canvas] בלבד; הגולל האמיתי לא נמצא ⇒ נתפסו רק העמודים החיים
+  // (~9) והדטרמיניזם דיווח על הבדלים פנטום. הבאג היה רדום: רצפת הנפח (F-BL1)
+  // נכשלה תמיד לפני שלב הדטרמיניזם, ולכן הסריקה מעולם לא רצה עד כה.
+  for (const cand of [document.querySelector('.preview-pane'), document.querySelector('.tab-panel[data-tab="preview"]'), canvas]) {
     if (cand && cand.scrollHeight > cand.clientHeight + 10) { scroller = cand; break; }
   }
   if (!scroller) {

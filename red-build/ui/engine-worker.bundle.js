@@ -15320,7 +15320,15 @@ function legacyTypeset(rawText, settings, env) {
       }
       if (rest.length) {
         const started = new Set();
-        for (const tl of placed) for (const t of tl) started.add(t.noteIdx);
+        // **F-BL2 (17.11 — סמן-הערה שנבלע בחיתוך שורת המרזב):** "החלה" מוכח
+        // רק על-ידי טוקן שהוצג בפועל — סמן (mk) או מילת טקסט. טוקן הרווח-הכפל
+        // (gap, w=0) ו-'(המשך)' אינם מוכיחים דבר: חיתוך שנופל בדיוק בין הרווח
+        // לסמן סימן את ההערה כ"החלה" בשקט ⇒ ההמשך נפתח ב-'(המשך)' בלי שהסמן
+        // הוצג אי-פעם (נמדד בחי: יז. עמ' 571→572, כג. עמ' 667 — שני
+        // MARKER_NOTE_MATCH ב-full-math-audit). ההמשך כעת נושא את הסמן.
+        for (const tl of placed) for (const t of tl) {
+          if (t && !t.gap && t.t !== '(המשך)') started.add(t.noteIdx);
+        }
         let curIdx = null, curTxt = [];
         const flushRest = () => {
           if (curIdx == null || !curTxt.length) return;
