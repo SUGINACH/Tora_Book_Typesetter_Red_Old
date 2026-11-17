@@ -94,3 +94,44 @@
 **ראיות:** npm test מלא **EXIT=0** (s8d 19/19; s10-ui 44/44 עם באנדלים שנבנו) · test:determinism OK · cross-check **PASS** (40d587a0/legacy-28f52/f6f32c40) · אודיט דפדפן: legacy 10/10+699/699 **0 בעיות**; unified 8/8+919/919 **0 בעיות** (וירטואליזציה) · **full-math-audit PASS מלא: 0 בעיות + דטרמיניזם IDENTICAL** (סגירת F-BL1 בפועל: רצפת נפח על מילות תוכן צפויות + משמר טוקניזר).
 
 **נותר (פרוסה 4):** HTML export מה-PageModel בלבד; פרוסה 5 — PDF; פרוסה 6 — parity ופישוט.
+
+## פרוסה 4 (17.11, ענף stage8e/pagemodel-html) — HTML export מה-PageModel (§3)
+
+**מה נעשה:**
+1. **`exportHtmlFromModel(model, settings, doc, meta)`** ב-export-api: הייצוא העצמאי נבנה מה-PageModel בלבד — אותו מקרין (`renderModelPage`) שהתצוגה החיה משתמשת בו בפרופיל המאוחד. אין typeset נוסף, אין Parser/Planner, אין מדידה, אין חלוקת הערות — הקרנה טהורה של מה שכבר נקבע. מודל חסר/שגוי ⇒ throw מפורש (חתימת הפונקציה אינה מקבלת result כלל).
+2. **קישורי TOC מהמודל:** מלבני tocLinks מוקרנים כעוגני `<a href="#page-N">` במיקומיהם הסופיים; היעדים הם ה-id של אלמנטי העמוד.
+3. **חיבור app-shell:** `exportRequest('html')` בפרופיל המאוחד מצרך את המודל שכבר התקבל (pageModelObj); חסר-מודל ⇒ הודעת כשל מפורשת (אין נפילה לייצוא מתוצאה גולמית). legacy ממשיך בנתיב הקיים עד שלב 9 (תקופת המעבר — כמו בתצוגה).
+
+**ראיות:** s8e חדשה (12): הוכחה שלילית ל-typeset (patch שזורק — 0 קריאות); חתימה ללא result; כשל מפורש על 5 קלטים שגויים; מיקומי שורות לפי data-id; עוגני מילים HTML==מודל (כולל מרזב); זהות DOM↔HTML (אותו מקרין); כיסוי כל סוגי התוכן; קישורי TOC; offline (אפס http); **very_long מלא** (344,476 מילות שורות + מרזב — כולן בקובץ); אינטגרציית createApp (unified+inline-transport) — הייצוא מגיע מהמודל בפועל; נתיב legacy לא נפגע. · npm test מלא **EXIT=0** · determinism OK · cross-check PASS · **אימות דפדפן אמיתי: הקובץ העצמאי נטען (7 עמודים, 39 שורות, 152 מילים; רקע כהה+עמודים לבנים; דיו בפיזור טורים)**.
+
+**נותר (פרוסה 5):** PDF מה-PageModel — הסרת העימוד השני מנתיב ה-PDF.
+
+## פרוסה 5 (17.11, ענף stage8e/pagemodel-html) — PDF export מה-PageModel (§4)
+
+**מה נעשה:**
+1. **`exportPdfFromModel(model, settings, fontBytes, fontName)`** ב-export-api: הסרת העימוד השני מנתיב ה-PDF. הכותב צורך את **אותו PageModel** שה-DOM וה-HTML צורכים — אין typeset/Parser/Planner/מדידה/חלוקת הערות/החלטות מיקום. אריזה בלבד: רישום גופן הייצוא, מלאי תווים מהטקסט שמצויר בפועל (מהמודל), תתי-גופנים לפי תפקידים (window/heading/fnbody/margin + משפחות רשומות), כתיבה. עמודי הכותב = התאמה טהורה של עמודי המודל (spanning→pg.spanning; השאר→pg.lines; footnotes/folio/header/decorations כמו שהם). סימניות וקישורים — מ-model.document (נבנו בבונה). מודל חסר ⇒ כשל מפורש (model-required) — אין נתיב עימוד חלופי.
+2. **השלמת זהויות במודל (סמכות):** מילות מרזב ההערות נושאות sizePt/fontKey/color מההקרנה (הכותב מצייר בזהותן האמיתית); עיטורים נושאים pdfOps (פעולות הציור שחושבו בהקרנה — svgToPdfOps).
+3. **חיבור ה-Worker:** התוצאה הגולמית (עם pageModel) נשמרת בזיכרון ה-Worker; export-pdf בפרופיל המאוחד (לפי האמת של הריצה — result.legacyProfile) צורך את המודל שבזיכרון — **אותו מודל שנשלח ל-UI**; חסר-מודל ⇒ כשל מפורש. legacy ממשיך בנתיב הקיים עד שלב 9.
+
+**ראיות:** s8f חדשה (10): הוכחה שלילית לעימוד שני (patch ל-typeset — 0 קריאות); מודל חסר/שגוי/גופן פסול ⇒ כשלים מפורשים; geometryHash של המודל חוזר ב-info; חלוץ טקסט (כיסוי >90% ממילות המודל); FontFile2+ToUnicode בקובץ; bookmarks+קישורים מהמודל עם יעדים; **גיאומטריה: מיקומי מילים ב-bbox של הפלט תואמים ל-baseline של המודל (RTL-visual כולל)**; זרימת Worker מלאה (inline-transport: typeset→מודל→ייצוא fromPageModel + השוואת hash). · npm test מלא **EXIT=0** · determinism OK · cross-check PASS. · **אימות דפדפן אמיתי + Worker אמיתי: הייצוא מהמודל (fromPageModel=true, 8 עמודים, 61KB) ו-geometryHash של הייצוא == hash המודל שה-DOM מציג (1cba68a695e6)**.
+
+**נותר (פרוסה 6):** מלאי קוד מלא (dom-renderer/geometry-projector/legacy-projector/pdf-writer/export-api), parity DOM/HTML/PDF, ביצועים לפני/אחרי, פישוט.
+
+## פרוסה 6 (17.11) — מלאי, parity ופישוט (§5)
+
+**מה נעשה:** (1) מלאי קוד מלא לכל מודולי היעד — סיוון לכל פונקציה (מדידה/החלטה/materialization/ציור/אריזה/צרכנים) ב-`audits/STAGE8_SLICE6_INVENTORY.md`; (2) בדיקות parity תלת-יעדי s8g (8): אותו מודל ⇒ DOM==HTML==PDF בעמודים/שורות/מילים; דטרמיניזם ייצוא ביט-לביט; חלוץ טקסט PDF מכסה את מילות המודל; מלאי סטטי (אפס מדידה במודולי היעד); הוכחת אין-עימוד-שני ל-HTML+PDF יחד; (3) מדידות לפני/אחרי (`tools/perf-slice6.js` → `audits/perf_slice6/perf-slice6.json`): **PDF מהמודל חוסך 94.9% ב-very_long (43.2s→2.19s)** ללא השמטת תוכן (parity 359,584=359,584 מילים); DOM 481ms ל-1,110 עמודים; מודל 56.5KB/עמוד.
+
+**ראיות:** npm test מלא EXIT=0 (s8g 8/8) · determinism OK · cross-check PASS.
+
+**שלב 8 — מצב שערי הסגירה (§13 בהוראה):**
+- [x] PageModel מכיל את כל נתוני היעד (פרוסות 1–3: ריהוט/כתרים/עמודים מותאמים/margin/floats/דיו/endnotes)
+- [x] המודל עובר בפועל דרך ה-Worker ל-UI (פרוסה 2; אומת ב-Worker אמיתי)
+- [x] DOM/HTML/PDF צורכים PageModel בפרופיל המאוחד (פרוסות 3–5; hash מוכח)
+- [x] אין ריפלואו/מדידה/עימוד במקרינים (מוכח שלילית+סטטית)
+- [x] אין עימוד שני בייצוא (unified; ה-Worker מפנה אוטומטית)
+- [x] אין fallback שקט (unified-בלי-מודל = שגיאה מפורשת בכל היעדים)
+- [x] קורפוסים ירוקים (cross-check PASS; full-math PASS + דטרמיניזם)
+- [x] Pages מאומת חי (פריסה 3: אתר עובד, gh-pages-audit success)
+- [x] מפת תלויות ורישום כפילויות מעודכנים (h3-contract במפה; מלאי פרוסה 6)
+- [x] parity תלת-יעדי וביצועים (פרוסה 6)
+- [ ] **תלוי שלב 9:** הסרת legacy, shadow comparison מלא, החלפת ברירת מחדל — שלב 8 נסגר בפרופיל המאוחד כשיעד המוגדר; המעבר הסופי (ברירת מחדל + הסרת נתיבים) שייך לשלב 9 כמתוכנן.
