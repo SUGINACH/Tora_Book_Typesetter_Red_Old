@@ -13,8 +13,9 @@
  * body-last-line-align; קריעה/AQ ברווחים). PUA נאסף לפני הפלט (BRZ-13).
  */
 
-const { scrubPUAText } = require('../output/dom-renderer');
-const { MeasureAPI } = require('../typography/measure-api');
+const { scrubPUAText } = require('./pua-text'); // **ביקורת §3.1:** מודול ניטרלי — הליבה אינה מייבאת מהרנדרר עוד
+const { MeasureAPI } = require('../typography/measure-api'); // פרופיל גופן (ascent/descent) — לא מדידת טקסט ב-production
+const { familyFontKeyOf } = require('../typography/font-keys'); // **ביקורת §3.1:** מקור יחיד למיפוי משפחה→מפתח (היה כפול בין כאן ל-structural-stamps)
 const { folioGeometry: folioGeoOf, headerGeometry: headerGeoOf } = require('../layout/furniture-geometry'); // **שלב 6:** גיאומטריית ריהוט — מקור יחיד ל-DOM ול-PDF
 const NM = require('../layout/notes-model'); // **שלב 6 פרוסה 2 (§9):** חותמות ההערות — המקרינים צורכים ואינם מודדים
 const { markerFor } = require('../notes/markers');
@@ -33,18 +34,13 @@ function colorOfSetting(hex) {
   return hex ? hexColorToRgb(hex) : null;
 }
 
-/** **S73:** מפתח משפחת הגופן לכותב ה-PDF — כמו fontKeyOf של המקרן המורשת:
- * משפחה רשומה ⇒ המשפחה עצמה (תת-גופן ייעודי בייצוא); אחרת null (גוף הטקסט).
- * התפקידים הפונקציונליים (window/fnbody/margin) נשארים בטיפול הקיים. */
-function familyFontKeyOf(fam, settings) {
-  if (!fam) return null;
-  const { registeredFonts } = require('../typography/measure-api');
-  if (!registeredFonts.has(fam)) return null;
-  if (fam === 'Frank Ruhl Libre') return 'fnbody';
-  if (fam === 'Hadassah Friedlaender') return 'margin';
-  if (fam === 'FrankReal-Bold' || fam === 'FrankReal') return 'window';
-  if (fam === 'David Libre' || fam === 'DavidLibre-Bold') return 'heading';
-  return fam;
+/** פענוח ארגומנט שלישי: API ישירות (compat) או אובייקט אפשרויות {measure, mode}. */
+function resolveRunOpts(apiOrOpts) {
+  if (apiOrOpts && typeof apiOrOpts.measureTextWidth === 'function') {
+    return { measure: apiOrOpts, production: false };
+  }
+  const o = (apiOrOpts && typeof apiOrOpts === 'object') ? apiOrOpts : {};
+  return { measure: o.measure || null, production: o.mode === 'production' };
 }
 
 /**
@@ -54,8 +50,12 @@ function familyFontKeyOf(fam, settings) {
  * @param {MeasureAPI} [api] — מדידה (נבנה אם לא הוזרק)
  * @returns {{width, height, contentBox, lines:Array, footnotes, folio, header, spanning}}
  */
-function projectPage(page, settings, api) {
-  const measure = api || new MeasureAPI(settings, 'table');
+function projectPage(page, settings, apiOrOpts) {
+  const runOpts = resolveRunOpts(apiOrOpts);
+  const production = runOpts.production;
+  // פרופיל גופן לבסיסים בלבד (ascent/descent/cap — נתוני טבלה סטטיים); מדידת
+  // טקסט אסורה ב-production — מוכח בבדיקת s8b (patch ל-prototype שזורק).
+  const measure = runOpts.measure || new MeasureAPI(settings, 'table');
   const tpl = page.template;
   const spanOffset = page.spanning ? page.spanning.heightPx : 0;
 
@@ -78,7 +78,7 @@ function projectPage(page, settings, api) {
     const band = { x: left, y: tpl.contentBox.top, w: right - left, h: page.spanning.heightPx, lines: [] };
     let y = tpl.contentBox.top;
     for (const ln of page.spanning.lines) {
-      band.lines.push(projectLine(ln, band.x, y, band.w, settings, measure, 'right'));
+      band.lines.push(projectLine(ln, band.x, y, band.w, settings, measure, 'right', production));
       y += ln.heightPx || 0;
     }
     out.spanning = band;
@@ -99,6 +99,7 @@ function projectPage(page, settings, api) {
       }
     } else {
       materializeFallbacks.push({ kind: 'materialize-fallback-toc-stamp', page: page.index });
+      if (!production) { // **§3.1:** compat בלבד; בייצור — diagnostic מזוהה, אין השחזור/מדידה
       const rows = (page.toc && page.toc.rows) || [];
       let yi = 0;
       for (const row of rows) {
@@ -116,6 +117,7 @@ function projectPage(page, settings, api) {
         }
         yi++;
       }
+      } // סוף שמירת compat
     }
   }
 
@@ -134,6 +136,7 @@ function projectPage(page, settings, api) {
     }
   } else if (/^shaar-/.test(page.type)) {
     materializeFallbacks.push({ kind: 'materialize-fallback-shaar-stamp', page: page.index });
+    if (!production) { // **§3.1:** compat בלבד; בייצור — diagnostic מזוהה בלבד
     const model = buildShaarBlocks(page, settings, page._metadata);
     if (model && model.blocks.length) {
       const b = model.box;
@@ -192,7 +195,7 @@ function projectPage(page, settings, api) {
       }
       function pushCentered(bl, yTop) {
         const lh = bl.h / bl.lines.length;
-        const fk = familyFontKeyOf(bl._fam, settings);
+        const fk = familyFontKeyOf(bl._fam);
         const color = shaarColorOf(bl.cls);
         bl.lines.forEach((words, li) => {
           const text = words.join(' ');
@@ -201,6 +204,7 @@ function projectPage(page, settings, api) {
         });
       }
     }
+    } // סוף שמירת compat
   }
 
   // **S5.4 (P-5 — עמודי endnotes ריקים):** לעמודי הערות-הסיום יש מודל משלהם —
@@ -208,7 +212,7 @@ function projectPage(page, settings, api) {
   // שורות. הלולאה הכללית הקרינה אותם כשורות בלי מילים ⇒ עמודים ריקים לחלוטין
   // ב-PDF. הקרנה ייעודית: כותרת + הערות בטורי המודל.
   if (page.type === 'endnotes') {
-    projectEndnotePage(page, settings, measure, out);
+    projectEndnotePage(page, settings, measure, out, production);
   } else {
     // טורים ושורות הגוף
     page.columns.forEach((colLines, ci) => {
@@ -219,7 +223,7 @@ function projectPage(page, settings, api) {
         // פער הבלוקים מהחותמת שנקבעה בתכנון (gapBeforePx) — בדיוק כמו
         // margin-top ב-DOM. מקור יחיד: אין כאן חישוב פער עצמאי ואין כפילה.
         y += ln.gapBeforePx || 0;
-        out.lines.push(projectLine(ln, col.x, y, col.w, settings, measure, lastAlignOf(ln, settings)));
+        out.lines.push(projectLine(ln, col.x, y, col.w, settings, measure, lastAlignOf(ln, settings), production));
         // **EXT-20:** מקדם ה-AQ מיושם על גובה השורה (אנכי) — השורות שאחריה
         // זזות בהתאם; התיבה והבסיס מחושבים מהגובה הנמתח (מודל תיבת שורה).
         // **FX-6:** הפער קבוע — אינו מתמתח עם השורות.
@@ -238,7 +242,7 @@ function projectPage(page, settings, api) {
   // לשורות ברוחב הנתיב, סמן/(המשך), יישור לשני הצדדים, בסיסים פר-שורה ושני
   // נתיבים לפי footnote-columns. בעבר: רשומת טקסט אחת לכל הערה, וה-pdf-writer
   // "פיזר" את מילותיה בקידום קבוע 8.2px ⇒ הערות מרוסקות זו על זו.
-  if (page.footnotes && page.footnotes.length) projectFootnoteGutter(page, settings, measure, out);
+  if (page.footnotes && page.footnotes.length) projectFootnoteGutter(page, settings, measure, out, production);
 
   // גיליון — **שלב 8 (§4.1):** מהחותמת שהוטבעה בזמן התכנון (folioGeo מ-
   // furniture-geometry, המקור היחיד, בגופן הגיליון מההגדרות). בלי חותמה —
@@ -248,16 +252,18 @@ function projectPage(page, settings, api) {
       out.folio = { ...page.folioGeo };
     } else {
       materializeFallbacks.push({ kind: 'materialize-fallback-folio-stamp', page: page.index });
+      if (!production) { // **§3.1:** compat בלבד; בייצור הגיליון נשאר ריק + diagnostic
       const folioFam = settings['page-num-font'] || '';
-      const folioMeasure = (folioFam && familyFontKeyOf(folioFam, settings))
+      const folioMeasure = (folioFam && familyFontKeyOf(folioFam))
         ? new MeasureAPI({ ...settings, 'body-font': folioFam }, 'font-metrics') : measure;
       out.folio = folioGeoOf(page, settings, folioMeasure);
       if (out.folio) {
-        const folioKey = (folioFam && familyFontKeyOf(folioFam, settings)) || null;
+        const folioKey = (folioFam && familyFontKeyOf(folioFam)) || null;
         const folioColor = colorOfSetting(settings['page-num-color']);
         if (folioKey) out.folio.fontKey = folioKey;
         if (folioColor) out.folio.color = folioColor;
       }
+      } // סוף שמירת compat
     }
   }
 
@@ -279,11 +285,12 @@ function projectPage(page, settings, api) {
         .filter(s => s && s.text);
       if (slots.length) {
         materializeFallbacks.push({ kind: 'materialize-fallback-header-stamp', page: page.index });
+        if (!production) { // **§3.1:** compat בלבד; בייצור הכותרת נשארת ריקה + diagnostic
         out.header = {
           y: headerGeoOf(page).y,
           slots: slots.map(s => {
             const t = scrubPUAText(String(s.text || ''));
-            const sKey = familyFontKeyOf(s.font, settings);
+            const sKey = familyFontKeyOf(s.font);
             const sMeasure = sKey && sKey !== 'heading' && sKey !== 'fnbody' && sKey !== 'margin' && sKey !== 'window'
               ? new MeasureAPI({ ...settings, 'body-font': s.font }, 'font-metrics') : measure;
             const w = Math.max(1, Math.round(sMeasure.measureTextWidth(t, 9)));
@@ -292,6 +299,7 @@ function projectPage(page, settings, api) {
           })
         };
       }
+      } // סוף שמירת compat
     }
   }
 
@@ -452,7 +460,7 @@ function noteMarkerOf(n, settings) {
  * וחוט מפריד (fn-rule) מעל המרזב כמו ב-DOM. השורות, רוחבי המילים והפיץ'
  * **מהחותמת** (מדידה אחת ב-CP2/בפיצול) — המקרין אינו מודד ואינו שובר שוב.
  */
-function projectFootnoteGutter(page, settings, measure, out) {
+function projectFootnoteGutter(page, settings, measure, out, production) {
   const tpl = page.template;
   const fnSize = fnNoteSizePt(settings);
   const fullX = colLeftOf(tpl), fullW = colWidthOf(tpl);
@@ -475,8 +483,13 @@ function projectFootnoteGutter(page, settings, measure, out) {
     for (const li of [0, 1]) lanes[li] = page.footnoteLanes.lanes[li].map(i => notes[i]).filter(Boolean);
   } else {
     materializeFallbacks.push({ kind: 'materialize-fallback-fn-lanes', page: page.index });
-    const { lanes: idxLanes } = assignFootnoteLanes(notes);
-    for (const li of [0, 1]) lanes[li] = idxLanes[li].map(i => notes[i]);
+    if (production) {
+      // **§3.1:** בייצור — חותמה חסרה ⇒ נתיב אחד בלבד (מדווח); אין חלוקה מחדש במקרין.
+      lanes[0] = notes.slice();
+    } else {
+      const { lanes: idxLanes } = assignFootnoteLanes(notes);
+      for (const li of [0, 1]) lanes[li] = idxLanes[li].map(i => notes[i]);
+    }
   }
   const reserved = page.fnReservedHeightPx > 0
     ? page.fnReservedHeightPx
@@ -530,14 +543,25 @@ function projectFootnoteGutter(page, settings, measure, out) {
  * מודד ואינו שובר שוב. חותמה חסרה ⇒ diagnostic מפורש (§9.8).
  * השורות נכנסות ל-out.lines ⇒ מצוירות ב-PDF, נכנסות למלאי הגליפים ולתיבת הדיו.
  */
-function projectEndnotePage(page, settings, measure, out) {
+function projectEndnotePage(page, settings, measure, out, production) {
   const tpl = page.template;
   const bodyPt = settings['body-font-size-pt'];
   const notePt = bodyPt * 0.8;
   if (page.heading) {
-    const sizePt = bodyPt * 1.2;
-    const bandH = (page.titleBandPx && page.titleBandPx > 16) ? page.titleBandPx - 16 : (measure.lineHeightPx ? measure.lineHeightPx(sizePt) : Math.round(sizePt * (96 / 72) * 1.34));
-    out.lines.push(fakeLine(scrubPUAText(String(page.heading)), colLeftOf(tpl), tpl.contentBox.top + 8, colWidthOf(tpl), bandH, settings, measure, sizePt, 'heading', 'endnote-title'));
+    // **שלב 8 ביקורת §3.2:** כותרת עמוד ההערות — מהחותמת שהוטבעה בתכנון
+    // (stampEndnoteHeading: מדידה אחת). חותמה חסרה ⇒ diagnostic (בייצור) או
+    // fakeLine (compat בלבד) — לא מדידה שקטה במסלול הייצור.
+    if (page.endnoteTitleGeo && page.endnoteTitleGeo.words) {
+      const g = page.endnoteTitleGeo;
+      out.lines.push(stampedRowLine({ x: g.x, y: g.y, w: g.w, h: g.h, words: g.words, spaceW: g.spaceW }, g.sizePt, 'endnote-title', g.fontKey || 'heading'));
+    } else {
+      materializeFallbacks.push({ kind: 'materialize-fallback-endnote-title', page: page.index });
+      if (!production) {
+        const sizePt = bodyPt * 1.2;
+        const bandH = (page.titleBandPx && page.titleBandPx > 16) ? page.titleBandPx - 16 : (measure.lineHeightPx ? measure.lineHeightPx(sizePt) : Math.round(sizePt * (96 / 72) * 1.34));
+        out.lines.push(fakeLine(scrubPUAText(String(page.heading)), colLeftOf(tpl), tpl.contentBox.top + 8, colWidthOf(tpl), bandH, settings, measure, sizePt, 'heading', 'endnote-title'));
+      }
+    }
   }
   const top = tpl.contentBox.top + (page.titleBandPx || 0);
   const cols = Math.max(1, (page.columns || []).length);
@@ -777,14 +801,14 @@ function lineWidthsFromModel(ln) {
   return { widths, spaceW };
 }
 
-function projectLine(ln, colX, y, colW, settings, measure, align) {
+function projectLine(ln, colX, y, colW, settings, measure, align, production) {
   const sizePt = lineFontSizePt(ln, settings);
   // **S73 (תצוגה=ייצוא בגופני כותרות — נתיב DP):** ה-DOM מציג כותרות inline
   // בגופן הרמה מההגדרות (heading-N-font) ובצבען (heading-N-color); עד כאן
   // ההקרנה ציירה הכול בגוף הטקסט (/F1). כעת: fontKey משפחה + צבע — כמו ה-DOM.
   // וכן צבע גוף (body-color; שחור ⇒ אפס אופרטורי rg).
   const isHeadingLine = ln.kind === 'heading' && ln.level != null;
-  const hFontKey = isHeadingLine ? familyFontKeyOf(settings[`heading-${ln.level}-font`], settings) : null;
+  const hFontKey = isHeadingLine ? familyFontKeyOf(settings[`heading-${ln.level}-font`]) : null;
   const hColor = isHeadingLine ? colorOfSetting(settings[`heading-${ln.level}-color`]) : null;
   const bodyColor = colorOfSetting(settings['body-color']);
   // **S68 (R2-M6 — סגירת פער PDF↔DOM):** גודל אפקטיבי פר-מילה. המודל נמדד
@@ -815,16 +839,32 @@ function projectLine(ln, colX, y, colW, settings, measure, align) {
   let widths;
   if (lm && lm.widths.length === words.length) {
     widths = lm.widths;
+  } else if (production) {
+    // **§3.1 (מסלול הייצור):** אין מדידה חלופית — הטקסט נשמר (חשבונאות מלאה)
+    // ברוחב אפס מסומן, והנפילה מדווחת; תוקן במקור יצירת הנתון, לא כאן.
+    widths = words.map(() => 0);
+    spaceW = 0;
+    materializeFallbacks.push({ kind: 'materialize-fallback-line-widths', line: ln.tokenId != null ? ln.tokenId : (ln.meta && ln.meta.tokenId) || null });
   } else {
     widths = words.map((w, i) => measure.measureTextWidth(w, effSizeOf(i)));
     if (lm) { /* מיפוי חלקי — נפילה מתועדת להלן */ }
     spaceW = null;
   }
-  if (spaceW == null) {
-    spaceW = measure.measureTextWidth(' ', sizePt, 0);
+  // **שלב 8 ביקורת §3.2 (שורש נפילת-שווא):** שורה חד-מילית אין לה דבק במודל —
+  // ואין לה צורך ברוחב רווח (אין רווחים למלא). דרישת רווח בלתי-מותנית הפכה
+  // 852 שורות כאלה ב-very_long ל"נפילת מדידה" כזובה. רק שורה רב-מילית בלי
+  // רוחב רווח קנוני היא נתון חסר אמיתי: בייצור — diagnostic + אפס; ב-compat —
+  // מדידת נפילה מתועדת.
+  if (spaceW == null && words.length > 1) {
+    if (production) {
+      spaceW = 0;
+    } else {
+      spaceW = measure.measureTextWidth(' ', sizePt, 0);
+    }
     if (!materializeFallbacks) materializeFallbacks = [];
     materializeFallbacks.push({ kind: 'materialize-fallback-line-widths', line: ln.tokenId != null ? ln.tokenId : (ln.meta && ln.meta.tokenId) || null });
   }
+  if (spaceW == null) spaceW = 0; // חד-מילית: אין רווחים — אפס ללא נפילה
   const sumW = widths.reduce((s, w) => s + w, 0);
   const gaps = Math.max(0, words.length - 1);
 
@@ -930,13 +970,15 @@ function centeredStampedLine(stampedWords, spaceW, x, y, w, h, sizePt, cls, font
   return { x, y, w, h, words: wordPos, align: 'center', kind: 'shaar-content', level: null, isLast: false, sizePt, baselineY: null, tokenId: null, cls: cls || '' };
 }
 
-/** **שלב 8 (§4.1):** שורת TOC מהחותמת — מילים {text,w} מימין לשמאל; אפס מדידה. */
-function stampedRowLine(row, pt, kind) {
+/** **שלב 8 (§4.1):** שורת TOC מהחותמת — מילים {text,w} מימין לשמאל; אפס מדידה.
+ * **ביקורת §3.2:** fontKey אופציונלי — כותרת עמוד ההערות נושאת את מפתח הגופן
+ * שלה מהחותמת ('heading' ⇒ ‏/F3), כמו בנתיב ה-fakeLine הישן (תצוגה=ייצוא). */
+function stampedRowLine(row, pt, kind, fontKey) {
   let cursor = row.x + row.w;
   const wordPos = [];
   for (const wd of (row.words || [])) {
     cursor -= wd.w;
-    wordPos.push({ text: wd.text, x: cursor, w: wd.w, sizePt: pt, fontKey: null });
+    wordPos.push({ text: wd.text, x: cursor, w: wd.w, sizePt: pt, ...(fontKey ? { fontKey } : {}) });
     cursor -= (row.spaceW || 0);
   }
   return { x: row.x, y: row.y, w: row.w, h: row.h, words: wordPos, align: 'right', kind: kind || 'toc-row', level: null, isLast: false, sizePt: pt, baselineY: null, tokenId: null };
@@ -961,16 +1003,19 @@ function fakeLine(text, x, y, w, h, settings, measure, sizePt, fontKey, kind) {
  * הקרנת מסמך שלם (כל העמודים) + תיבת דיו (ink bbox) לכל עמוד —
  * לבדיקת ה־parity (raster מול מודל).
  */
-function projectDocument(result, settings, api) {
+function projectDocument(result, settings, apiOrOpts) {
+  const runOpts = resolveRunOpts(apiOrOpts);
+  const production = runOpts.production;
   // **שלב 8 (§4.1):** הכניסה — materialization חד-פעמי. מונה הנפילות מאופס
   // בכל הרצה ומוחזר בפלט (חשבונאות גלויה: 0 במסלול המוצר — ה-pipeline מטביע
   // חותמות; >0 רק בקלטים סינתטיים/ישנים, תמיד עם diagnostic לכל נפילה).
   materializeFallbacks = [];
-  const pages = result.pages.map(p => projectPage(p, settings, api));
+  const pages = result.pages.map(p => projectPage(p, settings, { measure: runOpts.measure, ...(production ? { mode: 'production' } : {}) }));
   const fallbacks = materializeFallbacks;
   materializeFallbacks = null;
-  const ascent = (api || new MeasureAPI(settings, 'table')).ascentEm();
-  const descent = (api || new MeasureAPI(settings, 'table')).descentEm();
+  const profile = runOpts.measure || new MeasureAPI(settings, 'table'); // פרופיל בסיסים בלבד
+  const ascent = profile.ascentEm();
+  const descent = profile.descentEm();
   const inkBounds = pages.map(pg => {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     const acc = (x, y, w, h) => {

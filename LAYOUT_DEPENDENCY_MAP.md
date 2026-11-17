@@ -141,3 +141,12 @@ core/          : pipeline ← כל השכבות (כולל shaar-pages/ornament-p
   חותמת קודם חישוב; מונה __rowsStats לחשבונאות בדיקה.
 - **decision-trace.js:** opt-in; ספירות תמיד; רשומות {p,k,d} קומפקטיות —
   הצבות/פיצולים/ליווי/הערות/נסיגות/overflow.
+
+## עדכון שלב 8 פרוסה 1-ביקורת (17.11 — ענף stage8b/materialize-boundary)
+
+- **core/pua-text.js (חדש):** קבועי ה-PUA (ATOMIC_SPACE/PAREN_MARK/MARK_TAG) + scrubPUAText — מקור יחיד. צרכנים: core/materialize, output/dom-renderer (מייצא הלאה), layout/structural-stamps. **נסגרה תלות הפוכה core→output/dom-renderer** שנוצרה בפרוסה 1.
+- **typography/font-keys.js (חדש):** familyFontKeyOf — מקור יחיד למיפוי משפחה-רשומה→מפתח תת-גופן. צרכנים: core/materialize, layout/structural-stamps. (legacy-projector.fontKeyOf — נתיב מורשת, שלב 9.)
+- **core/materialize.js:** שני מצבי הפעלה — production (מ-buildPageModel; אפס מדידת טקסט; כל חוסר ⇒ diagnostic) ו-compat (קריאה ישירה/facade; fallback מודד ומתועד). תלויות הליבה: pua-text, font-keys, furniture-geometry, notes-model, markers, line-font, shaar-content, ornament-ink, footnote-lanes(compat), measure-api(פרופיל בלבד).
+- **layout/structural-stamps.js:** נוספה stampEndnoteHeading → page.endnoteTitleGeo (כותרת עמודי הערות נמדדת פעם אחת; סגירת המדידה השנייה במצב endnotes).
+- **core/page-model.js:** materializeDocument במצב production; materializeFallbacks ⇒ model.diagnostics + meta.materializeFallbacks + violations; ה-diagnostics של הבונה נושאים כעת במודל (בעבר נאספו ולא נצרכו).
+- **בדיקת מחזוריות:** אין מעגלים — core/pua-text ו-font-keys הם עלים; output/dom-renderer אינו נצרך עוד מהליבה.

@@ -80,10 +80,17 @@ function buildPageModel(result, opts = {}) {
   const assetIds = opts.assets && opts.assets.ids instanceof Set ? opts.assets.ids : null;
   const diagnostics = [];
 
-  // (1) הקרנת fragments חד-פעמית — מנוע ההקרנה הקיים (מקור אחד ל-PDF ולמודל;
-  // שלב 8 יעביר את המקרינים לצריכת המודל). אין כאן החלטות עימוד חדשות:
-  // המיקומים, הגבהים והפערים נצרכים מהתוכנית כמו שהם.
-  const projected = materializeDocument(result, settings, measure);
+  // (1) הקרנת fragments חד-פעמית — **שלב 8 ביקורת §3.1: מצב 'production'.**
+  // ההקרנה צורכת חותמות/LineModel בלבד; אסורה מדידת טקסט — כל חוסר נתון
+  // מדווח ב-materializeFallbacks (מנוהל להלן כ-diagnostic + violation), ולא
+  // מושחזר/מחושב מחדש במקרין. מוכח בבדיקת s8b (prototype-patch שזורק).
+  const projected = materializeDocument(result, settings, { measure, mode: 'production' });
+  // **ביקורת §3.1-6:** חשבונאות גלויה — כל נפילת materialization במסלול הייצור
+  // נכנסת ל-diagnostics של המודל ול-violations של האימות (לא רק מונה שקט).
+  const materializeFallbacks = projected.materializeFallbacks || [];
+  for (const fb of materializeFallbacks) {
+    diagnostics.push({ kind: 'materialize-fallback', ...fb });
+  }
 
   // (2) מיפוי זהות: כל שורת תוכנית → נציגותה במודל (token/part) — בסיס
   // הוכחת הכיסוי המלא ואפס-הכפילויות (§21-1).
@@ -252,13 +259,19 @@ function buildPageModel(result, opts = {}) {
       plannedPages: pages.length
     },
     pages: modelPages,
+    // **ביקורת §3.1-6:** חשבונאות גלויה — כל diagnostic שנאסף בבנייה נושא במודל
+    // (נפילות materialization, הערות שלא הוקרנו, דיו עיטור חסר, נכסים לא פתורים).
+    diagnostics,
     meta: {
-      resources: { referenced: resourceRefs.length, unresolved: resourceRefs.filter(r => !r.resolved).length }
+      resources: { referenced: resourceRefs.length, unresolved: resourceRefs.filter(r => !r.resolved).length },
+      materializeFallbacks: materializeFallbacks.length
     }
   };
 
-  // (5) אימות (§21) — לפני ההקפאה; הדוח בר-השוואה בין ריצות
-  const validation = validatePageModel(model, { planPages: pages, tokens: result.tokens || [], planLines });
+  // (5) אימות (§21) — לפני ההקפאה; הדוח בר-השוואה בין ריצות. נפילות
+  // materialization במסלול הייצור הן violation (ברירת מחדל: 0 — ה-pipeline
+  // מטביע חותמות; כל סטייה נראית ב-ledger ובבדיקות הקורפוס).
+  const validation = validatePageModel(model, { planPages: pages, tokens: result.tokens || [], planLines, materializeFallbacks });
 
   // (6) hashes דטרמיניסטיים — גיאומטריה נפרדת מתוכן (§7.1-8/9)
   model.geometryHash = geometryHashOf(model);
@@ -369,10 +382,18 @@ function validatePageModel(model, ctx = {}) {
   const planPages = ctx.planPages || [];
   const tokens = ctx.tokens || [];
   const planLines = ctx.planLines || [];
+  const materializeFallbacks = ctx.materializeFallbacks || [];
   const checks = Object.create(null);
   const violations = [];
   const check = (name) => { checks[name] = (checks[name] || 0) + 1; };
   const tokenIds = new Set(tokens.map(t => t.id));
+
+  // (0) **ביקורת §3.1-6:** נפילות materialization במסלול הייצור — כל אחת
+  // violation מזוהה (בייצור התקין: 0 — הוכח בקורפוס). לא מונה שקט.
+  for (const fb of materializeFallbacks) {
+    violations.push({ code: 'materialize-fallback', detail: `${fb.kind}@${fb.page != null ? 'p' + fb.page : (fb.line != null ? 'line:' + fb.line : 'x')}` });
+    check('materialize-purity');
+  }
 
   // (1) כיסוי מלא: כל שורת תוכנית מיוצגת במודל (לפי token+part); אין כפילויות מזהה
   const modelLineIds = new Set();

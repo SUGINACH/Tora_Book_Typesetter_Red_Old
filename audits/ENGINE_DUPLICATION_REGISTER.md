@@ -128,3 +128,20 @@
 | הפעלות MeasureAPI לספר אחד (חי+ייצוא) | 2 עימודים + 1 פרויקציה |
 | תתי-מודל pages[] פעילים | 2 |
 | מתאמים/גשרים מתועדים | RED_SETTING_BRIDGE_S77, legacy-settings-map, page.legacy, legacyProfile |
+
+
+---
+
+## עדכוני שלב 8 (17.11 — פרוסה 1 + פרוסה 1-ביקורת)
+
+### D-s8a · materialization כפול (pipeline + מקרינים) — **נסגר בפרוסה 1 (PR #31)**
+`core/materialize.js` הוא המנגנון היחיד למיקומים סופיים (מופעל פעם אחת ב-buildPageModel); `output/geometry-projector.js` נשאר facade מתועד לנתיב ה-PDF הוותיק ולבדיקות — **יוסר בשלב 9** לאחר הוכחת parity (פרוסה 5 מעבירה את ה-PDF לצריכת המודל).
+
+### D-s8b-1 · scrubPUAText — **נסגר בפרוסה 1-ביקורת**
+היה: מוגדר ב-dom-renderer, נצרך ע"י core/materialize (תלות הפוכה core→renderer) + עותק inline ב-structural-stamps. כעת: מקור יחיד `core/pua-text.js` (קבועי PUA + scrub); dom-renderer ו-materialize ו-structural-stamps צורכים ממנו.
+
+### D-s8b-2 · familyFontKeyOf — **נסגר בפרוסה 1-ביקורת**
+היה: שני עותקים זהים (core/materialize.js + layout/structural-stamps.js). כעת: מקור יחיד `typography/font-keys.js`. עותק שלישי (fontKeyOf ב-legacy-projector) — נתיב מורשת, ייסגר בשלב 9.
+
+### D-s8b-3 · fallback המודד במקרין — **תוחם בפרוסה 1-ביקורת**
+כל נתיבי ה-fallback המודדים של materialization הוגבלו למצב 'compat' מתועד בלבד (קלט סינתטי/נתיב PDF ותיק). במצב 'production' (ה-pipeline): כל חוסר נתון ⇒ diagnostic + violation בלי מדידה. הוכחת אפס-מדידות: probe prototype (s8b).
