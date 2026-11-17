@@ -185,7 +185,9 @@ function tocExpectation(headings, { minLevel, maxLevel }) {
     .filter(h => h.text);
 }
 
-/** השוואת רשומות TOC בפועל מול ציפייה — לפי (רמה, טקסט) בסדר הופעה + כפילויות. */
+/** השוואת רשומות TOC בפועל מול ציפייה — לפי (רמה, טקסט) בסדר הופעה + כפילויות.
+ * כפילות = עודף הופעות של (רמה+טקסט) בפועל על פני הציפייה — כותרות שונות
+ * בעלות אותו טקסט (מקורות/עמודים שונים) אינן כפילות אלא רשומות נפרדות. */
 function diffToc(expected, actual) {
   const exp = expected.slice();
   const act = actual.map(r => ({ level: r.level, text: normText(r.text), targetPage: r.targetPage != null ? r.targetPage : null }));
@@ -198,14 +200,16 @@ function diffToc(expected, actual) {
     else missing.push(e);
   }
   act.forEach((a, i) => { if (!usedAct.has(i)) extra.push(a); });
-  // כפילויות בפועל: אותה (רמה+טקסט) פעמיים
-  const seen = new Map();
+  // כפילויות: הופעות בפועל מעבר לציפייה לאותו מפתח (רמה+טקסט)
+  const expCount = new Map();
+  for (const e of exp) { const k = `${e.level}|${e.text}`; expCount.set(k, (expCount.get(k) || 0) + 1); }
+  const actCount = new Map();
+  for (const a of act) { const k = `${a.level}|${a.text}`; actCount.set(k, (actCount.get(k) || 0) + 1); }
   const duplicates = [];
-  act.forEach((a) => {
-    const k = `${a.level}|${a.text}`;
-    seen.set(k, (seen.get(k) || 0) + 1);
-    if (seen.get(k) === 2) duplicates.push(a);
-  });
+  for (const [k, c] of actCount) {
+    const over = c - (expCount.get(k) || 0);
+    for (let i = 0; i < over; i++) { const [level, ...rest] = k.split('|'); duplicates.push({ level: Number(level), text: rest.join('|') }); }
+  }
   return { expectedCount: exp.length, actualCount: act.length, matched: matched.length, missing, extra, duplicates };
 }
 

@@ -281,7 +281,9 @@ function resolveTocTargets(pages, tocPages, numbers, settings, { formatLabel }) 
 }
 
 /**
- * רשומות TOC "ישנות" (תאימות לאחור — r.toc של ≤S8): כללי רמות 1–2, מפורט הכל.
+ * רשומות TOC "ישנות" (תאימות לאחור — r.toc של ≤S8).
+ * **D-107 (9b.2):** כללי — רמות 1–6; מפורט — רמות 2–6; H7 מוסתר בשניהם;
+ * שניהם פעילים בברירת המחדל (בעבר: כללי ≤2, מפורט = כל הרמות כולל H1).
  */
 function buildTocEntries(headings, settings, numbersByIndex) {
   const entries = [];
@@ -305,13 +307,15 @@ function buildTocEntries(headings, settings, numbersByIndex) {
 }
 
 function splitGeneralDetail(entries, settings = {}) {
+  // **D-107 (9b.2):** כללי 1–6, מפורט 2–6 — טווחים מפורשים וזהים לעמודי ה-TOC
+  // האמיתיים ב-pipeline; ברירת המחדל: שניהם פעילים.
   const genOn = settings['toc-general-enabled'] !== false;
-  const detOn = settings['toc-detail-enabled'] === true;
+  const detOn = settings['toc-detail-enabled'] !== false;
   return {
     generalEnabled: genOn,
     detailEnabled: detOn,
-    general: genOn ? entries.filter(e => e.level <= 2) : [],
-    detail: detOn ? entries : [],
+    general: genOn ? entries.filter(e => e.level >= 1 && e.level <= 6) : [],
+    detail: detOn ? entries.filter(e => e.level >= 2 && e.level <= 6) : [],
   };
 }
 

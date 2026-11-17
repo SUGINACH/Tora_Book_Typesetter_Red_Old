@@ -695,14 +695,18 @@ function typeset(rawText, settingsIn, env = {}) {
 
     const measureToc = (t, sz) => api.measureTextWidth(t, sz);
     const lineHToc = (sz) => api.lineHeightPx(sz);
+    // **D-107 (9b.2):** תוכן כללי — רמות 1–6; תוכן מפורט — רמות 2–6; רמה 7 מוסתרת
+    // בשניהם; שניהם פעילים בברירת המחדל. הסינון הקודם (כללי ≤2, מפורט = הכול)
+    // סתר את החלטת המשתמש — במקומו טווח מפורש לכל תוכן; דגלי toc-level-N-show
+    // נותרים הסינון העדין מעל הטווח (ברירת המחדל הנגזרת מהייבוא: [1..6]/[2..6]).
     if (settings['toc-general-enabled'] !== false) {
-      const model = buildTocModel(headingsAll.filter(h => h.level <= 2), settings);
+      const model = buildTocModel(headingsAll.filter(h => h.level >= 1 && h.level <= 6), settings);
       numberRows(model.rows, settings['general-toc-count-numbering'] !== false);
       const built = buildTocPages(model, 'toc-general', 'תוכן העניינים', settings, measureToc, lineHToc, { ledger, eventLog });
       tocPagesAll = tocPagesAll.concat(built.pages);
     }
-    if (settings['toc-detail-enabled'] === true) {
-      const model = buildTocModel(headingsAll, settings);
+    if (settings['toc-detail-enabled'] !== false) {
+      const model = buildTocModel(headingsAll.filter(h => h.level >= 2 && h.level <= 6), settings);
       numberRows(model.rows, settings['detailed-toc-count-numbering'] !== false);
       const built = buildTocPages(model, 'toc-detail', 'תוכן העניינים המפורט', settings, measureToc, lineHToc, { ledger, eventLog });
       tocPagesAll = tocPagesAll.concat(built.pages);

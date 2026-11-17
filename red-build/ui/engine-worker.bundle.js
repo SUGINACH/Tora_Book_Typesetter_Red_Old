@@ -1399,14 +1399,18 @@ function typeset(rawText, settingsIn, env = {}) {
 
     const measureToc = (t, sz) => api.measureTextWidth(t, sz);
     const lineHToc = (sz) => api.lineHeightPx(sz);
+    // **D-107 (9b.2):** תוכן כללי — רמות 1–6; תוכן מפורט — רמות 2–6; רמה 7 מוסתרת
+    // בשניהם; שניהם פעילים בברירת המחדל. הסינון הקודם (כללי ≤2, מפורט = הכול)
+    // סתר את החלטת המשתמש — במקומו טווח מפורש לכל תוכן; דגלי toc-level-N-show
+    // נותרים הסינון העדין מעל הטווח (ברירת המחדל הנגזרת מהייבוא: [1..6]/[2..6]).
     if (settings['toc-general-enabled'] !== false) {
-      const model = buildTocModel(headingsAll.filter(h => h.level <= 2), settings);
+      const model = buildTocModel(headingsAll.filter(h => h.level >= 1 && h.level <= 6), settings);
       numberRows(model.rows, settings['general-toc-count-numbering'] !== false);
       const built = buildTocPages(model, 'toc-general', 'תוכן העניינים', settings, measureToc, lineHToc, { ledger, eventLog });
       tocPagesAll = tocPagesAll.concat(built.pages);
     }
-    if (settings['toc-detail-enabled'] === true) {
-      const model = buildTocModel(headingsAll, settings);
+    if (settings['toc-detail-enabled'] !== false) {
+      const model = buildTocModel(headingsAll.filter(h => h.level >= 2 && h.level <= 6), settings);
       numberRows(model.rows, settings['detailed-toc-count-numbering'] !== false);
       const built = buildTocPages(model, 'toc-detail', 'תוכן העניינים המפורט', settings, measureToc, lineHToc, { ledger, eventLog });
       tocPagesAll = tocPagesAll.concat(built.pages);
@@ -2221,14 +2225,16 @@ const registry = [
   // **S9 (D-62):** מיומנות מספור TOC מלאה (Orange eb21383 — 4 מפתחות; הרביעי כבר קיים):
   // count = מספור שורות תוכן־העניינים עצמן; show = האם עמודי התוכן מציגים גיליון משלהם (כשנספרים).
   K('toc-general-enabled', 'bool', true, P.TOC, 'chk-toc-general', ['decoration/toc-builder'], 'fx:toc-gen'),
-  K('toc-detail-enabled', 'bool', false, P.TOC, 'chk-toc-detail', ['decoration/toc-builder'], 'fx:toc-det'),
+  // **D-107 (9b.2):** תוכן כללי ומפורט פעילים בברירת המחדל; כללי = רמות 1–6,
+  // מפורט = 2–6, רמה 7 מוסתרת בשניהם; inline grouping כבוי בכל הרמות.
+  K('toc-detail-enabled', 'bool', true, P.TOC, 'chk-toc-detail', ['decoration/toc-builder'], 'fx:toc-det'),
   K('general-toc-count-numbering', 'bool', true, P.TOC, 'chk-toc-count', ['decoration/toc-builder'], 'fx:toc-count', { note: 'שוחזר מ‑V1/V2 (REQ-HDR-03/HDR-05)' }),
   K('detailed-toc-count-numbering', 'bool', true, P.TOC, 'chk-dtoc-count', ['decoration/toc-builder'], 'fx:dtoc-count', { note: 'S9: מספור שורות בתוכן־עניינים המפורט (Orange eb21383 — הושלם)' }),
   K('general-toc-show-numbering', 'bool', true, P.TOC, 'chk-gtoc-show', ['decoration/toc-builder'], 'fx:gtoc-show', { note: 'S9: עמודי תוכן־עניינים כלליים מציגים גיליון כשהם נספרים (count-toc-pages=true)' }),
   K('detailed-toc-show-numbering', 'bool', true, P.TOC, 'chk-dtoc-show', ['decoration/toc-builder'], 'fx:dtoc-show', { note: 'S9: עמודי תוכן־עניינים מפורטים מציגים גיליון כשהם נספרים' }),
   ...[1, 2, 3, 4, 5, 6, 7].flatMap(lvl => [
-    K(`toc-level-${lvl}-show`, 'bool', lvl <= 2, P.TOC, `chk-toc-l${lvl}`, ['decoration/toc-builder'], `fx:toc-l${lvl}`),
-    K(`toc-level-${lvl}-inline`, 'bool', lvl >= 4, P.TOC, `chk-toc-l${lvl}-inline`, ['decoration/toc-builder'], `fx:toc-l${lvl}-inline`),
+    K(`toc-level-${lvl}-show`, 'bool', lvl <= 6, P.TOC, `chk-toc-l${lvl}`, ['decoration/toc-builder'], `fx:toc-l${lvl}`),
+    K(`toc-level-${lvl}-inline`, 'bool', false, P.TOC, `chk-toc-l${lvl}-inline`, ['decoration/toc-builder'], `fx:toc-l${lvl}-inline`),
   ]),
 
   // ---- שערים/נושאים (THEMES) ---- **S8 (D-54): ערכות נושא חיות — הפעלה מלאה (F-10 נעול)**
@@ -18353,7 +18359,9 @@ function resolveTocTargets(pages, tocPages, numbers, settings, { formatLabel }) 
 }
 
 /**
- * רשומות TOC "ישנות" (תאימות לאחור — r.toc של ≤S8): כללי רמות 1–2, מפורט הכל.
+ * רשומות TOC "ישנות" (תאימות לאחור — r.toc של ≤S8).
+ * **D-107 (9b.2):** כללי — רמות 1–6; מפורט — רמות 2–6; H7 מוסתר בשניהם;
+ * שניהם פעילים בברירת המחדל (בעבר: כללי ≤2, מפורט = כל הרמות כולל H1).
  */
 function buildTocEntries(headings, settings, numbersByIndex) {
   const entries = [];
@@ -18377,13 +18385,15 @@ function buildTocEntries(headings, settings, numbersByIndex) {
 }
 
 function splitGeneralDetail(entries, settings = {}) {
+  // **D-107 (9b.2):** כללי 1–6, מפורט 2–6 — טווחים מפורשים וזהים לעמודי ה-TOC
+  // האמיתיים ב-pipeline; ברירת המחדל: שניהם פעילים.
   const genOn = settings['toc-general-enabled'] !== false;
-  const detOn = settings['toc-detail-enabled'] === true;
+  const detOn = settings['toc-detail-enabled'] !== false;
   return {
     generalEnabled: genOn,
     detailEnabled: detOn,
-    general: genOn ? entries.filter(e => e.level <= 2) : [],
-    detail: detOn ? entries : [],
+    general: genOn ? entries.filter(e => e.level >= 1 && e.level <= 6) : [],
+    detail: detOn ? entries.filter(e => e.level >= 2 && e.level <= 6) : [],
   };
 }
 

@@ -99,7 +99,7 @@ describe('שלב 8 פרוסה 1 (§4.1) — materialization חד-פעמי טהו
 
   it('ההטבעה אינה משנה תכנון: layoutHash זהה לנעילה; ההקרנה דטרמיניסטית', () => {
     const r = typeset(CORPUS, S());
-    assert(r.layoutHash.startsWith('f6f32c40'), `layoutHash נשמר (${r.layoutHash.slice(0, 8)})`);
+    assert(r.layoutHash.startsWith('fdff19d8'), `layoutHash נשמר (${r.layoutHash.slice(0, 8)})`);
     const p1 = materializeDocument(r, S());
     const p2 = materializeDocument(r, S());
     const key = (x) => JSON.stringify(x.pages.map(pg => pg.lines.map(l => l.words.map(w => [w.text, w.x, w.w]))));

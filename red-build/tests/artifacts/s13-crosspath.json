@@ -7,39 +7,39 @@
   "configs": [
     {
       "config": "default",
-      "pages": 36,
+      "pages": 37,
       "identity": true,
-      "worstBboxPx": 4.53
+      "worstBboxPx": 3
     },
     {
       "config": "ornaments",
-      "pages": 36,
+      "pages": 37,
       "identity": true,
       "worstBboxPx": 3
     },
     {
       "config": "aq-on",
-      "pages": 36,
+      "pages": 37,
       "identity": true,
-      "worstBboxPx": 4.66
+      "worstBboxPx": 3
     },
     {
       "config": "continuous-notes",
-      "pages": 36,
+      "pages": 37,
       "identity": true,
-      "worstBboxPx": 4.53
+      "worstBboxPx": 3
     },
     {
       "config": "verso-headers",
-      "pages": 36,
+      "pages": 37,
       "identity": true,
-      "worstBboxPx": 4.53
+      "worstBboxPx": 3
     },
     {
       "config": "custom-styles",
-      "pages": 36,
+      "pages": 37,
       "identity": true,
-      "worstBboxPx": 4.53
+      "worstBboxPx": 3
     }
   ]
 }

@@ -3,11 +3,11 @@
   "basis": "main@dfb4168 (לפני פרוסה 1 של שלב 5) מול המסלול הקנוני עם FX-1..FX-5 + SSOT",
   "pages": {
     "was": 1089,
-    "now": 1110
+    "now": 1122
   },
   "hash": {
     "was": "7c4e9bff867145df",
-    "now": "40d587a0e675f60d"
+    "now": "4df8f96533dfe72c"
   },
   "blocks": {
     "total": 4536,

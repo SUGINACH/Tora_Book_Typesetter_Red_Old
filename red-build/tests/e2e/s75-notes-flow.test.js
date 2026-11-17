@@ -226,7 +226,7 @@ describe('S75 — נייטרליות נתיב DP (המנגנון החדש בנת
   it('קנוני DP: ה-layoutHash לא השתנה (המנגנון אינו נוגע בנתיב DP)', () => {
     const corpus = fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'canonical_corpus.txt'), 'utf8');
     const r = typeset(corpus, getDefaultSettings(), { noRecommendations: true });
-    assert(r.layoutHash.startsWith('f6f32c40'), `hash קנוני DP נותר: ${r.layoutHash.slice(0, 16)}`);
+    assert(r.layoutHash.startsWith('fdff19d8'), `hash קנוני DP נותר: ${r.layoutHash.slice(0, 16)}`);
   });
 });
 

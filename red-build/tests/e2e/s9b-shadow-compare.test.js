@@ -191,7 +191,9 @@ console.log('s9b-shadow-compare: בדיקות שליליות לליבת ההשו
   const d2 = diffToc(gen, [{ level: 1, text: 'חלק ראשון' }, { level: 2, text: 'סימן א' }]);
   check('TOC: חסרות מדווחות לפי רמה', d2.missing.length === 2 && d2.missing.some(m => m.level === 6));
   const d3 = diffToc(gen, [...gen.map(g => ({ level: g.level, text: g.text })), { level: 3, text: 'ענף א' }]);
-  check('TOC: כפילות מדווחת', d3.duplicates.length === 1);
+  check('TOC: כפילות (עודף על הציפייה) מדווחת', d3.duplicates.length === 1 && d3.duplicates[0].level === 3);
+  const d3b = diffToc([...gen, { level: 3, text: 'ענף א', key: 'h3b' }], [...gen.map(g => ({ level: g.level, text: g.text })), { level: 3, text: 'ענף א' }]);
+  check('TOC: כותרות שונות בעלות אותו טקסט (בשני הצדדים) אינן כפילות', d3b.duplicates.length === 0 && d3b.missing.length === 0 && d3b.extra.length === 0);
   const d4 = diffToc(gen, [{ level: 4, text: 'רשומה זרה' }]);
   check('TOC: עודפת מדווחת', d4.extra.length === 1 && d4.extra[0].level === 4);
 }

@@ -58,16 +58,22 @@ function classifyBlockDiff(wb, nb) {
 }
 
 describe('שלב 5 פרוסה 1 — השוואת קורפוס מול main (§16: תוכן פר-בלוק זהה; שינויי פריסה מסווגים)', () => {
-  it('הקורפוס הקנוני: הנעילה נשמרת (אפס שינוי — ה-FX אינם נפגשים בקורפוס הקטן)', () => {
+  it('הקורפוס הקנוני: תוכן נשמר + דטרמיניזם + נעילת D-107 (fdff19d8; חודשה מ-f6f32c40)', () => {
     assert(fs.existsSync(BASELINE), 'בסיס main קיים (tests/artifacts/s5-main-baseline.json)');
     const base = JSON.parse(fs.readFileSync(BASELINE, 'utf8'));
     const now = capture(CANONICAL, getDefaultSettings());
     const was = base.corpora.canonical;
     assertEq(now.preserved, true, 'contentPreserved');
-    // הקנוני לא השתנה (נמדד): ה-FX נכנסים לפעולה רק בגבולות קיבולת/ליווי/סמן
-    // שהקורפוס הקטן אינו מגיע אליהם — שער חזק: אין שינוי פריסה ברירת-מחדל ללא סיבה.
-    assertEq(now.pages, was.pages, `מספר עמודים נשמר (${was.pages})`);
-    assertEq(now.hash, was.layoutHash, `hash קנוני נשמר (${was.layoutHash}) — נעילת f6f32c40 ממשיכה`);
+    // **D-107 (9b.2 — החלטת משתמש מפורשת): נעילה מחודשת f6f32c40→fdff19d8
+    // (36→37 עמודים).** השינוי היחיד: עמוד toc-detail חדש (16 רשומות, רמות 2–3)
+    // — תוכן-העניינים המפורט פעיל כברירת מחדל לפי D-107, והכללי הורחב מרמות 1–2
+    // ל-1–6 (16→24 רשומות). הוכחות: contentPreserved=true; הרשומות ממופות
+    // לכותרות המקור בזהות מלאה (s9b-toc-d107: אפס השמטות/כפילויות; עוגן
+    // targetPage = עמוד הכותרת בפועל); הגוף לא זז (ההכנסה מבנית לפני CP4).
+    // ה-FX של שלב 5 עדיין אינם נפגשים בקורפוס הקטן — השער נותר חזק: שינוי
+    // פריסה אפשרי רק מהחלטה מתועדת.
+    assertEq(now.pages, 37, 'מספר עמודים (36 + עמוד toc-detail חדש — D-107)');
+    assertEq(now.hash, 'fdff19d87e05d231', `hash קנוני נעילת D-107 (${now.hash.slice(0, 16)})`);
     // דטרמיניזם
     const b2 = typeset(fs.readFileSync(CANONICAL, 'utf8'), getDefaultSettings());
     assertEq(now.hash, b2.layoutHash.slice(0, 16), 'דטרמיניזם');

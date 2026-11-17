@@ -3,11 +3,11 @@
   "schema": 5,
   "file": "audits/very_long_test_text.txt",
   "unifiedProfile": "imud-cutover",
-  "started": "2026-11-17T22:14:46.337Z",
+  "started": "2026-11-17T23:10:56.466Z",
   "summary": {
     "total": 13,
-    "passed": 4,
-    "failed": 9,
+    "passed": 6,
+    "failed": 7,
     "ok": false
   },
   "gates": {
@@ -56,14 +56,14 @@
     "G6-toc-general-unified": {
       "group": "TOC",
       "desc": "D-107: TOC כללי במאוחד = רמות 1–6 מהמקור, ללא H7, בלי כפילויות/השמטות",
-      "ok": false,
-      "detail": "D-107 כללי: צפוי 307, בפועל 66; חסרות 241 (רמות חסרות: 3,4,5,6); עודפות 0; כפילויות 0"
+      "ok": true,
+      "detail": "D-107 כללי: 307 רשומות, רמות 1–6, ללא H7 — התאמה מלאה"
     },
     "G6-toc-detail-unified": {
       "group": "TOC",
       "desc": "D-107: TOC מפורט במאוחד = רמות 2–6, בלי H1 ובלי H7",
-      "ok": false,
-      "detail": "D-107 מפורט: צפוי 299, בפועל 307; חסרות 0; עודפות 8; H1 במפורט: 8; H7 במפורט: 0"
+      "ok": true,
+      "detail": "D-107 מפורט: 299 רשומות, רמות 2–6 — התאמה מלאה"
     },
     "G7-side-identity-unified": {
       "group": "ביאורי-צד",
@@ -81,7 +81,7 @@
       "group": "מודל",
       "desc": "r.pageModel (הקנוני של שלב 8) מייצג את אותו תוכן כמו r.pages במאוחד",
       "ok": true,
-      "detail": "PageModel מייצג את מלוא התוכן (361,380 מילים = האינוונטר)"
+      "detail": "PageModel מייצג את מלוא התוכן (362,897 מילים = האינוונטר)"
     },
     "G9-heading-grammar-parity": {
       "group": "דקדוק",
@@ -124,13 +124,13 @@
       "endWords": 0
     },
     "unified": {
-      "pages": 796,
-      "words": 361380,
+      "pages": 801,
+      "words": 362897,
       "notes": 129,
       "sideNotes": 1147,
       "sideWords": 12679,
-      "tocGeneralRows": 66,
-      "tocDetailRows": 307,
+      "tocGeneralRows": 307,
+      "tocDetailRows": 299,
       "endNotePages": 0,
       "pageModelPresent": true
     }
