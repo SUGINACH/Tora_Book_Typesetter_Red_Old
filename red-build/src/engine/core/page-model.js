@@ -182,6 +182,11 @@ function buildPageModel(result, opts = {}) {
     // פריטי עוגן (הערות-צד/תיבות מידע) — הצבה סופית מהמקצה המשותף
     const sideNotes = (page.sideNotes || []).map(sn => anchorPlacement(sn, { page: page.index }));
 
+    // השלמת שלב 6: דיו עיטור חסר — diagnostic מפורש במודל (לא השתקה; הגיאומטריה נשמרת)
+    for (const d of ((pp && pp.decorations) || [])) {
+      if (d.inkMissing) diagnostics.push({ kind: 'page-model-ornament-ink-missing', page: page.index, ornId: d.ornId || null, slot: d.slot || null, kindStyle: d.kindStyle || null });
+    }
+
     return {
       index: page.index,
       type: page.type,
@@ -194,7 +199,24 @@ function buildPageModel(result, opts = {}) {
       sideNotes,
       decorations: (pp && pp.decorations ? pp.decorations.map(d => ({
         x: r2(d.x), y: r2(d.y), w: r2(d.w), h: r2(d.h),
-        kind: d.kind || null, slot: d.slot || null, inkType: d.inkType || null
+        kind: d.kind || null, slot: d.slot || null, inkType: d.inkType || null,
+        // **השלמת חוזה העיטורים (שלב 6 — §6.1-6/§6.1-10):** המודל נושא את מלוא
+        // ההצהרה — המקרינים (שלב 8) יקראו ולא יחשבו מחדש: זהות, מקור, דיו,
+        // מידות טבעיות מול יעד, fit/scale, עוגן, clipping, z-order, הזמנה
+        // ואילוצים. inkMissing מסומן גם כ-diagnostic למטה (אין השתקה).
+        ...(d.ornId ? { ornId: d.ornId } : {}),
+        ...(d.source != null ? { source: d.source } : {}),
+        ...(d.ink ? { ink: { ...d.ink } } : {}),
+        ...(d.inkMissing ? { inkMissing: true } : {}),
+        ...(d.natural ? { natural: { w: d.natural.w, h: d.natural.h } } : {}),
+        ...(d.scale != null ? { scale: d.scale } : {}),
+        ...(d.fit ? { fit: { ...d.fit } } : {}),
+        ...(d.anchor ? { anchor: { ...d.anchor } } : {}),
+        ...(d.clip ? { clip: { ...d.clip } } : {}),
+        ...(d.zOrder ? { zOrder: d.zOrder } : {}),
+        ...(d.reservation ? { reservation: { ...d.reservation } } : {}),
+        ...(d.constraints ? { constraints: { ...d.constraints } } : {}),
+        ...(d.cssClass ? { cssClass: d.cssClass } : {})
       })) : []),
       header: pp && pp.header ? { y: r2(pp.header.y) } : null,
       folio: pp && pp.folio ? { y: r2(pp.folio.y), text: pp.folio.text || null, baselineY: pp.folio.baselineY != null ? r2(pp.folio.baselineY) : null } : null,

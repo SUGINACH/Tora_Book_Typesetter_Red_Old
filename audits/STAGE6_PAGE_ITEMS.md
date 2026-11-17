@@ -154,3 +154,55 @@
 | עיטורים כפריטים מצהירי-מדדים מלאים (dimensions/fit/anchoring מהחוזה) | חלקי — ornament-fit מפרוסות קודמות; מסלול ההצהרה המלא — להשלמת שלב 6 |
 | MARKER_NOTE_MATCH (2 ממצאים, נתיב מורשת) + רצפת נפח full-math | חתימות בסיס מוכרות — רשומות ב-ISSUE_REGISTRY; לא שונו בפרוסה זו |
 | PageModel יחיד | **שלב 7** — ההקרנות כבר מוכנות לצרוך מודל סופי (צורכות חותמות/placement בלבד) |
+
+---
+
+## 9. השלמת שלב 6 (פרוסה 3, 17.11) — חוזה עיטורים מלא + הצמדת הערות לעוגנים
+
+**מסמך עבודה:** סעיפים 3.1–3.3 בהוראת ההמשך (שלבים 6–8). ענף: `stage6c/ornament-contract-notes-anchors`, בסיס `52f1b71`.
+
+### 9.1 חוזה העיטורים המלא (§3.1 — סגירת הפער "הצהרה חלקית")
+
+כל עיטור מהפאס (ornament-plan) נושא כעת **הצהרה מלאה** שנקבעת בזמן התכנון (`ornamentDeclarationOf`):
+
+| קבוצת שדות | שדות | מקור |
+|---|---|---|
+| זהות ומקור | `ornId` (דטרמיניסטי), `source` (מפתח ההגדרה שייצר) | ornament-plan |
+| סוג ונכס | `kindStyle`, `ink: {type, ref?, uri?}` (נפתר פעם אחת בהצבה), `image` | ornament-ink / הגדרות |
+| מידות | `natural {w,h}` מול ה-rect `w/h` + `scale` | ornament-fit |
+| מדיניות fit | `fit: {mode: fixed\|fit-to-text\|fit-to-line\|fit-to-heading-height\|fit-to-budget, reason}` | ornament-fit |
+| עוגן ומיקום סמנטי | `anchor: {tokenId, semantic: above-heading\|below-heading\|beside-heading\|column-end\|page-bottom}` | ornament-plan |
+| clipping ו-z-order | `clip: {top,bottom,left,right}` (תיבת העיטורים = content±h2TopOffset, כמו האודיט), `zOrder` | template |
+| שטח שמור | `reservation: {mode: overlay\|row-padding\|column-budget, px, where}` — מתעד היכן תוקצב בפועל בפריסה (F-08) | layout+plan |
+| אילוצי placement | `constraints: {relativeTo: heading\|column\|page, bounds, keepsOut}` | ornament-plan |
+
+- ה-registry (`page-items.js`) מצהיר את הסכמה המלאה ו-`validate` מחמיר; `validatePageItems` מאמת כל עיטור מוצב. `ornament-fit` נשאר מקור המדדים היחיד — אין חישובי מידות/fit מקביליים במקרינים (ה-DOM צורך את ה-ink מההצהרה; ה-PDF את ה-pdfOps מההקרנה).
+- **דיו חסר/פגום מדווח מפורש:** kindStyle שאינו פתיר ובלי תמונה ⇒ `ornament-ink-missing` ב-ledger + `inkMissing` בהצהרה + `dataset.inkMissing` ב-DOM + diagnostic ב-PageModel. הגיאומטריה נשמרת (T1); אין ריק בשקט.
+- PageModel נושא את מלוא ההצהרה (השדות עוברים דרך geometry-projector בשלמותם) — המקרינים של שלב 8 יקראו ולא יחשבו.
+
+### 9.2 הצמדת הערות לעוגנים (§3.2 — ממצא PR #16, הוכח בפועל ותוקן בשורש)
+
+- **אימות על main לפני התיקון** (`tools/audit-note-anchors.js`): canonical 0 הפרות · long 0 · **very_long 6 הפרות** — הערות שהוצגו עמוד לפני הסמן שלהן (למשל `footnote|t5250|1` עמ' 1030, סמן ב-1031). שורש: `reserveNotes` מחייב את כל הערות הבלוק בעמוד הסמן **הראשון** (FX-3); סמנים מאוחרים שנוחתים בעמוד הבא משאירים את הערותיהם מאחור.
+- **התיקון** (`reconcileNotesAfterPlacement` ב-dp-planner, אחרי ההצבה המלאה ולפני ה-protections): העברה קדימה של הערה לעמוד הסמן שלה, מוכנסת בסדר הקריאה של הסמנים, **בקיבולת מצטברת אמיתית** (טור אחרון של היעד + תקציב קיים + הערות שכבר הועברו אליו). המשכים אינם מוזזים כהערות מקוריות. אין קיבולת ⇒ לא מעבירים בכוח — `fn-anchor-compromise` ב-ledger עם ראיות עמודים וסיבה.
+- **תוצאה:** very_long — 5 הערות הועברו, 1 פשרת קיבולת מתועדת (עמ' 1030/1031: 23.5px פנויים מול תקציב 38px+). אינווריאנט קצה-לקצה נעול בבדיקה: כל הערה בעמוד הסמן או מאוחר ממנו, או פשרה רשומה.
+- **שימור זהות:** noteId, anchorId, continuationOf, wordRange, סמן ומספור — מוקזים בלבד (העברת מיקום, לא תוכן).
+
+### 9.3 ביקורת PR #17 (§3.3)
+
+PR #17 שולב כמעט במלואו בשלב 5 (constraint-matrix SSOT, FX-1..FX-6 — אומת מול הקוד). שארית אחת הועברה: `protections-matrix` צורך כעת את `WIDOW_ORPHAN_MIN`/`ESCORT_MIN_LINES` מ-constraint-matrix (במקום מילולים מקומיים — ערך זהה, מקור אחד). לא נוצר עותק של המטריצה ולא מנגנון מקבילי.
+
+### 9.4 ראיות (פרוסה 3)
+
+| בדיקה | תוצאה |
+|---|---|
+| `s6c-ornament-contract-anchors` (חדשה, 12 בדיקות) | **12/12** — הצהרה מלאה (73 עיטורים בקנוני, כל דרכי ה-fit/ההזמנה), שלילה (עיטור חסר הצהרה ⇒ contract-invalid), גיאומטריה-בלבד, הזמנה אמיתית, DOM=PageModel, דיו חסר מדווח, אודיט 0 ממצאים, דטרמיניזם הצהרות, אינווריאנט עוגנים, העברה בפועל, פשרה מדווחת, היגיין PR #17 |
+| `tools/audit-note-anchors.js` | canonical 0 · long 0 · very_long 1 (פשרת קיבולת מתועדת) — לפני: 6 |
+| שימור תוכן very_long | **bodyHash `ba2fa46e…` ו-notesHash `be780915…` זהים ביט-לביט** לפני/אחרי (66,506 שורות גוף; 1,276 הערות לפי noteId/marker/text); contentPreserved=true; 1108 עמודים בשניהם |
+| `cross-check` | PASS — canonical `f6f32c40` (ללא שינוי) · **very_long נעול מחדש `a36b3637`→`d2a18112`** עם הצדקה מלאה בקובץ הנעילות (גיאומטריה בלבד: 5 העברות הערות) · legacy `legacy-a8bdd` נשמר |
+| `test:determinism` | עובר |
+| `npm test` | יעודכן ב-PR (הסוויטות הקריטיות רצו ועברו — רשימה מלאה בגוף ה-PR) |
+
+### 9.5 נותר פתוח משלב 6
+
+- MARKER_NOTE_MATCH (2 ממצאים, נתיב מורשת) + רצפת נפח full-math-audit — חתימות בסיס מוכרות ב-ISSUE_REGISTRY (לא רגרסיות).
+- ייצוג גיאומטי מלא של תמונות float/block ב-PageModel — שלב 8 (עם המעבר של המקרינים).

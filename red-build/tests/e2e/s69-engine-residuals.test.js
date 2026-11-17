@@ -329,7 +329,16 @@ describe('S70 (R3-M2/M3) — כיול orphan/widow: רק הפרות אמיתיו
     // 0 order-restore, 0 content-diff) — שבירת השורות לא נגעה כלל; השינוי
     // היחיד הוא אריזת עמודים: 1089→1108 (+1.75%) — הפערים צורכים קיבולת
     // אמיתית וגבולות העמודים זזים בהתאם. contentPreserved=true.
-    assert(r.layoutHash.startsWith('a36b3637'), `layout unchanged (got ${r.layoutHash.slice(0, 8)})`);
+    // **שלב 6 פרוסה 3 (§3.2 — הצמדת הערות לעוגנים):** ננעל מחדש
+    // a36b3637→d2a18112 — reconcileNotesAfterPlacement מעביר הערה שהוקמה
+    // בעמוד הסמן-הראשון של הבלוק אל עמוד הסמן שלה עצמה (בקיבולת מצטברת
+    // אמיתית): 5 הערות הועברו, 1 פשרת קיבולת מתועדת (fn-anchor-compromise).
+    // הוכחת שימור תוכן ביט-לביט: bodyHash ba2fa46e / notesHash be780915
+    // זהים לפני/אחרי (66,506 שורות; 1,276 הערות לפי noteId/marker/text);
+    // contentPreserved=true; 1108 עמודים — השינוי גיאומטרי בלבד (מיקום
+    // הערות במרזב), ללא כל שינוי שורות/תוכן/זהות. הצדקה מלאה בקובץ
+    // הנעילות (tools/cross-check-locks.json).
+    assert(r.layoutHash.startsWith('d2a18112'), `layout unchanged (got ${r.layoutHash.slice(0, 8)})`);
     const count = (kind) => [...r.ledger.issues.values()].filter(x => x.kind === kind && x.status === 'persists').length;
     assertEq(count('widow-bottom'), 0, 'false widow-bottom flood eliminated (was 1176)');
     assertEq(count('orphan-top'), 0, 'false orphan-top flood eliminated (was 791)');
