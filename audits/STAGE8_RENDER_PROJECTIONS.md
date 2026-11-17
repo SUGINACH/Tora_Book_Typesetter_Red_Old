@@ -116,3 +116,22 @@
 **ראיות:** s8f חדשה (10): הוכחה שלילית לעימוד שני (patch ל-typeset — 0 קריאות); מודל חסר/שגוי/גופן פסול ⇒ כשלים מפורשים; geometryHash של המודל חוזר ב-info; חלוץ טקסט (כיסוי >90% ממילות המודל); FontFile2+ToUnicode בקובץ; bookmarks+קישורים מהמודל עם יעדים; **גיאומטריה: מיקומי מילים ב-bbox של הפלט תואמים ל-baseline של המודל (RTL-visual כולל)**; זרימת Worker מלאה (inline-transport: typeset→מודל→ייצוא fromPageModel + השוואת hash). · npm test מלא **EXIT=0** · determinism OK · cross-check PASS. · **אימות דפדפן אמיתי + Worker אמיתי: הייצוא מהמודל (fromPageModel=true, 8 עמודים, 61KB) ו-geometryHash של הייצוא == hash המודל שה-DOM מציג (1cba68a695e6)**.
 
 **נותר (פרוסה 6):** מלאי קוד מלא (dom-renderer/geometry-projector/legacy-projector/pdf-writer/export-api), parity DOM/HTML/PDF, ביצועים לפני/אחרי, פישוט.
+
+## פרוסה 6 (17.11) — מלאי, parity ופישוט (§5)
+
+**מה נעשה:** (1) מלאי קוד מלא לכל מודולי היעד — סיוון לכל פונקציה (מדידה/החלטה/materialization/ציור/אריזה/צרכנים) ב-`audits/STAGE8_SLICE6_INVENTORY.md`; (2) בדיקות parity תלת-יעדי s8g (8): אותו מודל ⇒ DOM==HTML==PDF בעמודים/שורות/מילים; דטרמיניזם ייצוא ביט-לביט; חלוץ טקסט PDF מכסה את מילות המודל; מלאי סטטי (אפס מדידה במודולי היעד); הוכחת אין-עימוד-שני ל-HTML+PDF יחד; (3) מדידות לפני/אחרי (`tools/perf-slice6.js` → `audits/perf_slice6/perf-slice6.json`): **PDF מהמודל חוסך 94.9% ב-very_long (43.2s→2.19s)** ללא השמטת תוכן (parity 359,584=359,584 מילים); DOM 481ms ל-1,110 עמודים; מודל 56.5KB/עמוד.
+
+**ראיות:** npm test מלא EXIT=0 (s8g 8/8) · determinism OK · cross-check PASS.
+
+**שלב 8 — מצב שערי הסגירה (§13 בהוראה):**
+- [x] PageModel מכיל את כל נתוני היעד (פרוסות 1–3: ריהוט/כתרים/עמודים מותאמים/margin/floats/דיו/endnotes)
+- [x] המודל עובר בפועל דרך ה-Worker ל-UI (פרוסה 2; אומת ב-Worker אמיתי)
+- [x] DOM/HTML/PDF צורכים PageModel בפרופיל המאוחד (פרוסות 3–5; hash מוכח)
+- [x] אין ריפלואו/מדידה/עימוד במקרינים (מוכח שלילית+סטטית)
+- [x] אין עימוד שני בייצוא (unified; ה-Worker מפנה אוטומטית)
+- [x] אין fallback שקט (unified-בלי-מודל = שגיאה מפורשת בכל היעדים)
+- [x] קורפוסים ירוקים (cross-check PASS; full-math PASS + דטרמיניזם)
+- [x] Pages מאומת חי (פריסה 3: אתר עובד, gh-pages-audit success)
+- [x] מפת תלויות ורישום כפילויות מעודכנים (h3-contract במפה; מלאי פרוסה 6)
+- [x] parity תלת-יעדי וביצועים (פרוסה 6)
+- [ ] **תלוי שלב 9:** הסרת legacy, shadow comparison מלא, החלפת ברירת מחדל — שלב 8 נסגר בפרופיל המאוחד כשיעד המוגדר; המעבר הסופי (ברירת מחדל + הסרת נתיבים) שייך לשלב 9 כמתוכנן.
