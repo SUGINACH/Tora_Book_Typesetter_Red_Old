@@ -25,6 +25,7 @@ const { buildPreviewTab } = require('./preview-tab');
 const { buildTestingTab } = require('./testing-tab');
 const { WorkerEngineClient, RESTART_ERROR } = require('./worker-client');
 const { classifyChange, getDebounceMs, policyTable } = require('./retypeset-policy');
+const { receivePageModel } = require('./page-model-transport'); // **שלב 8 פרוסה 2 (§4.3):** קליטת PageModel מעבר לגבול ה-Worker
 const { buildCaretMap } = require('./caret-map');
 
 const TABS = [
@@ -59,6 +60,7 @@ function createApp(doc, opts = {}) {
   const settings = getDefaultSettings();
   let text = '';
   let result = null;            // תוצאה מסוריאליזת פרוטוקול (D-65)
+  let pageModelObj = null;      // **שלב 8 פרוסה 2 (§4.4):** PageModel שהתקבל מה-Worker — מאומת וקפוא מחדש
   let caretMapObj = null;
   let lightDirty = false, heavyDirty = false;
   let typesetGen = 0; // **S5.2 (5):** דור עימוד — מונה תוצאות שהושלמו; חוזה: st.gen (אודיט חי בוחן שינוי)
@@ -420,6 +422,19 @@ function createApp(doc, opts = {}) {
     req.promise.then((res) => {
       if (res && res.cancelled) return;
       result = res;
+      // **שלב 8 פרוסה 2 (§4.3-4.4 — חוזה ההעברה):** המודל עבר structured-clone —
+      // אימות סכמה/האשים והקפאה מחדש בצד הצרכן. כשל העברה אינו נבלע: הודעה
+      // מפורשת (המסלול הגולמי נשאר לתצוגה הקיימת עד פרוסה 3 — אין רינדור
+      // ממסמך-גולמי חדש, רק המשך התצוגה הקיימת).
+      try {
+        const received = receivePageModel(res && res.pageModel);
+        pageModelObj = received.ok ? received.model : null;
+        if (!received.ok && res && res.pageModel) {
+          status.setNotice('העברת מודל העמוד נכשלה: ' + received.error + ' (התצוגה ממשיכת מסלול קיים)');
+        }
+      } catch (e) {
+        pageModelObj = null;
+      }
       typesetGen++; // **S5.2 (5):** +1 על כל עימוד שהושלם (בדיוק במקום ההשמה ל-result) — ביטול/החלפה אינם נספרים
       applyResultToViews();
       status.setEngineState('idle');
@@ -460,6 +475,7 @@ function createApp(doc, opts = {}) {
       text = '';
       editor.setText('');
       result = null;
+      pageModelObj = null; // **פרוסה 2:** ניקוי המודל עם המסמך
       caretMapObj = null;
       preview.setResult({ pages: [], report: { findings: [], counts: {} }, trace: { events: [] }, tokens: [], droppedEvents: 0 }, settings);
       testing.setResult({ pages: [], report: { findings: [], counts: {} }, trace: { events: [] }, tokens: [], droppedEvents: 0 });
@@ -824,6 +840,9 @@ function createApp(doc, opts = {}) {
 
   return {
     root, switchTab, editor, settingsPanel, preview, testing, status, engine, extensions,
+    // **שלב 8 פרוסה 2 (§4.4 — המודל בצרכן ה-UI):** גישה ל-PageModel שהתקבל
+    // מה-Worker (מאומת + קפוא מחדש). פרוסה 3 תעביר את ה-DOM לצריכתו הבלעדית.
+    pageModel: () => pageModelObj,
     // **S75 (בקשה 3):** שליטה/בדיקה של חלוקת סביבת העבודה (המפריד)
     getSplitPct: () => splitPct,
     setSplitPct,

@@ -521,7 +521,7 @@ ledger column-imbalance במורשת: 307 → 11 רשומות (שאריות אמ
 
 | מזהה | חומרה | מצב | תיאור וראיות | תיקון | בדיקת רגרסיה |
 |---|---|---|---|---|---|
-| S8-END1 | בינונית | **פתוח — פרוסה 2** | PageModel במצב note-placement-mode=endnotes מפיק 105 הפרות: planned-line-missing 56 (matchEndnoteLine ממפה שורות-הערות לפי התאמת טקסט — נכשל על רוב ההערות), note-without-id 48 (רשומות buildEndnotePages חסרות noteId), line-count-mismatch 1. קיים זהה ב-main 1751266 (נבדק ב-stash) — לא רגרסיה של הביקורת; נחשף כעת כי ההפרות מדווחות במלואן. | השלמת זהות שורות/הערות בעמודי endnotes בבונה המודל (פרוסה 2) | tests/e2e/s8b-materialize-boundary.test.js (endnotes) |
+| S8-END1 | בינונית | **נסגר — פרוסה 2** (stage8c) | PageModel במצב note-placement-mode=endnotes מפיק 105 הפרות: planned-line-missing 56 (matchEndnoteLine ממפה שורות-הערות לפי התאמת טקסט — נכשל על רוב ההערות), note-without-id 48 (רשומות buildEndnotePages חסרות noteId), line-count-mismatch 1. קיים זהה ב-main 1751266 (נבדק ב-stash) — לא רגרסיה של הביקורת; נחשף כעת כי ההפרות מדווחות במלואן. | השלמת זהות שורות/הערות בעמודי endnotes בבונה המודל (פרוסה 2) | tests/e2e/s8b-materialize-boundary.test.js (endnotes) |
 | S8-MAT1 | גבוה | **נסגר — פרוסה 1-ביקורת** | מדידה שנייה במסלול הייצור: כותרת עמודי הערות סונתזה בהקרנה (fakeLine) — 1,307 קריאות מדידה ב-typeset מלא של קורפוס במצב endnotes. שורש: אין חותמת. | stampEndnoteHeading (structural-stamps) — מדידה אחת בהטבעה; ההקרנה צורכת endnoteTitleGeo | s8b: probe prototype אפס-מדידות + endnotes 0 נפילות |
 | S8-MAT2 | בינונית | **נסגר — פרוסה 1-ביקורת** | 852 נפילות-שווא ב-very_long: שורה חד-מילית בלי glue נדרשה לרוחב רווח (מדידת ' ' + דיווח נפילה) — הנתון אינו חסר, אין לה רווחים. | רוחב רווח נדרש רק לשורה רב-מילית | s8b: very_long 0 נפילות |
 | S8-MAT3 | בינונית | **נסגר — פרוסה 1-ביקורת** | fallback המודד במקרין יכול להידלק בייצור (חותמות חסרות ⇒ מדידה/השחזור שקט-למחצה) ו-materializeFallbacks לא הגיעו לאימות המודל. | מצב production (אפס מדידה; diagnostic בלבד) + fallbacks ⇒ model.diagnostics/meta/violations | s8b: הזרקות שליליות + probe |
@@ -529,4 +529,13 @@ ledger column-imbalance במורשת: 307 → 11 רשומות (שאריות אמ
 | S8-D2 | נמוכה | **נסגר — פרוסה 1-ביקורת** | familyFontKeyOf כפול (materialize + structural-stamps). | typography/font-keys.js | סריקת מקורות ב-s8b |
 | S8-RPT1 | דיוק דיווח | **נסגר — פרוסה 1-ביקורת** | ה"69/70 + פלייק פורטים" שדווח בפרוסה 1 שגוי: אין פורטים ב-s10-ui (אין listen/createServer); CI ראש-PR 04c4d81f ירוק ב-3 גרסאות Node (הכישלון היחיד: 'local' = בסיס full-math). האירוע היה הרצת אצווה מקומית בסביבה מוגבלת. בכל זאת יוצבו התפרים: waitFor מותנה-מצב. | s10-ui: waitFor | אצווה מלאה 70/70 |
 | S8-DL1 | בינונית | **פתוח — פריסה 5/שלב 9** | exportPdf (export-api.js:122) מריץ typeset שני מלא + projectDocument שני (שני materialization) + קישורי TOC מחושבים בנוסחה מקובעת (70+yi*24) במקום מהחותמת. נתיב ייצוא שני — בניגוד לחוזה; נסגר כשה-PDF יעבור לצריכת PageModel (פרוסה 5). | פרוסה 5 | — |
-| S8-DL2 | בינונית | **פתוח — פרוסה 2** | PageModel אינו עובר ב-Worker (ui-result-v1 לא כולל אותו; pipeline.js:1292 מתעד זאת) — ה-UI מקבל pages גולמיים. | פרוסה 2: חוזה transport + חיבור | — |
+| S8-DL2 | בינונית | **נסגר — פרוסה 2** (stage8c: pagemodel-transport-v1 + חיבור app.pageModel) | PageModel אינו עובר ב-Worker (ui-result-v1 לא כולל אותו; pipeline.js:1292 מתעד זאת) — ה-UI מקבל pages גולמיים. | פרוסה 2: חוזה transport + חיבור | — |
+
+## שלב 8 פרוסה 2 (17.11.2026; ענף stage8c/pagemodel-contract מעל main 82d0f24)
+
+| מזהה | חומרה | מצב | תיאור וראיות | תיקון | בדיקת רגרסיה |
+|---|---|---|---|---|---|
+| S8-IMG1 | גבוה | **נסגר — פרוסה 2** | בדיקת אינטגריטי הנכסים (§21-10) הייתה מתה: page-model קרא ln.lineModel.assets שאיש מעולם לא אייש — אפס בדיקה בפועל. | line-model.js אוסף assets אמיתיים לכל שורה (inline+block+float); page-model בודק resolved מתוך המלאי | s8c (10) |
+| S8-IMG2 | בינונית | **נסגר — פרוסה 2** | זהות נכס כפולה: המודל הצהיר assetId על בסיס נתיב; ה-resolver מזהה לפי כתובת-תוכן (ast-image-*) — ההשוואה תמיד נכשלה בשקט. | contentAssetId קנוני בהצהרת הפריט; declaredAssetId לעקיבות | s8c (זהות תוכן) |
+| S8-IMG3 | בינונית | **נסגר — פרוסה 2** | מדידת נפילה לטקסט-המקור של צף בהקרנה (כל שורות הפריסה שלו). | הטבעת sourceTextWidthPx בזמן התכנון (pipeline-bridge); ההקרנה צורכת | s8b+s8c (probe) |
+| S8-PM1 | בינונית | **נסגר — פרוסה 2** | המודל לא נשא ריהוט/קישורים: header רק y, folio חלקי, outline/tocLinks חושבו בייצוא ה-PDF בנפרד (נוסחה מוקרנת ל-TOC). | השלמת השדות בבונה מהחותמות | s8c |

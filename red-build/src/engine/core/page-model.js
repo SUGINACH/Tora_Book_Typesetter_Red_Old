@@ -96,6 +96,7 @@ function buildPageModel(result, opts = {}) {
   // הוכחת הכיסוי המלא ואפס-הכפילויות (§21-1).
   const planLines = [];
   for (const page of pages) {
+    if (page.type === 'endnotes') continue; // **פרוסה 2 (S8-END1):** עמודי הערות-הסיום — ה"טורים" שלהם הם רשומות הערות, לא שורות תוכנית; הכיסוי שלהן נבדק במיפוי ההערות להלן
     (page.columns || []).forEach((col, ci) => {
       col.forEach((ln, li) => {
         const tok = ln.tokenId != null ? ln.tokenId : (ln.meta && ln.meta.tokenId);
@@ -124,6 +125,7 @@ function buildPageModel(result, opts = {}) {
     // הימני ראשון). עמודי סוגים מיוחדים (endnotes/TOC/שערים) — שורותיהם
     // הייעודיות מההקרנה, עם זהות המקור שלהם.
     const lines = [];
+    const bodyLineOf = new Map(); // שורת-תוכנית → שורת-מודל (לכל סוגי העמודים; לעמודי endnotes יישאר ריק)
     if (pp && pp.spanning && pp.spanning.lines) {
       pp.spanning.lines.forEach((pl, li) => {
         const src = (page.spanning && page.spanning.lines[li]) || null;
@@ -132,24 +134,28 @@ function buildPageModel(result, opts = {}) {
     }
     if (page.type === 'endnotes') {
       // "הטורים" של עמוד הערות מכילים אובייקטי הערה — השורות המוקרנות הן
-      // endnote-title/endnote-note; הזהות — tokenId של הערה/העמוד.
+      // endnote-title/endnote-note. **פרוסה 2 (S8-END1 — תיקון שורש):** הזהות
+      // היא tokenId של ההערה כפי שההקרנה עצמה נושאת על השורה — לא ניחוש
+      // התאמת-טקסט (56 הפרות planned-line-missing נגרמו ממנו).
       let li = 0;
       for (const pl of ((pp && pp.lines) || [])) {
-        const model = pl.kind === 'endnote-note'
-          ? matchEndnoteLine(pl, page)
-          : { tokenId: null, part: null, seq: null };
-        lines.push(placeLine(pl, { tokenId: model.tokenId, part: model.part, seq: model.seq, gapBeforePx: 0, aqStretch: 1 }, { page: page.index, area: 'endnotes', col: 0, li }));
+        const tok = pl.tokenId != null ? pl.tokenId : null;
+        lines.push(placeLine(pl, { tokenId: tok, part: null, seq: null, gapBeforePx: 0, aqStretch: 1 }, { page: page.index, area: 'endnotes', col: 0, li }));
         li++;
       }
     } else {
       // שורות הגוף: out.lines נבנה בסדר "טור 0 ואז טור 1" ואז הקרנות פריטי-עמוד
       // (הערות-צד וכו') — מסננים את אלה שאינן שורות גוף וממפים בסדר.
       const bodyProjected = ((pp && pp.lines) || []).filter(pl => !NON_BODY_LINE_KINDS.has(pl.kind));
+      // **פרוסה 2 (§4.2):** מילוי המיפוי שורת-תוכנית → שורת-מודל לפי אובייקט
+      // (מדויק — טוקן אחד מתפרס על כמה שורות, וחיפוש לפי tokenId פגע במיקום התמונה).
       let cursor = 0;
       (page.columns || []).forEach((col, ci) => {
         col.forEach((ln) => {
           const pl = bodyProjected[cursor++];
-          lines.push(placeLine(pl, ln, { page: page.index, area: 'column', col: ci, li: lines.length }));
+          const placed = placeLine(pl, ln, { page: page.index, area: 'column', col: ci, li: lines.length });
+          lines.push(placed);
+          bodyLineOf.set(ln, placed);
         });
       });
       // שאריות מוקרנות בלי שורות-תוכנית — תוכן מבני של העמוד (שערים/מותאם/
@@ -171,12 +177,15 @@ function buildPageModel(result, opts = {}) {
         if (!linesByTok.has(l.sourceTokenId)) linesByTok.set(l.sourceTokenId, []);
         linesByTok.get(l.sourceTokenId).push(l);
       }
-      footnotes = (page.notes || []).map(n => {
+      footnotes = (page.notes || []).map((n, ni) => {
         const ls = linesByTok.get(String(n.tokenId)) || [];
         const proj = ls.length
           ? { x: ls[0].x, y: ls[0].y, w: ls[0].w, words: ls.flatMap(l => l.words || []) }
           : null;
-        return notePlacement(n, proj, { page: page.index, area: 'endnote-page' });
+        // **פרוסה 2 (S8-END1):** noteId דטרמיניסטי גם להערות שלא קיבלו אחד
+        // מהגוף (endnote-N מפורש) — זהות יציבה למקרינים ולאימות.
+        const withId = n.noteId || (n.tokenId != null ? `en:${n.tokenId}` : `en:p${page.index}:${ni}`);
+        return notePlacement(n.noteId ? n : { ...n, noteId: withId }, proj, { page: page.index, area: 'endnote-page' });
       });
     } else {
       const projFns = ((pp && pp.footnotes) || []).slice();
@@ -196,6 +205,88 @@ function buildPageModel(result, opts = {}) {
       if (d.inkMissing) diagnostics.push({ kind: 'page-model-ornament-ink-missing', page: page.index, ornId: d.ornId || null, slot: d.slot || null, kindStyle: d.kindStyle || null });
     }
 
+    // **פרוסה 2 (§4.1 — השלמת החוזה):** ריהוט מלא + פס חוצה-טורים + תמונות
+    // ממדרגה ראשונה. הכול מהחותמות/מה-LineModel — המקרינים יקראו ולא יחשבו.
+    const header = pp && pp.header
+      ? {
+          y: r2(pp.header.y),
+          baselineY: pp.header.baselineY != null ? r2(pp.header.baselineY) : null,
+          slots: (pp.header.slots || []).map(s2 => ({
+            pos: s2.pos, align: s2.align || null, text: s2.text,
+            x: r2(s2.x), w: r2(s2.w), sizePt: s2.sizePt != null ? s2.sizePt : null,
+            ...(s2.fontKey ? { fontKey: s2.fontKey } : {}),
+            ...(s2.color ? { color: s2.color } : {})
+          }))
+        }
+      : null;
+    const folio = pp && pp.folio
+      ? {
+          x: pp.folio.x != null ? r2(pp.folio.x) : null,
+          y: r2(pp.folio.y),
+          w: pp.folio.w != null ? r2(pp.folio.w) : null,
+          text: pp.folio.text || null,
+          baselineY: pp.folio.baselineY != null ? r2(pp.folio.baselineY) : null,
+          ...(pp.folio.fontKey ? { fontKey: pp.folio.fontKey } : {}),
+          ...(pp.folio.color ? { color: pp.folio.color } : {}),
+          ...(pp.folio.sizePt != null ? { sizePt: pp.folio.sizePt } : {})
+        }
+      : null;
+    const spanning = pp && pp.spanning
+      ? { x: r2(pp.spanning.x), y: r2(pp.spanning.y), w: r2(pp.spanning.w), h: r2(pp.spanning.h) }
+      : null;
+
+    // **§4.2 — תמונות פריטים ממדרגה ראשונה:** מלאי הנכסים של השורות שהוצבו,
+    // עם גיאומטריה סופית (תיבת המילה בשורה הממוקמת / אזור הצף) ואינטגריטי
+    // (resolved לפי ה-resolver של הפייפליין). ההחלטות (זרימה/גודל/מיקום) התקבלו
+    // בתכנון — כאן רק הקרנה שלהן למודל.
+    const images = [];
+    const seenImgItems = new Set();
+    (page.columns || []).forEach((col, ci) => {
+      col.forEach((ln, liIdx) => {
+        const lm = ln.lineModel;
+        if (!lm || !Array.isArray(lm.assets) || !lm.assets.length) return;
+        const ml = bodyLineOf.get(ln) || null;
+        for (const a of lm.assets) {
+          if (a.placement === 'float' && seenImgItems.has(a.itemId)) continue; // צף מופיע בכל שורות הפריסה שלו — רשומה אחת
+          seenImgItems.add(a.itemId);
+          if (a.placement === 'float') {
+            images.push({
+              itemId: a.itemId, placement: 'float', side: a.side || null,
+              assetId: a.assetId != null ? a.assetId : null,
+              resourcePath: a.resourcePath != null ? a.resourcePath : null,
+              x: null, y: null, // הצף מוקם ביחס לשורת העוגן — המקרין צורך את התיבה מהשורה
+              w: a.widthPx != null ? r2(a.widthPx) : null,
+              h: a.heightPx != null ? r2(a.heightPx) : null,
+              lineId: ml ? ml.id : null,
+              ...(a.natural ? { natural: { ...a.natural } } : {}),
+              ...(a.fit ? { fit: { ...a.fit } } : {}),
+              ...(a.sourceText != null ? { sourceText: a.sourceText } : {}),
+              resolved: a.assetId != null ? (assetIds ? assetIds.has(a.assetId) : false) : false
+            });
+          } else {
+            // inline/centered: תיבת המילה של התמונה בשורה הממוקמת (מה-x של המילה)
+            const w = ml && ml.words ? ml.words.find(x => x.text === (a.sourceText || '')) : null;
+            images.push({
+              itemId: a.itemId, placement: a.placement || 'inline',
+              align: a.align || null,
+              assetId: a.assetId != null ? a.assetId : null,
+              resourcePath: a.resourcePath != null ? a.resourcePath : null,
+              x: w ? r2(w.x) : null, y: ml ? r2(ml.y) : null,
+              w: w ? r2(w.w) : (a.advancePx != null ? r2(a.advancePx) : null),
+              h: ml ? r2(ml.h) : null,
+              baselineY: ml && ml.baselineY != null ? r2(ml.baselineY) : null,
+              lineId: ml ? ml.id : null,
+              ...(a.natural ? { natural: { ...a.natural } } : {}),
+              ...(a.fit ? { fit: { ...a.fit } } : {}),
+              ...(a.altText != null ? { altText: a.altText } : {}),
+              ...(a.sourceText != null ? { sourceText: a.sourceText } : {}),
+              resolved: a.assetId != null ? (assetIds ? assetIds.has(a.assetId) : false) : false
+            });
+          }
+        }
+      });
+    });
+
     return {
       index: page.index,
       type: page.type,
@@ -203,9 +294,11 @@ function buildPageModel(result, opts = {}) {
       pageNumber: page.pageNumber != null ? page.pageNumber : null,
       folioDisplay: page.folioDisplay || null,
       geometry: geo,
+      ...(spanning ? { spanning } : {}),
       lines,
       footnotes,
       sideNotes,
+      images,
       decorations: (pp && pp.decorations ? pp.decorations.map(d => ({
         x: r2(d.x), y: r2(d.y), w: r2(d.w), h: r2(d.h),
         kind: d.kind || null, slot: d.slot || null, inkType: d.inkType || null,
@@ -227,26 +320,64 @@ function buildPageModel(result, opts = {}) {
         ...(d.constraints ? { constraints: { ...d.constraints } } : {}),
         ...(d.cssClass ? { cssClass: d.cssClass } : {})
       })) : []),
-      header: pp && pp.header ? { y: r2(pp.header.y) } : null,
-      folio: pp && pp.folio ? { y: r2(pp.folio.y), text: pp.folio.text || null, baselineY: pp.folio.baselineY != null ? r2(pp.folio.baselineY) : null } : null,
+      header,
+      folio,
       reservations: (page.reservations || []).map(r => ({ kind: r.kind, scope: r.scope, px: r2(r.px), reason: r.reason }))
     };
   });
 
   // (4) אינטגריטי נכסים (§21-10): כל מזהה נכס שהוצהר — נפתר או מדווח מפורש
+  // **פרוסה 2 (S8-DL1 חלקי — תיקון שורש):** עד כאן הלולאה קראה ln.lineModel.assets
+  // שאיש לא אייש (בדיקת §21-10 הייתה מתה). כעת line-model.js מאסף assets אמיתיים
+  // לכל שורה (inline + צפים) עם assetId — והאינטגריטי נבדק בפועל: כל נכס שהוצהר
+  // נפתר או מדווח מפורש.
   const resourceRefs = [];
-  if (assetIds) {
-    for (const page of pages) {
-      for (const col of (page.columns || [])) {
-        for (const ln of col) {
-          const ast = ln.lineModel && ln.lineModel.assets;
-          if (!ast) continue;
-          for (const a of ast) {
-            const resolved = assetIds.has(a.assetId);
-            resourceRefs.push({ assetId: a.assetId, page: page.index, resolved });
-            if (!resolved) diagnostics.push({ kind: 'page-model-resource-unresolved', assetId: a.assetId, page: page.index });
+  for (const page of pages) {
+    for (const col of (page.columns || [])) {
+      for (const ln of col) {
+        const ast = ln.lineModel && ln.lineModel.assets;
+        if (!ast || !ast.length) continue;
+        for (const a of ast) {
+          if (a.assetId == null) {
+            diagnostics.push({ kind: 'page-model-resource-unidentified', itemId: a.itemId || null, page: page.index });
+            continue;
           }
+          const resolved = assetIds ? assetIds.has(a.assetId) : false;
+          resourceRefs.push({ assetId: a.assetId, page: page.index, resolved });
+          if (!resolved) diagnostics.push({ kind: 'page-model-resource-unresolved', assetId: a.assetId, page: page.index });
         }
+      }
+    }
+  }
+
+  // **פרוסה 2 (§4.1 — קישורים וסימניות):** עץ הכותרות (H1→רמה 1, H2→רמה 2)
+  // וקישורי TOC (targetPage + מלבן השורה מהחותמת) — מיפוי טהור שהיה מחושב
+  // בייצוא ה-PDF בנפרד; כעת המודל נושא אותם והמקרינים צורכים.
+  const firstPageByToken = new Map();
+  pages.forEach((pg) => {
+    for (const ln of [...(pg.spanning ? pg.spanning.lines : []), ...(pg.columns || []).flat()]) {
+      const tok = ln.tokenId != null ? ln.tokenId : (ln.meta && ln.meta.tokenId);
+      if (tok != null && !firstPageByToken.has(tok)) firstPageByToken.set(tok, pg.index);
+    }
+  });
+  const outline = [];
+  for (const b of (result.tokens || [])) {
+    if (b.type !== 'heading' || (b.level !== 1 && b.level !== 2)) continue;
+    const pg = firstPageByToken.get(b.id);
+    if (pg == null) continue;
+    outline.push({ title: b.text, page: pg, level: b.level });
+  }
+  const tocLinks = [];
+  for (const tp of pages) {
+    if (tp.type !== 'toc-general' && tp.type !== 'toc-detail') continue;
+    const rows = (tp.tocLayout && tp.tocLayout.rows) || [];
+    for (const row of rows) {
+      if (row.kind === 'group') {
+        for (const it of (row.items || [])) {
+          if (it.targetPage != null) tocLinks.push({ page: tp.index, x: r2(it.x), y: r2(it.y), w: r2(it.w), h: r2(it.h), targetPage: it.targetPage });
+        }
+      } else if (row.targetPage != null) {
+        tocLinks.push({ page: tp.index, x: r2(row.x), y: r2(row.y), w: r2(row.w), h: r2(row.h), targetPage: row.targetPage });
       }
     }
   }
@@ -256,7 +387,9 @@ function buildPageModel(result, opts = {}) {
     document: {
       contentHashIn: result.contentHashIn || null,
       tokensCount: (result.tokens || []).length,
-      plannedPages: pages.length
+      plannedPages: pages.length,
+      outline,
+      tocLinks
     },
     pages: modelPages,
     // **ביקורת §3.1-6:** חשבונאות גלויה — כל diagnostic שנאסף בבנייה נושא במודל

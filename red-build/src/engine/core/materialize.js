@@ -775,7 +775,14 @@ function customFactorMapOf(settings) {
  */
 function lineWidthsFromModel(ln) {
   const lm = ln && ln.lineModel;
-  if (!lm || !Array.isArray(lm.flow) || !Array.isArray(lm.fragments)) return null;
+  if (!lm) return null;
+  // **פרוסה 2 (§4.2):** שורת תמונת בלוק/ממורכזת — אין לה flow; הרוחב הוא
+  // measuredAdvance של הפרגמנט (רוחב התצוגה של התמונה) — נתון מודל, לא מדידה.
+  if (!Array.isArray(lm.flow) && Array.isArray(lm.fragments) && lm.fragments.length) {
+    const widths = lm.fragments.map(f => Number(f.measuredAdvance) || 0);
+    return { widths, spaceW: 0 };
+  }
+  if (!Array.isArray(lm.flow) || !Array.isArray(lm.fragments)) return null;
   const fragById = new Map((lm.fragments || []).map(f => [f.itemId, f]));
   const widths = [];
   let curW = null;
@@ -803,6 +810,13 @@ function lineWidthsFromModel(ln) {
 
 function projectLine(ln, colX, y, colW, settings, measure, align, production) {
   const sizePt = lineFontSizePt(ln, settings);
+  // **פרוסה 2 (§4.2):** שורת תמונת בלוק/ממורכזת — יישור מרכז לפי האילוץ שבמודל
+  // (lm.constraints.align; breakReason 'image-block'). שורות רגילות אינן מושפעות.
+  if (ln && ln.lineModel && ln.lineModel.constraints
+    && (ln.lineModel.constraints.placement === 'block' || ln.lineModel.breakReason === 'image-block')
+    && ln.lineModel.constraints.align) {
+    align = String(ln.lineModel.constraints.align);
+  }
   // **S73 (תצוגה=ייצוא בגופני כותרות — נתיב DP):** ה-DOM מציג כותרות inline
   // בגופן הרמה מההגדרות (heading-N-font) ובצבען (heading-N-color); עד כאן
   // ההקרנה ציירה הכול בגוף הטקסט (/F1). כעת: fontKey משפחה + צבע — כמו ה-DOM.
@@ -836,9 +850,20 @@ function projectLine(ln, colX, y, colW, settings, measure, align, production) {
   // LineModel (סינתטית בבדיקות) — מדידת נפילה מסומנת, לא שקטה.
   const lm = lineWidthsFromModel(ln);
   let spaceW = lm ? lm.spaceW : null;
+  // **פרוסה 2 (§4.2):** טקסט-המקור של תמונה צפה — מחוץ לזרימה אך נספר ב-words;
+  // רוחבו הוטבע בזמן התכנון (sourceTextWidthPx) ונצרך כאן — בלי מדידה.
+  const floatTextW = new Map();
+  if (lm === null || lm === undefined) { /* no model */ }
+  if (ln.lineModel && Array.isArray(ln.lineModel.floatAreas)) {
+    for (const fa of ln.lineModel.floatAreas) {
+      if (fa.sourceText != null && fa.sourceTextWidthPx != null) floatTextW.set(fa.sourceText, fa.sourceTextWidthPx);
+    }
+  }
+  const nFloatWords = floatTextW.size ? words.reduce((a, w) => a + (floatTextW.has(w) ? 1 : 0), 0) : 0;
   let widths;
-  if (lm && lm.widths.length === words.length) {
-    widths = lm.widths;
+  if (lm && lm.widths.length + nFloatWords === words.length) {
+    let k = 0;
+    widths = words.map(w => (floatTextW.has(w) ? floatTextW.get(w) : lm.widths[k++]));
   } else if (production) {
     // **§3.1 (מסלול הייצור):** אין מדידה חלופית — הטקסט נשמר (חשבונאות מלאה)
     // ברוחב אפס מסומן, והנפילה מדווחת; תוקן במקור יצירת הנתון, לא כאן.
@@ -855,7 +880,7 @@ function projectLine(ln, colX, y, colW, settings, measure, align, production) {
   // 852 שורות כאלה ב-very_long ל"נפילת מדידה" כזובה. רק שורה רב-מילית בלי
   // רוחב רווח קנוני היא נתון חסר אמיתי: בייצור — diagnostic + אפס; ב-compat —
   // מדידת נפילה מתועדת.
-  if (spaceW == null && words.length > 1) {
+  if (spaceW == null && (words.length - nFloatWords) > 1) { // רווח נדרש רק בין מילות זרימה — טקסט-צף אינו מילת זרימה
     if (production) {
       spaceW = 0;
     } else {
