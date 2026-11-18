@@ -732,7 +732,7 @@ function shaarColorOfCls(cls, settings) {
   if (cls.includes('book-description')) return nonBlack(settings['shaar-desc-color']);
   if (cls.includes('book-sections-summary')) return nonBlack(settings['shaar-sections-color']);
   if (cls.includes('author-block')) return nonBlack(settings['shaar-author-color']);
-  if (cls.includes('back-shaar-text-line')) return nonBlack(settings['shaar-back-text-color']);
+  if (cls.includes('back-shaar-text-line') || cls.includes('back-shaar-copyright-header')) return nonBlack(settings['shaar-back-text-color']);
   return null;
 }
 

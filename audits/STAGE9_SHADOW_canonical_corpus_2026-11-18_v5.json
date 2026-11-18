@@ -3,7 +3,7 @@
   "schema": 5,
   "file": "red-build/tests/fixtures/canonical_corpus.txt",
   "unifiedProfile": "imud-cutover",
-  "started": "2026-11-18T01:28:26.523Z",
+  "started": "2026-11-18T02:09:22.759Z",
   "summary": {
     "total": 13,
     "passed": 13,
@@ -81,7 +81,7 @@
       "group": "מודל",
       "desc": "r.pageModel (הקנוני של שלב 8) מייצג את אותו תוכן כמו r.pages במאוחד",
       "ok": true,
-      "detail": "PageModel מייצג את מלוא התוכן (3,436 מילים = האינוונטר)"
+      "detail": "PageModel מייצג את מלוא התוכן (3,434 מילים = האינוונטר)"
     },
     "G9-heading-grammar-parity": {
       "group": "דקדוק",
@@ -106,7 +106,7 @@
     },
     "legacy": {
       "pages": 38,
-      "words": 3430,
+      "words": 3428,
       "notes": 8,
       "fnAreas": 8,
       "continuationFragments": 0,
@@ -118,7 +118,7 @@
     },
     "unified": {
       "pages": 37,
-      "words": 3436,
+      "words": 3434,
       "notes": 8,
       "sideNotes": 8,
       "sideWords": 56,

@@ -247,6 +247,13 @@ const registry = [
   K('imud-divider', 'string', '', P.ORNAMENTS, 'inp-imud-divider', ['decoration/ornament-plan'], 'fx:imud-divider', { note: 'מפריד סעיפים מעוצב (323 עיצובים) — משמש מפרידי שער/כותרות במצב תמונה' }),
   K('imud-book-title', 'string', '', P.THEMES, 'inp-imud-book-title', ['output/dom-renderer'], 'fx:imud-book-title', { note: 'כותרת הספר בשער (עקיפת מטא-נתוני המסמך אם הוגדר)' }),
   K('imud-book-subtitle', 'string', '', P.THEMES, 'inp-imud-book-subtitle', ['output/dom-renderer'], 'fx:imud-book-subtitle', { note: 'כותרת־משנה בשער' }),
+  // **9b.5 (D-107 + F-9a-8):** ארבעת מקטעי השער האחורי — שדות בעלי משמעות עם
+  // שמות הניתנים להתאמה. מקור: שדה הפאנל (ייבוא inp-book-back-*) גובר; נפילה
+  // למטא המסמך. בלי ערך — אין מקטע (אין המצאת ערכים; כמו במקור שהופורט).
+  K('imud-book-back-copyright', 'string', '', P.THEMES, 'inp-book-back-copyright', ['output/shaar-content'], 'fx:imud-book-back-copyright', { note: 'זכויות יוצרים בשער האחורי (D-107; עקיפת מטא-נתוני המסמך אם הוגדר)' }),
+  K('imud-book-back-publishing', 'string', '', P.THEMES, 'inp-book-back-publishing', ['output/shaar-content'], 'fx:imud-book-back-publishing', { note: 'פרטי הוצאה לאור בשער האחורי (D-107)' }),
+  K('imud-book-back-contact', 'string', '', P.THEMES, 'inp-book-back-contact', ['output/shaar-content'], 'fx:imud-book-back-contact', { note: 'פרטי קשר בשער האחורי (D-107)' }),
+  K('imud-book-back-extra', 'string', '', P.THEMES, 'inp-book-back-extra', ['output/shaar-content'], 'fx:imud-book-back-extra', { note: 'פרטים נוספים בשער האחורי (D-107)' }),
   // **03.11(ד) — דיווח משתמש 3 ("אין עמודי שער, אין כותרות עליונות, שום דבר מהגדרות
   // ברירת המחדל אינו קיים"): המקור (IMUD_TORANI default_settings.json) מחזיק
   // show-main-shaar=true / show-sub-shaar=true / show-back-shaar=true כברירת מחדל —
@@ -277,7 +284,6 @@ const registry = [
   K('shaar-year-size-pt', 'number', 12, P.THEMES, 'rng-shaar-year-size', ['output/shaar-content', 'output/dom-renderer'], 'fx:shaar-year-size', { min: 8, max: 20, note: 'מקור: s-sh-year=12' }),
   K('shaar-back-text-font', 'font', 'אסיסטנט קל מאוד', P.THEMES, 'sel-shaar-back-text-font', ['output/shaar-content', 'output/dom-renderer', 'layout/legacy-imud-flow'], 'fx:shaar-back-text-font', { note: 'S74 (בעיה 5): כל שורות השער האחורי ב-Assistant ExtraLight — ברירת המחדל של הגרסה הישנה בפועל (נמדד בייחוס עמ׳ 2: חמש השורות Assistant-ExtraLight 13.5/10/11/10/9.5pt). עד S74 ירשו את גוף המסמך' }),
   K('shaar-back-text-color', 'color', '#000000', P.THEMES, 'inp-shaar-back-text-color', ['layout/legacy-imud-flow', 'output/geometry-projector', 'output/dom-renderer'], 'fx:shaar-back-text-color', { note: 'S73: צבע טקסט השער האחורי — שחור כברירת מחדל' }),
-  K('shaar-back-text-size-pt', 'number', 10.5, P.THEMES, 'rng-shaar-back-text-size', ['output/shaar-content', 'output/dom-renderer'], 'fx:shaar-back-text-size', { min: 8, max: 16, note: 'מקור: שורות ההמשך 10.5pt (השורה הראשונה 13pt מודגשת)' }),
   // נתוני הספר לשערים — ממופים מ-inp-book-* של המקור; בלי ערך — נופלים למטא-נתוני המסמך
   K('imud-book-desc', 'string', '', P.THEMES, 'inp-imud-book-desc', ['output/dom-renderer'], 'fx:imud-book-desc', { note: 'תיאור בשער הראשי (מקור: inp-book-desc ← «נושא מפורט»)' }),
   K('imud-book-sections', 'string', '', P.THEMES, 'inp-imud-book-sections', ['output/dom-renderer'], 'fx:imud-book-sections', { note: 'פרטי מהדורא בשער הראשי (מקור: inp-book-sections ← «פרטי מהדורא»)' }),

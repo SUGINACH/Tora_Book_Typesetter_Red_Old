@@ -183,7 +183,7 @@ function projectPage(page, settings, apiOrOpts) {
         if (cls.includes('book-description')) return colorOfSetting(settings['shaar-desc-color']);
         if (cls.includes('book-sections-summary')) return colorOfSetting(settings['shaar-sections-color']);
         if (cls.includes('author-block')) return colorOfSetting(settings['shaar-author-color']);
-        if (cls.includes('back-shaar-text-line')) return colorOfSetting(settings['shaar-back-text-color']);
+        if (cls.includes('back-shaar-text-line') || cls.includes('back-shaar-copyright-header')) return colorOfSetting(settings['shaar-back-text-color']);
         return null;
       };
       const shaarMeasureOf = (fam) => {

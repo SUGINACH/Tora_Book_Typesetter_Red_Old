@@ -316,10 +316,13 @@ const DISPOSITIONS = {
   'aq-line-height': { kind: 'ui-state', reason: 'S6.3: מתיחת גובה-שורה במקור — מנגנון EXT-20 של RED (aqStretch) פועל מההפרש הנמדד; נשמר כנתון', issue: 'S6.3-AQ' },
   'aq-line-height-max': { kind: 'ui-state', reason: 'S6.3: תקרת מתיחת שורה (3% במקור) — ב-RED נקלטת דרך aq-letter-spacing-max המרכזי; נשמר כנתון', issue: 'S6.3-AQ' },
   'aq-shared-load': { kind: 'mapped', to: 'aq-shared-load', transform: (v) => v !== false && v !== 'false', reason: 'S6.3: עומס משותף בין השכבות (true במקור וברישום)' },
-  'inp-book-back-copyright': { kind: 'ui-state', reason: 'S6.3: טקסט זכויות השער האחורי — נקרא בפועל מה-raw בפרופיל המורשת (readConfig ⇒ gateLinesFor, גובר על המטא של המסמך)' },
-  'inp-book-back-publishing': { kind: 'ui-state', reason: 'S6.3: פרטי הוצאה — נקרא מה-raw (כמו קודם)' },
-  'inp-book-back-contact': { kind: 'ui-state', reason: 'S6.3: פרטי קשר — נקרא מה-raw' },
-  'inp-book-back-extra': { kind: 'ui-state', reason: 'S6.3: פרטים נוספים — נקרא מה-raw' },
+  // **9b.5 (D-107 + F-9a-8):** ארבעת מקטעי השער האחורי — חיבור לנתיב המאוחד
+  // (עד כאן סווגו ui-state ולא מופו; buildShaarBlocks לא ראה אותם כלל).
+  // המקור גובר על המטא של המסמך (כמו inp-book-title בשער הראשי).
+  'inp-book-back-copyright': { kind: 'mapped', to: 'imud-book-back-copyright', reason: '9b.5: זכויות יוצרים בשער האחורי — נצרכת ב-buildShaarBlocks (D-107: ארבעת המקטעים)' },
+  'inp-book-back-publishing': { kind: 'mapped', to: 'imud-book-back-publishing', reason: '9b.5: פרטי הוצאה לאור בשער האחורי (D-107)' },
+  'inp-book-back-contact': { kind: 'mapped', to: 'imud-book-back-contact', reason: '9b.5: פרטי קשר בשער האחורי (D-107)' },
+  'inp-book-back-extra': { kind: 'mapped', to: 'imud-book-back-extra', reason: '9b.5: פרטים נוספים בשער האחורי (D-107)' },
   's-note-body': { kind: 'ui-state', reason: 'S6.3: גודל גוף ההערה — נקרא מה-raw (readConfig ⇒ SZ.fnBody; ברירת המחדל של המקור 9)' },
   's-h0': { kind: 'mapped', to: 'heading-0-size-pt', transform: parseFloat, reason: 'S6.3: גודל H0 — גם נקרא מה-raw בפרופיל המורשת (SZ.h0Title; במקור 26pt)' },
   's-h1': { kind: 'mapped', to: 'heading-1-size-pt', transform: parseFloat, reason: 'S6.3: גודל H1 — נקרא מה-raw לשער-המשנה (cfg.h1Size; במקור 50pt)' },

@@ -82,6 +82,10 @@ describe_s14();
 
 function describe_s14() {
   const s = getDefaultSettings();
+  // **9b.5 (D-107 — ארבעת מקטעי השער האחורי):** מקור המקטעים = הגדרות או מטא
+  // המסמך; ה-fixture של s14 חסר מטא-אחורי, ולכן הזכויות מסופקות מההגדרות
+  // (הוכחת fx ל-imud-book-back-copyright). בלי ערך — אין מקטע (אין המצאה).
+  s['imud-book-back-copyright'] = 'כל הזכויות שמורות למחבר.';
   const r = typeset(CORPUS, s);
   const types = r.pages.map(p => p.type);
 
