@@ -448,12 +448,15 @@ function createApp(doc, opts = {}) {
       typesetGen++; // **S5.2 (5):** +1 על כל עימוד שהושלם (בדיוק במקום ההשמה ל-result) — ביטול/החלפה אינם נספרים
       applyResultToViews();
       status.setEngineState('idle');
-      status.setPages(result.pages.length);
+      // **9c.3:** מספר העמודים בסטטוס מהמקור הקנוני — ה-PageModel במאוחד
+      // (applyResultToViews כבר קרא ל-setPages מאותו מקור); כאן לצורך סדר
+      // ההודעות בלבד.
+      status.setPages(canonicalPages().length);
       // **S1-ה/U-2 (תכנית אב §7.1):** כל תוצאת עימוד מציגה hash, שימור, עמודים
       // וזמן ריצה; הפרטים המלאים (מזהה ריצה, hash קלט, גרסה) ב-tooltip של הצ'יפ.
       status.setRunInfo({
         jobId, layoutHash: result.layoutHash, contentHashIn: result.contentHashIn || null,
-        pages: result.pages.length, ms: perf.now() - started,
+        pages: canonicalPages().length, ms: perf.now() - started,
         contentPreserved: result.contentPreserved, engineVersion
       });
     }).catch((e) => {
@@ -750,17 +753,31 @@ function createApp(doc, opts = {}) {
   }
 
 
+  /** **9c.3:** מערך העמודים הקנוני של התוצאה הנוכחית — לפי הפרופיל:
+   * unified ⇒ עמודי ה-PageModel בלבד (מקור האמת לגיאומטריה ולתוכן);
+   * legacy ⇒ result.pages (ענף 9c.4-marker — עד הסרת המנוע). כל צרכן
+   * ה-UI (מחוונים, מפת שבירות, סמן↔עמוד) נגזר מכאן — אין תלות סמויה
+   * ב-result.pages כשהפרופיל המאוחד פעיל. */
+  function canonicalPages() {
+    if (engineProfile === 'unified' && pageModelObj && Array.isArray(pageModelObj.pages)) return pageModelObj.pages;
+    return result ? result.pages : [];
+  }
+
   function applyResultToViews() {
-    caretMapObj = buildCaretMap(text, result);
+    // **9c.3:** מפת הסמן נבנית מהמקור הקנוני לפי הפרופיל — העמודים מה-PageModel
+    // במאוחד (sourceTokenId בכל שורה), מעמודי התוצאה במורשת. הטוקנים הם מידע
+    // זהות מקור (DocumentModel) — לא גיאומטריה; אין עימוד ואין מדידה כאן.
+    const pages = canonicalPages();
+    caretMapObj = buildCaretMap(text, result.tokens, pages);
     // **פרוסה 3 (§2.1–§2.3):** התצוגה מחוברת ל-PageModel בפרופיל המאוחד —
     // profile=unified כשהתוצאה ממנוע ה-DP ומודל קיים; legacy ממשיך ברנדרר
     // הישן (מצב תעבור מפורש עד שלב 9). ברירת המחדל החיה אינה משתנה.
     preview.setResult(result, settings, { pageModel: pageModelObj, profile: engineProfile });
-    testing.setResult(result);
+    testing.setResult(result, { pageModel: pageModelObj, profile: engineProfile });
     testing.setRecommendations(result.recommendations || null); // **S11:** המלצות עם הוכחות
-    // מפת שבירות עמודים לעורך (⏎ — תצוגה בלבד, F-01)
+    // מפת שבירות עמודים לעורך (⏎ — תצוגה בלבד, F-01) — מהמקור הקנוני (9c.3)
     const breaks = [];
-    for (const pg of result.pages) {
+    for (const pg of pages) {
       if (pg.index === 0) continue;
       const toks = caretMapObj.tokensByPage.get(pg.index) || [];
       const tokId = toks[0];
@@ -771,7 +788,7 @@ function createApp(doc, opts = {}) {
       });
     }
     editor.setPageBreaks(breaks);
-    status.setPages(result.pages.length);
+    status.setPages(pages.length);
     status.setPending({ light: lightDirty, heavy: heavyDirty });
   }
 
@@ -859,13 +876,47 @@ function createApp(doc, opts = {}) {
 
   function buildDebugJson(pageIndex) {
     if (!result) return { error: 'אין תוצאה — עמדו את המסמך תחילה' };
-    const pg = result.pages.find(p => p.index === pageIndex);
-    if (!pg) return { error: `עמוד ${pageIndex} לא נמצא` };
     const ledgerSlice = (result.ledger.issues || []).filter(rec => rec.page === pageIndex || String(rec.target || '').includes(`p${pageIndex}`));
     const traceSlice = (result.trace.events || []).filter(ev => ev.pageIndex === pageIndex);
     const findingsSlice = (result.report.findings || []).filter(f => Number(f.page) === pageIndex);
+    // **9c.3:** בפרופיל המאוחד הגיאומטריה והתוכן של העמוד מה-PageModel — מקור
+    // האמת. עמודי התוצאה הגולמיים אינם נצרכים כאן עוד (המורשת ממשיך כמקודם).
+    if (engineProfile === 'unified' && pageModelObj && Array.isArray(pageModelObj.pages)) {
+      const mp = pageModelObj.pages.find(p => p.index === pageIndex);
+      if (!mp) return { error: `עמוד ${pageIndex} לא נמצא ב-PageModel` };
+      return {
+        schema: 'page-debug-v1',
+        profile: 'unified',
+        source: 'PageModel',
+        pageIndex,
+        type: mp.type,
+        geometry: mp.geometry,                      // מידות/שוליים/טורים מהמודל
+        ...(mp.spanning ? { spanning: mp.spanning } : {}),
+        ...(mp.shaar ? { shaar: mp.shaar } : {}),
+        ...(mp.custom ? { custom: { boxes: mp.custom.boxes.length, images: mp.custom.images.length } } : {}),
+        lines: (mp.lines || []).map(ln => ({
+          id: ln.id, sourceTokenId: ln.sourceTokenId != null ? ln.sourceTokenId : null,
+          kind: ln.kind || null, area: ln.area || null,
+          x: ln.x, y: ln.y, w: ln.w, h: ln.h,
+          words: (ln.words || []).length, projected: ln.projected !== false
+        })),
+        footnotes: (mp.footnotes || []).map(n => ({ noteId: n.noteId, anchorId: n.anchorId || null, marker: n.marker || null })),
+        sideNotes: (mp.sideNotes || []).map(n => ({ noteId: n.noteId, anchorId: n.anchorId || null })),
+        images: (mp.images || []).length,
+        decorations: (mp.decorations || []).length,
+        folioDisplay: mp.folioDisplay || '',
+        pageNumber: mp.pageNumber != null ? mp.pageNumber : null,
+        findings: findingsSlice,
+        ledger: ledgerSlice,                          // פרוסת ledger לעמוד זה
+        trace: traceSlice,                            // פרוסת מסלול לעמוד זה
+        layoutHash: result.layoutHash
+      };
+    }
+    const pg = result.pages.find(p => p.index === pageIndex);
+    if (!pg) return { error: `עמוד ${pageIndex} לא נמצא` };
     return {
       schema: 'page-debug-v1',
+      profile: 'legacy',
       pageIndex,
       type: pg.type,
       template: pg.template,                       // גיאומטריה מלאה: מידות/שוליים/טורים/תיבת תוכן
@@ -904,7 +955,7 @@ function createApp(doc, opts = {}) {
     refreshFontCatalog: (families) => settingsPanel.refreshFontCatalog && settingsPanel.refreshFontCatalog(families), // **03.11**
     imudLibrary: opts.imudLibrary || null, // **03.11:** ספריית IMUD לניפוי/הרחבות
     applyLegacyDefaults, // **03.11(ד):** נתיב יחיד להחלת ברירות המקור (פאנל + אתחול)
-    getState: () => ({ lightDirty, heavyDirty, lastLightRefreshMs, hasResult: !!result, pages: result ? result.pages.length : 0, layoutHash: result ? result.layoutHash : null, gen: typesetGen }),
+    getState: () => ({ lightDirty, heavyDirty, lastLightRefreshMs, hasResult: !!result, pages: canonicalPages().length, layoutHash: result ? result.layoutHash : null, gen: typesetGen }),
     setText: (t) => { text = String(t != null ? t : ''); editor.setText(text); },
     getText: () => editor.getText(),
     getSettings: () => settings,
