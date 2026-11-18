@@ -2547,6 +2547,21 @@ const crypto = require('crypto');
 const { HEADING_RE, ENDNOTE_CLASS_RE, DEFAULT_ENDNOTE_PREFIX, compileEndnotePrefix } = require('./dfa-lexer');
 const { scanBrackets } = require('./bracket-scanner');
 
+/** **9b.4 (D-91 — התנהגות המקור היא המפרס):** האם בטקסט פותח-הערה שאין אחריו
+ * סוגר כלל — שיקוף מדויק של hasUnclosedNote של המורשת (indexOf ראשון; היעדר
+ * סוגר אחריו). שים לב: `[a] [b` אינו "פתוח" לפי הכלל הזה — הסוגר של הזוג
+ * הראשון נמצא אחרי הפותח הראשון — ולכן אין הדבקה (התנהגות המקור). */
+function hasUnclosedNote(text, open, close) {
+  if (!open || !close) return false;
+  const s = text.indexOf(open);
+  if (s === -1) return false;
+  return text.indexOf(close, s + open.length) === -1;
+}
+
+/** **9b.4:** שורה מבנית שנבלעת לתוך הדבקת הערה — חייבת ממצא מפורש (לא היעלמות
+ * שקטה): כותרת / קידומת הערת-סיום / הוראת כותרת עמודי ההערות. */
+const GLUE_STRUCTURAL_RE = /^(כותרת\s*[0-7]\b|הערת\s*סיון?\b|הערות\s*סיום\b|חלק\s+[א-ת]+\b|הקדמה\b)/;
+
 const ATOMIC_SPACE = '\uE000'; // V3/V4 breakthrough: רווח אטומי בתוך הערה — למדידה בלבד
 
 // **S5.2 (תיקון 12 — תיעוד, ללא שינוי התנהגות):** הנרמול שלהלן (״→׳ ו-‘ ’→") הוא
@@ -2704,13 +2719,53 @@ function tokenizeDetailed(bodyLines, opts = {}) {
   const fnEnabled = fnOpen.trim().length > 0 && fnClose.trim().length > 0;
   const tokens = [];
   const lines = [];
+  // **9b.4:** שורות גוף שנבלעו לתוך הדבקת הערה חוצת-שורות — הלולאה מדלגת עליהן;
+  // השלד שלהן נרשם על ידי השורה הראשית של הקבוצה (primaryBodyLineIndex).
+  const gluedInto = new Map(); // bodyLineIndex (נבלע) → bodyLineIndex (ראשית)
   for (let li = 0; li < bodyLines.length; li++) {
+    if (gluedInto.has(li)) continue;
     const rawOfLine = bodyLines[li];
     const s1 = normalizeStage(rawOfLine);
     let line = s1.pre;
     if (!line) {
       lines.push({ bodyLineIndex: li, kind: 'blank', stage1: s1 });
       continue;
+    }
+
+    // **9b.4 (D-91 — התנהגות המקור היא המפרס): הדבקת הערה חוצת-שורות.**
+    // שורה שיש בה פותח-הערה שאין אחריו סוגר כלל בולעת את השורות הבאות
+    // הלא-ריקות — חיבור ברווח בודד של השורות המקוצצות, עד שהפותח נסגר
+    // (בדיוק כמו לולאת ההדבקה של המורשת). שורה ריקה עוצרת את ההדבקה
+    // וההערה נשארת פתוחה — התוכן נשמר בגוף ו-unmatchedOpeners מדווח.
+    // מיקומי החיבור נשמרים ב-glueParts לשחזור מלא תו-לתו ב-round-trip.
+    // שורה מבנית שנבלעת מסומנת structural — ממצא מפורש, לא היעלמות שקטה.
+    let glueParts = null;
+    if (fnEnabled && hasUnclosedNote(line, fnOpen, fnClose)) {
+      const parts = [{ bodyLineIndex: li, preLength: s1.pre.length, stage1: s1 }];
+      let acc = line;
+      let j = li + 1;
+      while (hasUnclosedNote(acc, fnOpen, fnClose) && j < bodyLines.length) {
+        const s1n = normalizeStage(bodyLines[j]);
+        if (!s1n.pre) break; // שורה ריקה עוצרת (המורשת: if (!next) break)
+        acc = acc + ' ' + s1n.pre;
+        parts.push({ bodyLineIndex: j, preLength: s1n.pre.length, stage1: s1n, structural: GLUE_STRUCTURAL_RE.test(s1n.pre) });
+        j++;
+      }
+      if (parts.length > 1) {
+        glueParts = parts;
+        line = acc;
+        for (let k = 1; k < parts.length; k++) gluedInto.set(parts[k].bodyLineIndex, li);
+        // רשומות שלד לשורות שנבלעו — נרשמות מיד בזיהוי (לפני סיווג השורה
+        // הראשית): השלד אינדקסי, והשחזור מפצל את השורה המאוחדת במיקומי
+        // החיבור וממלא גם אותן — לכל סיווג (פסקה/כותרת/הערת-סיום).
+        for (let k = 1; k < parts.length; k++) {
+          lines.push({
+            bodyLineIndex: parts[k].bodyLineIndex, kind: 'glued',
+            primaryBodyLineIndex: li, stage1: parts[k].stage1,
+            structural: !!parts[k].structural
+          });
+        }
+      }
     }
 
     let m = line.match(HEADING_RE);
@@ -2727,6 +2782,7 @@ function tokenizeDetailed(bodyLines, opts = {}) {
       lines.push({
         bodyLineIndex: li, kind: 'heading', level, stage1: s1,
         ...(num != null ? { num } : {}), ...(citation ? { citation } : {}), // 9b.3: שדות סמנטיים למודל
+        ...(glueParts ? { glueParts } : {}), // 9b.4: קבוצת הדבקה (כותרת עם הערה פתוחה)
         spans: {
           match: { start: 0, end: m[0].length },
           title: { start: titleStart, end: line.length },
@@ -2748,6 +2804,7 @@ function tokenizeDetailed(bodyLines, opts = {}) {
         tokens.push(mkToken('endnote', { num, text: textVal, raw: line }));
         lines.push({
           bodyLineIndex: li, kind: 'endnote-numbered', num, stage1: s1,
+          ...(glueParts ? { glueParts } : {}), // 9b.4
           spans: { match: { start: 0, end: mNum[0].length }, num: { start: 0, end: mNum[0].length - textVal.length }, text: { start: textStart, end: line.length } },
           tokenId: tokens[tokens.length - 1].id
         });
@@ -2762,6 +2819,7 @@ function tokenizeDetailed(bodyLines, opts = {}) {
         tokens.push(mkToken('endnote', { text: textVal, raw: line }));
         lines.push({
           bodyLineIndex: li, kind: 'endnote', stage1: s1,
+          ...(glueParts ? { glueParts } : {}), // 9b.4
           spans: { match: { start: 0, end: mEnd[0].length }, text: { start: textStart, end: line.length } },
           tokenId: tokens[tokens.length - 1].id
         });
@@ -2775,6 +2833,7 @@ function tokenizeDetailed(bodyLines, opts = {}) {
       tokens.push(mkToken('endnote-class', { title, raw: line }));
       lines.push({
         bodyLineIndex: li, kind: 'endnote-class', stage1: s1,
+        ...(glueParts ? { glueParts } : {}), // 9b.4
         spans: { match: { start: 0, end: mCls[0].length }, title: { start: titleStart, end: line.length } },
         tokenId: tokens[tokens.length - 1].id
       });
@@ -2790,7 +2849,7 @@ function tokenizeDetailed(bodyLines, opts = {}) {
       stage2 = editorialStage(line);
       line = stage2.canonical;
       if (!line) {
-        lines.push({ bodyLineIndex: li, kind: 'editorial', stage1: s1, stage2, editorialTokenIds });
+        lines.push({ bodyLineIndex: li, kind: 'editorial', stage1: s1, stage2, editorialTokenIds, ...(glueParts ? { glueParts } : {}) });
         continue;
       }
     }
@@ -2840,14 +2899,17 @@ function tokenizeDetailed(bodyLines, opts = {}) {
       partRanges.push({ kind: 'text', start: segStart, end: segStart + tail.length });
     }
 
-    tokens.push(mkToken('paragraph', { parts, notes, unmatchedClosers: segs.unmatchedClosers, raw: line }));
+    tokens.push(mkToken('paragraph', { parts, notes, unmatchedClosers: segs.unmatchedClosers, unmatchedOpeners: segs.unmatchedOpeners, raw: line }));
     lines.push({
       bodyLineIndex: li, kind: 'paragraph', stage1: s1, stage2: stage2 || null,
       canonicalAfterEditorial: line, partRanges,
-      editorialTokenIds, unmatchedClosers: segs.unmatchedClosers,
+      editorialTokenIds, unmatchedClosers: segs.unmatchedClosers, unmatchedOpeners: segs.unmatchedOpeners,
       delimiters: { open: openCh, close: closeCh, enabled: fnEnabled },
+      ...(glueParts ? { glueParts } : {}),
       tokenId: tokens[tokens.length - 1].id
     });
+    // **9b.4:** רשומות השלד של השורות שנבלעו נרשמו כבר בזיהוי (לפני הסיווג) —
+    // אין כאן כלום; הפרסר ממשיך לשורה הבאה שאינה נבלעה.
   }
   return { tokens, lines, delimiters: { fnOpen, fnClose, fnEnabled } };
 }
@@ -2867,7 +2929,7 @@ function contentHash(tokens) {
   return crypto.createHash('sha256').update(stable, 'utf8').digest('hex');
 }
 
-module.exports = { tokenize, tokenizeDetailed, contentHash, normalizeText, normalizeStage, editorialStage, isNormalizedChar, ATOMIC_SPACE };
+module.exports = { tokenize, tokenizeDetailed, contentHash, normalizeText, normalizeStage, editorialStage, isNormalizedChar, hasUnclosedNote, ATOMIC_SPACE };
 
 };
 __modules["src/engine/parser/bracket-scanner.js"] = function (require, module, exports) {
@@ -3294,11 +3356,17 @@ function buildDocumentModel(rawText, opts = {}) {
     const lineIndex = bodyBase + lineRec.bodyLineIndex;
     const lStart = lineStartOf(lineMap, lineIndex);
     const s1 = lineRec.stage1;
+    // **9b.4:** אורך ה-pre של השורה המאוחדת — עם הדבקת הערה חוצת-שורות
+    // (סכום אורכי החלקים + רווחי החיבור); בלי הדבקה = אורך השורה עצמה.
+    const glueParts = lineRec.glueParts || null;
+    const gluedPreLength = glueParts
+      ? glueParts.reduce((n, p, k) => (k === 0 ? p.preLength : n + 1 + p.preLength), 0)
+      : s1.pre.length;
     // הטווח הקנוני של השורה (בקואורדינטות המקור המאוחד)
     const canonicalStart = lStart + s1.rawLead + (lineRec.stage2 ? lineRec.stage2.charMap[0] || 0 : 0);
     const canonicalLen = lineRec.kind === 'paragraph' && lineRec.stage2
       ? lineRec.canonicalAfterEditorial.length
-      : s1.pre.length;
+      : gluedPreLength;
     const id = blockId(docId, extra.kind, blockOrdinal, canonicalStart, canonicalStart + canonicalLen);
     // בסיס הקואורדינטות: מיקום המסמך של canonical[0] — ההיסט המדויק של השורה
     // (שוליים + תחילת המיפוי אחרי הסרת editorials). כל טווחי הפריטים נגזרים ממנו.
@@ -3317,7 +3385,20 @@ function buildDocumentModel(rawText, opts = {}) {
         rawLeadText: s1.rawLeadText, rawTrailText: s1.rawTrailText,
         normalizations: s1.normalizations,
         stage2: lineRec.stage2 || null,
-        preLength: s1.pre.length
+        preLength: gluedPreLength,
+        // **9b.4:** קבוצת ההדבקה — השורות שחוברו לשורה זו (הערה חוצת-שורות).
+        // השחזור מפצל את ה-pre המאוחד במיקומי החיבור ומשחזר כל שורה בנפרד.
+        ...(glueParts ? {
+          glue: {
+            parts: glueParts.map((p, k) => ({
+              lineIndex: bodyBase + p.bodyLineIndex,
+              preStart: glueParts.slice(0, k).reduce((n, q) => n + 1 + q.preLength, 0),
+              preLength: p.preLength,
+              stage1: p.stage1,
+              structural: !!p.structural
+            }))
+          }
+        } : {})
       },
       items: [],
       syntax: {},
@@ -3328,11 +3409,32 @@ function buildDocumentModel(rawText, opts = {}) {
     blocks.push(blk);
     skeleton.push({ lineIndex, kind: 'body', blockId: id });
     if (lineRec.tokenId) blockOrdinalByToken.set(lineRec.tokenId, blk);
+    // **9b.4 (§8 — אין היעלמות שקטה):** שורה מבנית שנבלעה לתוך הדבקת הערה —
+    // ממצא מפורש בבלוק; התוכן נשמר בתוך השורה המאוחדת אך סיווגה המקורי אבד.
+    if (glueParts) {
+      for (let k = 1; k < glueParts.length; k++) {
+        if (glueParts[k].structural) {
+          blk.diagnostics.push({
+            code: 'glue-consumed-structural-line',
+            lineIndex: bodyBase + glueParts[k].bodyLineIndex,
+            message: 'שורה מבנית (כותרת/הערת-סיום) נבלעה לתוך הדבקת הערה חוצת-שורות — התוכן נשמר בשורה המאוחדת; דורש אימות מול המקור (התנהגות המקור, D-91).',
+            severity: 'warning'
+          });
+        }
+      }
+    }
     return blk;
   };
 
   // ── מעבר על שורות הגוף לפי סדר המקור ──
   for (const lineRec of detail.lines) {
+    if (lineRec.kind === 'glued') {
+      // **9b.4:** שורה שנבלעה לתוך הדבקת הערה חוצת-שורות — אין לה בלוק משלה;
+      // השחזור ממלא אותה מהפיצול של השורה הראשית (kind: 'body' + source.glue).
+      const li = bodyBase + lineRec.bodyLineIndex;
+      skeleton.push({ lineIndex: li, kind: 'glued', primaryLineIndex: bodyBase + lineRec.primaryBodyLineIndex });
+      continue;
+    }
     if (lineRec.kind === 'blank') {
       const li = bodyBase + lineRec.bodyLineIndex;
       skeleton.push({ lineIndex: li, kind: 'blank' });
@@ -3424,6 +3526,7 @@ function buildDocumentModel(rawText, opts = {}) {
     syntax.markerSpans = [];
     syntax.editorialSegments = lineRec.stage2 ? lineRec.stage2.removedSegments : [];
     syntax.unmatchedClosers = lineRec.unmatchedClosers || [];
+    syntax.unmatchedOpeners = lineRec.unmatchedOpeners || [];
     syntax.delimiters = lineRec.delimiters;
 
     let itemOrdinal = 0;
@@ -3503,6 +3606,10 @@ function buildDocumentModel(rawText, opts = {}) {
     // תוחמים לא תואמים — דיווח מפורש, לעולם לא תיקון שקט (דוקטרינת הסורק)
     for (const uc of syntax.unmatchedClosers) {
       blkDiag.push({ code: 'unmatched-note-closer', pos: uc.pos, form: uc.form, message: uc.note || 'סוגר הערה ללא פותח — דורש אימות מול מקור.', severity: 'warning' });
+    }
+    // **9b.4:** פותחים ללא סוגר — דיווח מפורש (התוכן נשמר בגוף; שום דבר לא נעלם)
+    for (const uo of (syntax.unmatchedOpeners || [])) {
+      blkDiag.push({ code: 'unmatched-note-opener', pos: uo.pos, message: uo.note || 'פותח הערה ללא סוגר — התוכן נשמר בגוף; דורש אימות מול מקור.', severity: 'warning' });
     }
     continue;
   }
@@ -4371,7 +4478,8 @@ function modelToTokens(model) {
         }
       }
       const raw = rebuildCanonicalLine(blk, model);
-      tokens.push(mkToken('paragraph', { parts, notes, unmatchedClosers: blk.syntax.unmatchedClosers || [], raw, blockId: blk.id }));
+      // **9b.4:** unmatchedOpeners — בדיוק כמו הטוקנייזר (זהות מלאה round-trip).
+      tokens.push(mkToken('paragraph', { parts, notes, unmatchedClosers: blk.syntax.unmatchedClosers || [], unmatchedOpeners: blk.syntax.unmatchedOpeners || [], raw, blockId: blk.id }));
       continue;
     }
     throw new Error(`adapter: unsupported block kind ${blk.kind}`);
@@ -4527,6 +4635,26 @@ function invertStage1(pre, stage1) {
   return (stage1.rawLeadText || '') + out + (stage1.rawTrailText || '');
 }
 
+/** **9b.4:** פיצול ה-pre המאוחד של קבוצת הדבקה במיקומי החיבור — כל חלק הוא
+ * ה-pre של שורת המקור שלו (ההיפוך של חיבור הרווח הבודד בפרסר). בדיקות
+ * כיסוי קפדניות: אורך כולל, ותו החיבור בין חלקים הוא רווח בודד. */
+function splitGluedPre(pre, parts) {
+  const out = [];
+  let cursor = 0;
+  for (let k = 0; k < parts.length; k++) {
+    const p = parts[k];
+    if (p.preStart !== cursor) throw new Error(`roundtrip: glue part ${k} preStart ${p.preStart} ≠ cursor ${cursor}`);
+    out.push(pre.slice(cursor, cursor + p.preLength));
+    cursor += p.preLength;
+    if (k < parts.length - 1) {
+      if (pre[cursor] !== ' ') throw new Error(`roundtrip: glue join at ${cursor} is not a single space`);
+      cursor += 1;
+    }
+  }
+  if (cursor !== pre.length) throw new Error(`roundtrip: glued pre ends at ${cursor}, expected ${pre.length}`);
+  return out;
+}
+
 /**
  * שחזור המסמך המלא מהמודל — תו-מול-תו.
  * @param {object} model — פלט buildDocumentModel (גופי ההערות מאותרים מ-model.notes בלבד)
@@ -4553,13 +4681,28 @@ function reconstructSource(model) {
       // ברשומות השלד עם הטקסט המדויק (השדה blankText נבנה ב-buildDocumentModel).
       const rec = model.source.blankLines && model.source.blankLines.get(sk.lineIndex);
       lines[sk.lineIndex] = { text: rec != null ? rec : '', eol: eolOf(model, sk.lineIndex) };
+    } else if (sk.kind === 'glued') {
+      // **9b.4:** שורה שנבלעה לתוך הדבקת הערה חוצת-שורות — הטקסט שלה מגיע
+      // מהפיצול של השורה הראשית (רשומת ה-body של primaryLineIndex); כאן
+      // רק נוודא שהראשית קיימת ושהיא אכן בעלת קבוצת הדבקה.
+      const primary = blockBySkeleton.get(sk.primaryLineIndex);
+      if (!primary || !primary.source.glue) throw new Error(`roundtrip: glued line ${sk.lineIndex} has no primary glue group (primary ${sk.primaryLineIndex})`);
     } else if (sk.kind === 'body') {
       const blk = blockBySkeleton.get(sk.lineIndex);
       if (!blk) throw new Error(`roundtrip: block missing for body line ${sk.lineIndex}`);
       const canonical = rebuildCanonicalLine(blk, model); // טוהר: הערות בממשק הקיים, ללא שינוי המודל
       const pre = invertStage2(canonical, blk.source.stage2, blk.source.preLength);
-      const rawLine = invertStage1(pre, blk.source);
-      lines[sk.lineIndex] = { text: rawLine, eol: eolOf(model, sk.lineIndex) };
+      if (blk.source.glue) {
+        // **9b.4:** שורה מאוחדת — פיצול במיקומי החיבור והיפוך שלב א׳ פר שורה.
+        const parts = splitGluedPre(pre, blk.source.glue.parts);
+        for (let k = 0; k < parts.length; k++) {
+          const gp = blk.source.glue.parts[k];
+          lines[gp.lineIndex] = { text: invertStage1(parts[k], gp.stage1), eol: eolOf(model, gp.lineIndex) };
+        }
+      } else {
+        const rawLine = invertStage1(pre, blk.source);
+        lines[sk.lineIndex] = { text: rawLine, eol: eolOf(model, sk.lineIndex) };
+      }
     }
   }
   let out = '';
@@ -4575,7 +4718,7 @@ function eolOf(model, lineIndex) {
   return rec ? (rec.eol || '\n') : '\n';
 }
 
-module.exports = { rebuildCanonicalLine, reconstructSource, invertStage1, invertStage2, splicePieces };
+module.exports = { rebuildCanonicalLine, reconstructSource, invertStage1, invertStage2, splicePieces, splitGluedPre };
 
 };
 __modules["src/engine/typography/measure-api.js"] = function (require, module, exports) {
@@ -9629,16 +9772,23 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
         if (!rec || rec.page === pg || rec.page.index < pg.index) { keep.push(n); continue; }
         const target = rec.page;
         // הכנסה לפי מיקום הסמן בסדר הקריאה של עמוד היעד — הסדר החזותי במרזב
-        // עוקב אחר סדר הסמנים בגוף (מדויק ודטרמיניסטי; נפילה לסוף כשאין רשומות)
+        // עוקב אחר סדר הסמנים בגוף (מדויק ודטרמיניסטי).
+        // **9b.4 (תיקון שורש — סדר המרזב אחרי יישור עוגן):** נמצא ב-very_long
+        // (עמ' 834): פסקה חוצת-עמודים שסמן ההערה השני שלה נחת בעמוד הבא, בעוד
+        // הערה של פסקה מאוחרת כבר ישבה שם. הסריקה הישנה (מהסוף, עם ברירת
+        // מחדל "בסוף") השאירה את ההערה המועברת אחרי הערה שסמנה מאוחר יותר
+        // בגוף — אינברסיית סדר מרזב. הכלל הנכון: ההערה נכנסת **לפני** הרשומה
+        // הראשונה שסמנה אחרי סמנה שלנו בסדר הקריאה (עמודה/שורה); רשומות
+        // שאין להן זיהוי סמן או שסמנן בעמוד אחר נשארות לפנינו (התנהגות
+        // שמרנית, כפי שהייתה). אין רשומה כזו ⇒ בסוף הרשימה.
         const tRec = markerRecOf(n);
         let insertAt = target.footnotes.length;
-        for (let i = target.footnotes.length - 1; i >= 0; i--) {
+        for (let i = 0; i < target.footnotes.length; i++) {
           const other = markerRecOf(target.footnotes[i]);
-          if (other && other.page === target && (other.col < tRec.col || (other.col === tRec.col && other.li <= tRec.li))) {
-            insertAt = i + 1;
+          if (other && other.page === target && (other.col > tRec.col || (other.col === tRec.col && other.li > tRec.li))) {
+            insertAt = i;
             break;
           }
-          if (!other) { insertAt = i + 1; break; }
         }
         target.footnotes.splice(insertAt, 0, n);
         recomputeFnBudget(target);

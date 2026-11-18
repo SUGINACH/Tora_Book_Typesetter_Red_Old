@@ -96,6 +96,36 @@ function sourceInventory(text) {
   const fnClose = String(raw['fn-delim-close'] || ']');
   const endnotePrefix = String(raw['en-line-prefix'] != null ? raw['en-line-prefix'] : 'הערת סיום -');
 
+  // **9b.4 — תקציב הממרה הטיפוגרפית של המורשת (stripEditorialNotes):** המורשת
+  // מסירה editorials, מצמצמת ריצות רווחים ומצמידה סימני פיסוק למילה הקודמת
+  // (`\s+([,.:;!?]) → $1`) על הטקסט כולו לפני הפרוק לשורות. המאוחד מציג את
+  // המקור כפי שהוא. התקציב = הפרש הצורות בין הטקסט הגולמי לטקסט הממורר
+  // (בדיוק הממרה של המקור, פרובננס: legacy-imud-flow.stripEditorialNotes):
+  // צורות מחוברות = עודפי מורשת; צורות המקור = ירידות מורשת. כל צורה נגזרת
+  // מהמקור עצמו — מילת תוכן שתיעלם באמת תישאר unexplained (בדיקת שלילה).
+  const joinTransform = (s) => String(s)
+    .replace(/##[\s\S]*?##/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\s+([,.:;!?])/g, '$1');
+  const wordsRaw = normWords(text);
+  const wordsJoined = normWords(joinTransform(text));
+  const joinExcess = mDiff(multiset(wordsRaw), multiset(wordsJoined)); // צורות מחוברות — עודפי מורשת
+  const joinDrops = mDiff(multiset(wordsJoined), multiset(wordsRaw));  // צורות מקור — ירידות מורשת
+  const mapOfDrops = (drops) => drops.reduce((m, x) => { m.set(x.w, (m.get(x.w) || 0) + x.miss); return m; }, new Map());
+
+  // **9b.4 — תקציב הנרמול החד-כיווני (Z.ai fix, block-tokenizer.normalizeStage):**
+  // הפרסור הקנוני ממיר ״→׳ ו-''→" (כלל one-way מתועד); המורשת מרנדרת את
+  // הצורה הגולמית. לכל מילת מקור שמכילה תו כזה: הצורה המנורמלת = ירידת
+  // מורשת; הצורה הגולמית = עודף מורשת. נגזר מהמקור מילה-מילה.
+  const quoteNormDrops = new Map(), quoteNormExcess = new Map();
+  for (const w of wordsRaw) {
+    const norm = w.replace(/\u05F4/g, '\u05F3').replace(/[\u2018\u2019]/g, '"');
+    if (norm !== w) {
+      quoteNormDrops.set(norm, (quoteNormDrops.get(norm) || 0) + 1);
+      quoteNormExcess.set(w, (quoteNormExcess.get(w) || 0) + 1);
+    }
+  }
+
   const lexed = lexDocument(text, { endnotePrefix });
   const det = tokenizeDetailed(lexed.bodyLines, { fnOpen, fnClose, endnotePrefix });
 
@@ -126,6 +156,22 @@ function sourceInventory(text) {
     }
   }
 
+  // **9b.4 — תקציב מפריד צבירת H7 של המורשת:** שתי כותרות 7 רצופות (בלי פסקה
+  // ביניהן — טוקנים שאינם פסקה, לרבות כותרות אחרות והערות-סיום, אינם מפרידים
+  // אצל המורשת: pendingSideNote ממתין לפסקה) מתמזגות אצלה לביאור-צד אחד עם
+  // מפריד "—" (tokenizeDoc: pendingSideNote + ' — ' + txt); המאוחד שומר על
+  // זהות פר-טוקן (9b.3 — כל טוקן H7 ← פריט אחד). N כותרות 7 ברצף ⇒ N−1
+  // מפרידים לעודפי המורשת.
+  let h7AccumulationPairs = 0;
+  let h7Run = 0;
+  for (const t of det.tokens) {
+    if (t.type === 'paragraph') { h7Run = 0; continue; }
+    if (t.type === 'heading' && t.level === 7) {
+      h7Run++;
+      if (h7Run > 1) h7AccumulationPairs++;
+    }
+  }
+
   // תוכן צפוי: טקסטי כותרות + חלקי טקסט של פסקאות + גוף הערות + ביאורי-צד + הערות-סיום.
   // (הוראות הדקדוק — "כותרת N -", תוחמים, קידומות — אינן תוכן ואינן נספרות כאן.)
   const contentWords = [];
@@ -140,10 +186,22 @@ function sourceInventory(text) {
 
   // §2.4/§G9: סיווג כותרות לפי דקדוק הייחוס (המורשת) — מדידת פער הדקדוקים.
   const REF_HEADING_RE = /^כותרת\s*(\d+)(?:\s+מספר\s+(\d+))?.*?[-–—]\s*(.*)$/;
+  // **9b.4:** הדקדוק הקנוני מזהה את הציטוט כקבוצה שלמה לפני המקף (HEADING_RE);
+  // דקדוק הייחוס חותך במקף הראשון — גם כשהוא *בתוך* הציטוט.
+  const CANON_CITATION_RE = /^(כותרת\s*([0-7])(?:\s+מספר\s+(\d+))?((?:\s*\([^)]*\))*)|חלק\s+([א-ת]+)|הקדמה)\s*[-–—]\s*(.+)$/;
   const refHeadings = [];
   let refKotaretCount = 0;
   const h7InstructionWords = []; // מילים שדקדוק הייחוס צורך משורות H7 ("כותרת 7 מספר 2", "(מקור: ...)")
   const citationWords = [];      // מילים מציטוטי (מקור: …) — נצרכות ע"י דקדוק הייחוס, נשמרות סמנטית במאוחד לאחר 9b.3
+  // **9b.4 — תקציב דליפת הציטוט של המורשת:** כשהמקף הראשון בשורה נמצא בתוך
+  // קבוצת הציטוט (למשל "כותרת 7 (מקור – רשויות, 7 – 804) - טקסט"), דקדוק
+  // הייחוס מדליף את שארית הציטוט לטקסט הביאור. הדקדוק הקנוני מזהה את הציטוט
+  // כולו (9b.3, §6.3 — נצרם מהרינדור כמו הייחוס ונשמר לפרובננס). התקציב
+  // נגזר שורה-שורה: הקידומת המדויקת שהודלפה = טקסט הייחוס בלי הסיומת
+  // הקנונית. מילת תוכן אמיתית שתחסר במאוחד לא תיכנס לכאן — ותישאר unexplained.
+  const citationLeakWords = [];
+  let citationLeakLines = 0;
+  let citationLeakUnfitted = 0; // שורות שבהן הטקסטים שונים אך אין יחס סיומת — חייבות בדיקה ידנית
   for (const line of lexed.bodyLines) {
     const m = String(line).trim().match(REF_HEADING_RE);
     if (!m) continue;
@@ -160,6 +218,25 @@ function sourceInventory(text) {
       h7InstructionWords.push(...normWords(prefix.replace(/\(מקור[^)]*\)/g, ' ')), '-');
       const cit = prefix.match(/\(מקור[^)]*\)/);
       if (cit) citationWords.push(...normWords(cit[0]));
+    }
+    // דליפת הציטוט: הטקסט הקנוני שונה מטקסט הייחוס רק כשהמקף הראשון בתוך הציטוט
+    {
+      const full = String(line).trim();
+      const mc = full.match(CANON_CITATION_RE);
+      if (mc && mc[6] != null) {
+        const canonTxt = mc[6];
+        const refTxt = m[3] != null ? m[3] : '';
+        if (refTxt !== canonTxt) {
+          if (refTxt.endsWith(canonTxt) && canonTxt.length > 0) {
+            citationLeakLines++;
+            // **9b.4:** הקידומת שהודלפה — כפי שהמורשת מרנדרת אותה (אחרי הממרה
+            // שלה: הצמדת פיסוק) — כך שצורות כמו "7," מסווגות מהמקור המדויק.
+            citationLeakWords.push(...normWords(refTxt.slice(0, refTxt.length - canonTxt.length).replace(/\s+([,.:;!?])/g, '$1')));
+          } else {
+            citationLeakUnfitted++;
+          }
+        }
+      }
     }
   }
 
@@ -193,6 +270,14 @@ function sourceInventory(text) {
     contentWordCount: contentWords.length,
     refHeadings, budgets, refKotaretCount,
     canonicalKotaretCount: headings.filter(h => h.fromKotaret).length + sideSources.length,
+    // **9b.4:** תקציב דליפת הציטוט של דקדוק הייחוס (מדויק, שורה-שורה)
+    citationLeak: { words: multiset(citationLeakWords), lines: citationLeakLines, unfitted: citationLeakUnfitted },
+    // **9b.4:** תקציב הממרה הטיפוגרפית של המורשת (stripEditorialNotes)
+    legacyJoin: { excess: mapOfDrops(joinExcess), drops: mapOfDrops(joinDrops) },
+    // **9b.4:** נרמול גרשיים/מרכאות חד-כיווני (Z.ai fix) — המאוחד מנרמל, המורשת גולמי
+    quoteNorm: { drops: quoteNormDrops, excess: quoteNormExcess },
+    // **9b.4:** מפריד צבירת H7 רצופים במורשת (זהות פר-טוקן במאוחד)
+    h7Accumulation: { pairs: h7AccumulationPairs, dashExcess: new Map([['—', h7AccumulationPairs]]) },
     refLegacyBodyBudgets: {
       metaLines: multiset(refMetaLineWords),
       endnotePrefixes: multiset(refEndnotePrefixWords),
@@ -416,13 +501,28 @@ function unifiedInventory(r) {
   const srcM = src.contentMultiset;
 
   // --- G1/G2: כיסוי מקור (ירידות מסווגות בלבד; unexplained = כשל) ---
-  for (const [engineId, engineM, engineName] of [['G1-legacy-covers-source', legM, 'המורשת'], ['G2-unified-covers-source', uniM, 'המאוחד']]) {
+  for (const [engineId, engineM, engineName, isLegacyEngine] of [['G1-legacy-covers-source', legM, 'המורשת', true], ['G2-unified-covers-source', uniM, 'המאוחד', false]]) {
     const drops = mDiff(engineM, srcM);
     const cls = core.classifyDrops(drops, src.budgets);
-    const unexplained = cls.unexplained;
+    let unexplained = cls.unexplained;
+    // **9b.4:** הממרה הטיפוגרפית של המורשת — צורות המקור ("מילה" + ",") נעלמות
+    // אצלה לטובת הצורה המחוברת; תקציב מדויק מהמקור (stripEditorialNotes).
+    let joinClassified = 0;
+    if (isLegacyEngine && unexplained.length) {
+      const cls2 = core.classifyByBudget(unexplained, src.legacyJoin.drops);
+      joinClassified = cls2.classified.reduce((n, x) => n + x.miss, 0);
+      unexplained = cls2.unexplained;
+    }
+    // **9b.4:** הנרמול החד-כיווני (Z.ai fix) — המקור הקנוני מנרמל ״→׳; המורשת
+    // מרנדרת את הצורה הגולמית ⇒ הצורה המנורמלת חסרה אצל המורשת.
+    if (isLegacyEngine && unexplained.length) {
+      const cls3 = core.classifyByBudget(unexplained, src.quoteNorm.drops);
+      joinClassified += cls3.classified.reduce((n, x) => n + x.miss, 0);
+      unexplained = cls3.unexplained;
+    }
     const classifiedCount = sumDrops(drops) - sumDrops(unexplained);
     if (!unexplained.length) {
-      pass(engineId, `כיסוי מלא; ${sumDrops(drops)} מילים ירידה מסווגות (דקדוק ${classifiedCount} מילים בתקציבים מוגדרים)`);
+      pass(engineId, `כיסוי מלא; ${sumDrops(drops)} מילים ירידה מסווגות (דקדוק ${classifiedCount} מילים בתקציבים מוגדרים${isLegacyEngine && joinClassified ? `, ${joinClassified} מהממרה הטיפוגרפית של המקור (stripEditorialNotes)` : ''})`);
     } else {
       fail(engineId, `${engineName}: ירידות בלתי-מוסברות — ${sumDrops(unexplained)} מילים: ${fmtDrops(unexplained)}`);
     }
@@ -456,6 +556,13 @@ function unifiedInventory(r) {
     const sideDup = sideTextMultiset; // ביאורי-צד מופיעים גם כפריטי שוליים וגם... (לא כפילות גוף) — משמש לסיווג עודפי טקסט-עוגן
     const refMeta = isLegacy ? src.refLegacyBodyBudgets.metaLines : new Map();
     const refEndPrefix = isLegacy ? src.refLegacyBodyBudgets.endnotePrefixes : new Map();
+    // **9b.4:** דליפת הציטוט של דקדוק הייחוס (המורשת) — המקף הראשון בתוך הציטוט
+    // מדליף את שאריתו לטקסט הביאור/הכותרת; תקציב מדויק שורה-שורה מהמקור.
+    // וכן צורות הפיסוק המחוברות של הממרה שלה (עודפים) — עותקים פרטיים לשער.
+    const citationLeak = isLegacy ? new Map(src.citationLeak.words) : new Map();
+    const joinExcessMap = isLegacy ? new Map(src.legacyJoin.excess) : new Map();
+    const quoteNormExcessMap = isLegacy ? new Map(src.quoteNorm.excess) : new Map();
+    const h7DashMap = isLegacy ? new Map(src.h7Accumulation.dashExcess) : new Map();
     // המורשת מייצרת מספור "סימן <גימטריה>" אוטומטי לכותרות H2/H3 (בגוף וב-TOC) —
     // ריהוט מנוע עם מקור מוגדר: הקידומות בפועל בפלט שלה עצמה (עמדה ראשונה בשורת כותרת/רשומה).
     const simanBudget = new Map();
@@ -519,6 +626,10 @@ function unifiedInventory(r) {
       if (n < d.miss) take(sideDup);
       if (n < d.miss) take(refMeta);       // המורשת: שורות מטא גולמיות כגוף (F-9a-1 מתועד; טיפול 9b.5)
       if (n < d.miss) take(refEndPrefix);  // המורשת: קידומות הערות-סיום ממוספרות כגוף (D-40: המאוחד צורך — עוגן, לא תוכן)
+      if (n < d.miss) take(citationLeak);  // המורשת: דליפת ציטוט-מקף-פנימי לטקסט (9b.3/9b.4 מתועד)
+      if (n < d.miss) take(joinExcessMap);  // המורשת: צורות פיסוק מחוברות (stripEditorialNotes, 9b.4)
+      if (n < d.miss) take(quoteNormExcessMap); // המורשת: צורות גרשיים גולמיות (Z.ai fix, 9b.4)
+      if (n < d.miss) take(h7DashMap);     // המורשת: מפריד צבירת H7 רצופים (9b.4)
       if (n < d.miss) take(simanBudget);   // המורשת: מספור סימן אוטומטי (ריהוט מנוע)
       if (n < d.miss) take(gateMetaBudget); // המאוחד: ערכי מטא בתיבות השער (צריכה לגיטימית §6.1)
       if (n < d.miss) take(gateTitleBudget); // שני המנועים: כפילות כותרת-החלק בשער-המשנה (מתועד)
@@ -624,15 +735,58 @@ function unifiedInventory(r) {
     else fail('G7-side-identity-unified', `חסרים: ${missing}, כפילויות ownToken: ${multi}, טקסט שונה: ${textMismatch}, לפני עוגן: ${beforeAnchor}, חסרי-מקור: ${sourceless}, בלי מארח צפוי: ${noHost} (מתוך ${srcH7.size} מקור H7; דחויים: ${deferred.length})`);
   }
   {
-    // parity ביאורי-צד בין המנועים — מילים ומספרים, שני כיוונים
+    // parity ביאורי-צד בין המנועים — מילים ומספרים, שני כיוונים.
+    // **9b.4 (§2.6):** הירידות במאוחד מסווגות אך ורק מול תקציב דליפת הציטוט
+    // המדויק (שורה-שורה מהמקור): כשהמקף הראשון בשורת H7 נמצא *בתוך* קבוצת
+    // הציטוט (למשל "כותרת 7 (מקור – רשויות, 7 – 804) - טקסט"), דקדוק הייחוס
+    // (המורשת) חותך באותו מקף ומדליף את שארית הציטוט לטקסט הביאור; הדקדוק
+    // הקנוני מזהה את הציטוט כולו כהוראה ואינו מרנדר אותו (9b.3, §6.3 — נשמר
+    // לפרובננס). מילת תוכן אמיתית שחסרה במאוחד תישאר unexplained ותכשיל
+    // את השער (בדיקת שלילה ב-s9b-shadow-compare.test.js).
     const d = core.diffNoteSets(
       leg.sideNotes.map(s => ({ ...s, kind: 'side' })),
       uni.sideNotes.map(s => ({ ...s, kind: 'side', key: s.key || (s.ownToken != null ? `side:${s.ownToken}` : null) })),
     );
     const missInUni = sumDrops(d.wordDiffAtoB);
     const missInLeg = sumDrops(d.wordDiffBtoA);
-    if (!missInUni && !missInLeg) pass('G7-side-parity', `ביאורי-צד: ${leg.sideNotes.length} מורשת = ${uni.sideNotes.length} מאוחד; מילים שוות בשני הכיוונים`);
-    else fail('G7-side-parity', `ביאורי-צד (מילים, לא מספר ביאורים): חסר במאוחד ${missInUni} — ${fmtDrops(d.wordDiffAtoB, 6)} | חסר במורשת ${missInLeg} — ${fmtDrops(d.wordDiffBtoA, 6)} | ספירה: מורשת ${leg.sideNotes.length} (sideWords=${leg.sideWords}), מאוחד ${uni.sideNotes.length} (sideWords=${uni.sideWords})`);
+    // **9b.4:** סיווג דו-כיווני: (א) חסר במאוחד = דליפת ציטוט (מקף פנימי —
+    // דקדוק הייחוס מדליף את שארית הציטוט לטקסט הביאור; הקנוני מזהה את הציטוט
+    // כולו כהוראה, 9b.3/§6.3) + צורות פיסוק מחוברות של הממרה של המורשת;
+    // (ב) חסר במורשת = צורות המקור שהממרה שלה חיברה (אצל המאוחד הן נשארות
+    // כפי שהן). מילת תוכן אמיתית שחסרה תישאר unexplained (בדיקת שלילה).
+    const cls = core.classifyByBudget(d.wordDiffAtoB, src.citationLeak.words);
+    let unexplainedUni = cls.unexplained;
+    let leakClassified = cls.classified.reduce((n, x) => n + x.miss, 0);
+    if (unexplainedUni.length) {
+      const cls2 = core.classifyByBudget(unexplainedUni, src.legacyJoin.excess);
+      leakClassified += cls2.classified.reduce((n, x) => n + x.miss, 0);
+      unexplainedUni = cls2.unexplained;
+    }
+    if (unexplainedUni.length) {
+      const cls2b = core.classifyByBudget(unexplainedUni, src.quoteNorm.excess);
+      leakClassified += cls2b.classified.reduce((n, x) => n + x.miss, 0);
+      unexplainedUni = cls2b.unexplained;
+    }
+    if (unexplainedUni.length) {
+      const cls2c = core.classifyByBudget(unexplainedUni, src.h7Accumulation.dashExcess);
+      leakClassified += cls2c.classified.reduce((n, x) => n + x.miss, 0);
+      unexplainedUni = cls2c.unexplained;
+    }
+    const clsLeg = core.classifyByBudget(d.wordDiffBtoA, src.legacyJoin.drops);
+    let unexplainedLeg = clsLeg.unexplained;
+    if (unexplainedLeg.length) {
+      const clsL2 = core.classifyByBudget(unexplainedLeg, src.quoteNorm.drops);
+      unexplainedLeg = clsL2.unexplained;
+    }
+    const unfitted = src.citationLeak.unfitted;
+    if (!unexplainedUni.length && !unexplainedLeg.length && !unfitted) pass('G7-side-parity', `ביאורי-צד: ${leg.sideNotes.length} מורשת = ${uni.sideNotes.length} מאוחד; מילים שוות בשני הכיוונים לאחר סיווג מסווג (${leakClassified} מילים: דליפת-ציטוט ${src.citationLeak.lines} שורות מקף-פנימי §6.3 + הצמדת פיסוק של הממרה של המקור)`);
+    else {
+      const problems = [];
+      if (unexplainedUni.length) problems.push(`חסר במאוחד (בלתי-מוסבר) ${sumDrops(unexplainedUni)} — ${fmtDrops(unexplainedUni, 6)}`);
+      if (unexplainedLeg.length) problems.push(`חסר במורשת (בלתי-מוסבר) ${sumDrops(unexplainedLeg)} — ${fmtDrops(unexplainedLeg, 6)}`);
+      if (unfitted) problems.push(`שורות ציטוט-מקף-פנימי ללא יחס סיומת: ${unfitted} — דורש בדיקה`);
+      fail('G7-side-parity', `ביאורי-צד (מילים, לא מספר ביאורים): ${problems.join(' | ')} | ספירה: מורשת ${leg.sideNotes.length} (sideWords=${leg.sideWords}), מאוחד ${uni.sideNotes.length} (sideWords=${uni.sideWords})`);
+    }
   }
 
   // --- G8: PageModel מייצג את אותו תוכן ---

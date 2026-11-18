@@ -137,6 +137,26 @@ function invertStage1(pre, stage1) {
   return (stage1.rawLeadText || '') + out + (stage1.rawTrailText || '');
 }
 
+/** **9b.4:** פיצול ה-pre המאוחד של קבוצת הדבקה במיקומי החיבור — כל חלק הוא
+ * ה-pre של שורת המקור שלו (ההיפוך של חיבור הרווח הבודד בפרסר). בדיקות
+ * כיסוי קפדניות: אורך כולל, ותו החיבור בין חלקים הוא רווח בודד. */
+function splitGluedPre(pre, parts) {
+  const out = [];
+  let cursor = 0;
+  for (let k = 0; k < parts.length; k++) {
+    const p = parts[k];
+    if (p.preStart !== cursor) throw new Error(`roundtrip: glue part ${k} preStart ${p.preStart} ≠ cursor ${cursor}`);
+    out.push(pre.slice(cursor, cursor + p.preLength));
+    cursor += p.preLength;
+    if (k < parts.length - 1) {
+      if (pre[cursor] !== ' ') throw new Error(`roundtrip: glue join at ${cursor} is not a single space`);
+      cursor += 1;
+    }
+  }
+  if (cursor !== pre.length) throw new Error(`roundtrip: glued pre ends at ${cursor}, expected ${pre.length}`);
+  return out;
+}
+
 /**
  * שחזור המסמך המלא מהמודל — תו-מול-תו.
  * @param {object} model — פלט buildDocumentModel (גופי ההערות מאותרים מ-model.notes בלבד)
@@ -163,13 +183,28 @@ function reconstructSource(model) {
       // ברשומות השלד עם הטקסט המדויק (השדה blankText נבנה ב-buildDocumentModel).
       const rec = model.source.blankLines && model.source.blankLines.get(sk.lineIndex);
       lines[sk.lineIndex] = { text: rec != null ? rec : '', eol: eolOf(model, sk.lineIndex) };
+    } else if (sk.kind === 'glued') {
+      // **9b.4:** שורה שנבלעה לתוך הדבקת הערה חוצת-שורות — הטקסט שלה מגיע
+      // מהפיצול של השורה הראשית (רשומת ה-body של primaryLineIndex); כאן
+      // רק נוודא שהראשית קיימת ושהיא אכן בעלת קבוצת הדבקה.
+      const primary = blockBySkeleton.get(sk.primaryLineIndex);
+      if (!primary || !primary.source.glue) throw new Error(`roundtrip: glued line ${sk.lineIndex} has no primary glue group (primary ${sk.primaryLineIndex})`);
     } else if (sk.kind === 'body') {
       const blk = blockBySkeleton.get(sk.lineIndex);
       if (!blk) throw new Error(`roundtrip: block missing for body line ${sk.lineIndex}`);
       const canonical = rebuildCanonicalLine(blk, model); // טוהר: הערות בממשק הקיים, ללא שינוי המודל
       const pre = invertStage2(canonical, blk.source.stage2, blk.source.preLength);
-      const rawLine = invertStage1(pre, blk.source);
-      lines[sk.lineIndex] = { text: rawLine, eol: eolOf(model, sk.lineIndex) };
+      if (blk.source.glue) {
+        // **9b.4:** שורה מאוחדת — פיצול במיקומי החיבור והיפוך שלב א׳ פר שורה.
+        const parts = splitGluedPre(pre, blk.source.glue.parts);
+        for (let k = 0; k < parts.length; k++) {
+          const gp = blk.source.glue.parts[k];
+          lines[gp.lineIndex] = { text: invertStage1(parts[k], gp.stage1), eol: eolOf(model, gp.lineIndex) };
+        }
+      } else {
+        const rawLine = invertStage1(pre, blk.source);
+        lines[sk.lineIndex] = { text: rawLine, eol: eolOf(model, sk.lineIndex) };
+      }
     }
   }
   let out = '';
@@ -185,4 +220,4 @@ function eolOf(model, lineIndex) {
   return rec ? (rec.eol || '\n') : '\n';
 }
 
-module.exports = { rebuildCanonicalLine, reconstructSource, invertStage1, invertStage2, splicePieces };
+module.exports = { rebuildCanonicalLine, reconstructSource, invertStage1, invertStage2, splicePieces, splitGluedPre };

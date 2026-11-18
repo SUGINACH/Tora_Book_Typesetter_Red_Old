@@ -106,7 +106,14 @@ describe('שלב 8 ביקורת (§3.1) — גבולות materialization', () =>
     // 151 שורות מכילות RLM בבסיס — 49 מהן נחלקו מחדש + שורות המשך-זרימה
     // באותן פסקאות; 197 שורות הועברו בין עמודים; אין שינוי מספר עמודים
     // (1110); הערות 129=129; contentPreserved=true. הקודם: e68e1f0b (H3-CSS).
-    assert(r.layoutHash.startsWith('008bbb68'), `layoutHash very_long נשמר (${r.layoutHash.slice(0, 8)})`);
+    // **הדבקת הערות חוצות-שורות (9b.4, 18.11 — D-91):** נעילה מחודשת
+    // 008bbb68→fa1f06e2 (1218→1216 עמ.). שלוש הערות שנפתחו בשורה ונסגרו
+    // בהמשך (4637-4638, 4734-4737, 5644-5645) — הפרסר הקנוני מדביק את
+    // השורות הבאות עד לסגירה (מראה המורשת): 129→132 הערות-גוף בזהות
+    // מלאה; 1,066 מילים עברו מהגוף לאזורי ההערות (D-30). הוכחות שימור:
+    // contentPreserved=true; round-trip תו-לתו של very_long המלא; הקנוני
+    // ללא שינוי (fdff19d8). הקודם: 008bbb68 (RLM/9b.3).
+    assert(r.layoutHash.startsWith('fa1f06e2'), `layoutHash very_long נשמר (${r.layoutHash.slice(0, 8)})`);
     assertEq(r.pageModel.meta.materializeFallbacks, 0, 'אפס נפילות (בעבר: 852 שווא-נפילות רוחב-רווח)');
     const mfViol = r.pageModelValidation.violations.filter(v => v.code === 'materialize-fallback');
     assertEq(mfViol.length, 0, 'אפס violations');

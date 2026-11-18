@@ -262,11 +262,17 @@ function buildDocumentModel(rawText, opts = {}) {
     const lineIndex = bodyBase + lineRec.bodyLineIndex;
     const lStart = lineStartOf(lineMap, lineIndex);
     const s1 = lineRec.stage1;
+    // **9b.4:** אורך ה-pre של השורה המאוחדת — עם הדבקת הערה חוצת-שורות
+    // (סכום אורכי החלקים + רווחי החיבור); בלי הדבקה = אורך השורה עצמה.
+    const glueParts = lineRec.glueParts || null;
+    const gluedPreLength = glueParts
+      ? glueParts.reduce((n, p, k) => (k === 0 ? p.preLength : n + 1 + p.preLength), 0)
+      : s1.pre.length;
     // הטווח הקנוני של השורה (בקואורדינטות המקור המאוחד)
     const canonicalStart = lStart + s1.rawLead + (lineRec.stage2 ? lineRec.stage2.charMap[0] || 0 : 0);
     const canonicalLen = lineRec.kind === 'paragraph' && lineRec.stage2
       ? lineRec.canonicalAfterEditorial.length
-      : s1.pre.length;
+      : gluedPreLength;
     const id = blockId(docId, extra.kind, blockOrdinal, canonicalStart, canonicalStart + canonicalLen);
     // בסיס הקואורדינטות: מיקום המסמך של canonical[0] — ההיסט המדויק של השורה
     // (שוליים + תחילת המיפוי אחרי הסרת editorials). כל טווחי הפריטים נגזרים ממנו.
@@ -285,7 +291,20 @@ function buildDocumentModel(rawText, opts = {}) {
         rawLeadText: s1.rawLeadText, rawTrailText: s1.rawTrailText,
         normalizations: s1.normalizations,
         stage2: lineRec.stage2 || null,
-        preLength: s1.pre.length
+        preLength: gluedPreLength,
+        // **9b.4:** קבוצת ההדבקה — השורות שחוברו לשורה זו (הערה חוצת-שורות).
+        // השחזור מפצל את ה-pre המאוחד במיקומי החיבור ומשחזר כל שורה בנפרד.
+        ...(glueParts ? {
+          glue: {
+            parts: glueParts.map((p, k) => ({
+              lineIndex: bodyBase + p.bodyLineIndex,
+              preStart: glueParts.slice(0, k).reduce((n, q) => n + 1 + q.preLength, 0),
+              preLength: p.preLength,
+              stage1: p.stage1,
+              structural: !!p.structural
+            }))
+          }
+        } : {})
       },
       items: [],
       syntax: {},
@@ -296,11 +315,32 @@ function buildDocumentModel(rawText, opts = {}) {
     blocks.push(blk);
     skeleton.push({ lineIndex, kind: 'body', blockId: id });
     if (lineRec.tokenId) blockOrdinalByToken.set(lineRec.tokenId, blk);
+    // **9b.4 (§8 — אין היעלמות שקטה):** שורה מבנית שנבלעה לתוך הדבקת הערה —
+    // ממצא מפורש בבלוק; התוכן נשמר בתוך השורה המאוחדת אך סיווגה המקורי אבד.
+    if (glueParts) {
+      for (let k = 1; k < glueParts.length; k++) {
+        if (glueParts[k].structural) {
+          blk.diagnostics.push({
+            code: 'glue-consumed-structural-line',
+            lineIndex: bodyBase + glueParts[k].bodyLineIndex,
+            message: 'שורה מבנית (כותרת/הערת-סיום) נבלעה לתוך הדבקת הערה חוצת-שורות — התוכן נשמר בשורה המאוחדת; דורש אימות מול המקור (התנהגות המקור, D-91).',
+            severity: 'warning'
+          });
+        }
+      }
+    }
     return blk;
   };
 
   // ── מעבר על שורות הגוף לפי סדר המקור ──
   for (const lineRec of detail.lines) {
+    if (lineRec.kind === 'glued') {
+      // **9b.4:** שורה שנבלעה לתוך הדבקת הערה חוצת-שורות — אין לה בלוק משלה;
+      // השחזור ממלא אותה מהפיצול של השורה הראשית (kind: 'body' + source.glue).
+      const li = bodyBase + lineRec.bodyLineIndex;
+      skeleton.push({ lineIndex: li, kind: 'glued', primaryLineIndex: bodyBase + lineRec.primaryBodyLineIndex });
+      continue;
+    }
     if (lineRec.kind === 'blank') {
       const li = bodyBase + lineRec.bodyLineIndex;
       skeleton.push({ lineIndex: li, kind: 'blank' });
@@ -392,6 +432,7 @@ function buildDocumentModel(rawText, opts = {}) {
     syntax.markerSpans = [];
     syntax.editorialSegments = lineRec.stage2 ? lineRec.stage2.removedSegments : [];
     syntax.unmatchedClosers = lineRec.unmatchedClosers || [];
+    syntax.unmatchedOpeners = lineRec.unmatchedOpeners || [];
     syntax.delimiters = lineRec.delimiters;
 
     let itemOrdinal = 0;
@@ -471,6 +512,10 @@ function buildDocumentModel(rawText, opts = {}) {
     // תוחמים לא תואמים — דיווח מפורש, לעולם לא תיקון שקט (דוקטרינת הסורק)
     for (const uc of syntax.unmatchedClosers) {
       blkDiag.push({ code: 'unmatched-note-closer', pos: uc.pos, form: uc.form, message: uc.note || 'סוגר הערה ללא פותח — דורש אימות מול מקור.', severity: 'warning' });
+    }
+    // **9b.4:** פותחים ללא סוגר — דיווח מפורש (התוכן נשמר בגוף; שום דבר לא נעלם)
+    for (const uo of (syntax.unmatchedOpeners || [])) {
+      blkDiag.push({ code: 'unmatched-note-opener', pos: uo.pos, message: uo.note || 'פותח הערה ללא סוגר — התוכן נשמר בגוף; דורש אימות מול מקור.', severity: 'warning' });
     }
     continue;
   }
