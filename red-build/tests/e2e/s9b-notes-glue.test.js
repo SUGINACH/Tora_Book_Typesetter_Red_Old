@@ -55,6 +55,10 @@ const DOC_BLANK_STOP = 'שם הספר - ב\n\nראשון [פתוח\n\nשני מ�
 const DOC_PAIR_PLUS_OPEN = 'שם הספר - ב\n\nפסקה עם [סגור] ואז [פתוח';
 
 const DOC_STRUCTURAL = 'שם הספר - ב\n\nפסקה [פתוח\nכותרת 3 - נבלעה\nוסוגר] הנה';
+const DOC_ENDNOTE_STRUCTURAL = 'שם הספר - ב\n\nפסקה [פתוח\nהערת סיום - הוראה שנבלעה\nוסוגר] הנה';
+const DOC_ENDNOTE_CLASS_STRUCTURAL = 'שם הספר - ב\n\nפסקה [פתוח\nהערות סיום - כותרת שנבלעה\nוסוגר] הנה';
+const DOC_PREFACE_STRUCTURAL = 'שם הספר - ב\n\nפסקה [פתוח\nהקדמה - פתיח שנבלע\nוסוגר] הנה';
+const DOC_PART_STRUCTURAL = 'שם הספר - ב\n\nפסקה [פתוח\nחלק ב - שער שנבלע\nוסוגר] הנה';
 
 describe('s9b-notes-glue — הדבקת הערות חוצות-שורות (D-91) + שימור מלא', () => {
   registerAllFonts();
@@ -129,6 +133,21 @@ describe('s9b-notes-glue — הדבקת הערות חוצות-שורות (D-91) 
     const glued = model.blocks.find(b => b.source.glue);
     assert(glued != null, 'קיים בלוק עם קבוצת הדבקה');
     assertEq(glued.source.glue.parts.length, 3, 'שלוש שורות בקבוצה');
+  });
+
+  it('כל צורות ההוראה המבניות שנבלעות מזוהות גם בעברית — הערת סיום, הערות סיום, הקדמה וחלק', () => {
+    const cases = [
+      ['הערת סיום (singular prefix)', DOC_ENDNOTE_STRUCTURAL],
+      ['הערות סיום (class heading)', DOC_ENDNOTE_CLASS_STRUCTURAL],
+      ['הקדמה', DOC_PREFACE_STRUCTURAL],
+      ['חלק', DOC_PART_STRUCTURAL],
+    ];
+    for (const [name, doc] of cases) {
+      const model = buildDocumentModel(doc, {});
+      const diagnostics = model.blocks.flatMap(b => (b.diagnostics || []).filter(d => d.code === 'glue-consumed-structural-line'));
+      assertEq(diagnostics.length, 1, `שורה מבנית מסוג ${name} מסומנת בממצא מפורש`);
+      assertEq(reconstructSource(model), doc, `תוכן המקור נשמר תו-לתו: ${name}`);
+    }
   });
 
   it('very_long (מסמך האמת): 132 הערות-גוף כמו המורשת, round-trip מלא, אין ממצאים פתוחים', () => {
