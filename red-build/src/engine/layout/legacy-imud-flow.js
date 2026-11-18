@@ -300,6 +300,11 @@ function readConfig(imud, settings) {
 }
 
 // ---------- טוקניזציה (כמו performTypeset של המקור) ----------
+/** **9c (§5.1):** דקדוק הכותרות של המורשת — מיוצא ממקום השימוש בפועל
+ * (tokenizeDoc) כדי שכלי האבחון tools/stage9/diff-h7-grammar.js ייבא אותו
+ * ולא יחזיק עותק עצמאי שמתיישן. קבוצות: 1=רמה, 2=מספר, 3=טקסט. */
+const LEGACY_HEADING_RE = /^כותרת\s*(\d+)(?:\s+מספר\s+(\d+))?.*?[-–—]\s*(.*)$/;
+
 function tokenizeDoc(rawText, cfg) {
   let text = stripEditorialNotes(rawText);
   const { meta, text: noMeta } = parseMetadata(text);
@@ -348,7 +353,7 @@ function tokenizeDoc(rawText, cfg) {
       pendingEndNote = line.slice(endPrefix.length).replace(/^[:\-–—]\s*/, '').trim();
       continue;
     }
-    const hMatch = line.match(/^כותרת\s*(\d+)(?:\s+מספר\s+(\d+))?.*?[-–—]\s*(.*)$/);
+    const hMatch = line.match(LEGACY_HEADING_RE); // **9c (§5.1):** מקור יחיד — הייצוא משמש גם את כלי האבחון
     if (hMatch) {
       const lvl = parseInt(hMatch[1], 10);
       const txt = (hMatch[3] || '').trim();
@@ -3811,5 +3816,5 @@ module.exports = {
   GEO, SZ, HEADING_MODES, toGematria, stripEditorialNotes, parseMetadata,
   tokenizeDoc, LineBreaker, findNotes, readConfig, legacyTypeset,
   FLOW_BOTTOM, SINGLE_W, wrapText, headingItemH, legacyLayoutHashDigest,
-  parenCenterRaisePx
+  parenCenterRaisePx, LEGACY_HEADING_RE
 };
