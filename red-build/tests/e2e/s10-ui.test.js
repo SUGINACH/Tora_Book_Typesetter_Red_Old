@@ -598,9 +598,17 @@ describe('S10.2 שער 5 — דיבאג פר־עמוד + highlightIssue נראה
     const d = JSON.parse(JSON.stringify(downloads[0].json)); // clone-proof: עובר structured-clone
     assertEq(d.schema, 'page-debug-v1');
     assertEq(d.pageIndex, 2);
-    assert(d.template && d.template.width > 0 && d.template.height > 0, 'גיאומטריה מלאה');
-    assert(Array.isArray(d.columns) && d.columns.length >= 1, 'טורים');
-    assert(typeof d.footnotes === 'number');
+    // **9c.3:** בפרופיל המאוחד הדיבאג מה-PageModel — מקור האמת (geometry+lines);
+    // במורשת — הצורה הקודמת (template+columns). שני הצורות חייבות גיאומטריה מלאה.
+    if (d.profile === 'unified') {
+      assert(d.geometry && d.geometry.width > 0 && d.geometry.height > 0, 'גיאומטריה מלאה (PageModel)');
+      assert(Array.isArray(d.lines) && d.lines.length >= 1, 'שורות המודל');
+      assert(typeof d.footnotes !== 'undefined', 'הערות (רשימת מזהים)');
+    } else {
+      assert(d.template && d.template.width > 0 && d.template.height > 0, 'גיאומטריה מלאה');
+      assert(Array.isArray(d.columns) && d.columns.length >= 1, 'טורים');
+      assert(typeof d.footnotes === 'number');
+    }
     assert('layoutHash' in d && d.layoutHash, 'hash לאימות');
     assert(Array.isArray(d.findings) || Array.isArray(d.ledger), 'פרוסת ממצאים/ledger');
     assert(Array.isArray(d.trace), 'פרוסת מסלול');

@@ -129,7 +129,9 @@ function buildPreviewTab(doc, opts) {
 
   let zoom = 100;
   let pageEls = new Map(); // pageIndex → element (במצב וירטואלי: רק החלון החי)
-  let lastResult = null;
+  // **9c.3:** אין עוד lastResult — מקור העמודים הקנוני לשני הפרופילים הוא
+  // virtual.pages (unified = עמודי PageModel; legacy = result.pages). כל
+  // הניווט/המחוונים/מפת הגיליונות נגזרים ממנו — אין תלות סמויה ב-result.pages.
   let lastScrollTarget = null;
 
   // ---- D-84: רינדור מחלונות (virtualization) לספרים ארוכים ----
@@ -169,7 +171,7 @@ function buildPreviewTab(doc, opts) {
     // לחיצה על עמוד = גלילה אליו + סנכרון סמן (REQ-UI-05)
     el.addEventListener('click', () => {
       lastScrollTarget = page.index;
-      pageIndicator.textContent = `עמוד ${page.index + 1} מתוך ${virtual.pages.length || (lastResult && lastResult.pages.length) || 0}`;
+      pageIndicator.textContent = `עמוד ${page.index + 1} מתוך ${virtual.pages.length || 0}`;
       opts.onActivatePage && opts.onActivatePage(page.index);
     });
     return el;
@@ -413,10 +415,13 @@ function buildPreviewTab(doc, opts) {
   // **S5.2 (12):** מפת גיליון→אינדקס לקפיצה לפי מספר עברי — אל העמוד שמציג
   // את הגיליון המבוקש, לא אל האינדקס הפיזי (פער מלא כשעמודי שער/תוכן אינם
   // נספרים). עמוד ללא גיליון נכנס תחת אינדקס+1 (ההתנהגות הקודמת).
+  // **9c.3:** המקור הוא virtual.pages — עמודי ה-PageModel בפרופיל המאוחד
+  // (folioDisplay קיים בכל עמוד מודל) או result.pages במורשת. נבנית אחרי
+  // קביעת מקור העמודים ב-setResult.
   let folioIndex = new Map();
   function rebuildFolioIndex() {
     folioIndex = new Map();
-    const pages = (lastResult && lastResult.pages) || [];
+    const pages = virtual.pages || [];
     for (let i = 0; i < pages.length; i++) { // מעבר ראשון: גיליונות אמיתיים — עדיפות
       const n = folioNumberOf(pages[i] && pages[i].folioDisplay);
       if (n != null && !folioIndex.has(n)) folioIndex.set(n, i);
@@ -442,8 +447,6 @@ function buildPreviewTab(doc, opts) {
     const keepView = !!(options && options.keepView);
     const prevZoom = keepView ? zoom : null;
     const anchor = keepView ? currentScrollAnchor() : null;
-    lastResult = serializedResult;
-    rebuildFolioIndex(); // **S5.2 (12):** המפה נבנית מחדש עם כל תוצאה
     canvas.textContent = '';
     pageEls = new Map();
     // **פרוסה 3 (§2.3):** קביעת הפרופיל — מפורשת מהקריאה; ברירת המחדל
@@ -461,14 +464,18 @@ function buildPreviewTab(doc, opts) {
       errEl.textContent = profileError;
       canvas.appendChild(errEl);
       virtual.on = false; virtual.pages = []; virtual.rendered = new Set();
+      folioIndex = new Map(); // **9c.3:** אין עמודים — אין מפת גיליונות
       pageIndicator.textContent = 'שגיאת פרופיל — אין מודל עמוד';
       return;
     }
+    // **9c.3:** מקור העמודים הקנוני — unified: עמודי ה-PageModel בלבד;
+    // legacy: result.pages (ענף 9c.4-marker). מכאן ואילך הכל נגזר מ-virtual.pages.
     const pageSource = profile === 'unified' ? modelPages : (serializedResult.pages || []);
     virtual.on = Array.isArray(pageSource) && pageSource.length > VIRTUAL_THRESHOLD;
     virtual.settings = settings;
     virtual.pages = pageSource;
     virtual.rendered = new Set();
+    rebuildFolioIndex(); // **S5.2 (12) + 9c.3:** מהמקור הקנוני (virtual.pages)
     if (!virtual.on) {
       // מסמך קטן — רינדור מלא (ההתנהגות המקורית, ללא שינוי)
       for (const page of virtual.pages) {
@@ -488,8 +495,8 @@ function buildPreviewTab(doc, opts) {
       }
       renderWindow(0, Math.min(2 * VIRTUAL_WINDOW, virtual.pages.length - 1));
     }
-    pageIndicator.textContent = serializedResult.pages.length
-      ? `עמוד 1 מתוך ${serializedResult.pages.length}${virtual.on ? ' (תצוגת חלון)' : ''}` : 'אין עמודים';
+    pageIndicator.textContent = virtual.pages.length
+      ? `עמוד 1 מתוך ${virtual.pages.length}${virtual.on ? ' (תצוגת חלון)' : ''}` : 'אין עמודים';
     if (keepView) {
       // **S5.2 (7):** שחזור הזום והיעד שנשמרו לפני פינוי הקנבס (scrollToPage
       // מעדכן גם את מחוון העמוד); רק מסמך חדש באמת מאפס ל-100% ולראש.
@@ -505,7 +512,8 @@ function buildPreviewTab(doc, opts) {
     if (virtual.on) renderWindow(pageIndex - VIRTUAL_WINDOW, pageIndex + VIRTUAL_WINDOW); // D-84: רינדור לפני גלילה
     const el = pageEls.get(pageIndex);
     if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start' });
-    if (lastResult) pageIndicator.textContent = `עמוד ${pageIndex + 1} מתוך ${lastResult.pages.length}`;
+    // **9c.3:** המחוון מ-virtual.pages — מקור הקנוני (לא result.pages)
+    pageIndicator.textContent = `עמוד ${pageIndex + 1} מתוך ${virtual.pages.length}`;
   }
 
   // קפיצה לפי מספר עברי — שקוף לפורמט המספור שנבחר (hebrew/daf-hebrew)
@@ -519,8 +527,9 @@ function buildPreviewTab(doc, opts) {
     if (n == null) { pageIndicator.textContent = 'מספר עברי לא תקין'; return null; }
     // **S5.2 (12):** גיליון אמיתי (folioDisplay) גובר על האינדקס הפיזי; עמודים
     // ללא גיליון נכנסו למפה תחת אינדקס+1 — מספר שאינו במפה ⇒ "אין עמוד".
+    // **9c.3:** הבדיקה היא על virtual.pages (המקור הקנוני), לא על result.
     const idx = folioIndex.has(n) ? folioIndex.get(n) : null;
-    if (!lastResult || idx == null) {
+    if (idx == null || !virtual.pages.length) {
       pageIndicator.textContent = `אין עמוד ${n}`; return null;
     }
     scrollToPage(idx);

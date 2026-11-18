@@ -20,22 +20,42 @@ function lineStarts(text) {
   return starts;
 }
 
-function buildCaretMap(rawText, serializedResult) {
-  const { bodyLines } = lexDocument(rawText);
-  const tokens = serializedResult.tokens; // [{id, type, level, raw}] — סדר הפקוד
-  const pages = serializedResult.pages;
+/** **9c.3:** מזהה הטוקן של שורה — לשני המקורות: עמודי PageModel (sourceTokenId)
+ * או עמודי תוצאה מורשת (tokenId/meta.tokenId). המקרין אינו קובע מקור —
+ * הקריאה מעבירה את מערך העמודים הקנוני לפי הפרופיל. */
+function lineTokenId(ln) {
+  if (ln == null) return null;
+  if (ln.sourceTokenId != null) return ln.sourceTokenId;
+  if (ln.tokenId != null) return ln.tokenId;
+  return ln.meta && ln.meta.tokenId != null ? ln.meta.tokenId : null;
+}
 
-  // tokenId → אינדקס עמוד ראשון שמכיל אותו (כולל פס חוצה־טורים — FWD-1)
+/** **9c.3:** שורות העמוד הנושאות טוקנים — מודל: lines[] (כולל שורות spanning
+ * שנכנסו ל-lines); מורשת: spanning.lines + columns[].flat(). */
+function tokenLinesOfPage(pg) {
+  if (!pg) return [];
+  if (Array.isArray(pg.lines)) return pg.lines; // PageModel
+  return [...((pg.spanning && pg.spanning.lines) || []), ...(pg.columns || []).flat()]; // מורשת
+}
+
+function buildCaretMap(rawText, tokensOrResult, pagesArg) {
+  const { bodyLines } = lexDocument(rawText);
+  // **9c.3:** שני אופני קריאה: (a) buildCaretMap(text, tokens, pages) —
+  // העמודים הם המערך הקנוני שהועבר (מודל או מורשת); (b) buildCaretMap(text,
+  // result) — תאימות לאחור (עמודי תוצאה). הטוקנים הם מידע זהות מקור
+  // (DocumentModel) — לא גיאומטריה.
+  const tokens = Array.isArray(tokensOrResult) ? tokensOrResult : tokensOrResult.tokens;
+  const pages = Array.isArray(tokensOrResult) ? (pagesArg || []) : tokensOrResult.pages;
+
+  // tokenId → אינדקס עמוד ראשון שמכיל אותו (כולל פס חוצה־טורים — FWD-1).
+  // **9c.3:** המקור לפי הפרופיל — עמודי המודל (sourceTokenId) או עמודי התוצאה.
   const pageByToken = new Map();
   const tokensByPage = new Map();
   for (const pg of pages) {
-    const lines = [
-      ...((pg.spanning && pg.spanning.lines) || []),
-      ...(pg.columns || []).flat()
-    ];
+    const lines = tokenLinesOfPage(pg);
     const set = new Set();
     for (const ln of lines) {
-      const tok = ln.tokenId != null ? ln.tokenId : (ln.meta && ln.meta.tokenId);
+      const tok = lineTokenId(ln);
       if (tok == null) continue;
       set.add(tok);
       if (!pageByToken.has(tok)) pageByToken.set(tok, pg.index);

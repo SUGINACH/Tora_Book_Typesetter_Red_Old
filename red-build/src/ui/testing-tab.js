@@ -179,7 +179,7 @@ function buildTestingTab(doc, opts) {
   covSec.appendChild(covGrid);
   root.appendChild(covSec);
 
-  function setResult(serializedResult) {
+  function setResult(serializedResult, options) {
     lastResult = serializedResult;
     const report = serializedResult.report;
     findings = (report && report.findings) || [];
@@ -202,7 +202,11 @@ function buildTestingTab(doc, opts) {
     renderTrace();
 
     // ---- לוח הכיסוי: סיווג מפורש לכל עמוד (evaluated / excluded+reason) ----
-    const pages = serializedResult.pages || [];
+    // **9c.3:** המקור הקנוני לפי הפרופיל — עמודי ה-PageModel במאוחד
+    // (type/index בכל עמוד מודל), עמודי התוצאה במורשת. אין תלות ב-result.pages
+    // כשהפרופיל המאוחד פעיל.
+    const unifiedPages = (options && options.profile === 'unified' && options.pageModel && Array.isArray(options.pageModel.pages)) ? options.pageModel.pages : null;
+    const pages = unifiedPages || serializedResult.pages || [];
     const byType = {};
     let inScope = 0, structural = 0;
     const structuralReasons = [];
