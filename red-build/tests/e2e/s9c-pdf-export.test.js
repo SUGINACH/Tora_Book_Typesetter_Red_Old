@@ -9,11 +9,12 @@ const { describe, it, assert, assertEq, report } = require('../harness');
 
 const RB = path.join(__dirname, '..', '..');
 const { typeset } = require('../../src/engine/core/pipeline');
-const pipeline = require('../../src/engine/core/pipeline');
 const { getDefaultSettings } = require('../../src/engine/core/settings-registry');
-const { exportPdfFromModel } = require('../../src/engine/output/export-api');
+const exportApi = require('../../src/engine/output/export-api');
+const { exportPdfFromModel } = exportApi;
 const { createApp } = require('../../src/ui/app-shell');
 const { createInlineTransport } = require('../../src/ui/inline-transport');
+const { WorkerEngineClient } = require('../../src/ui/worker-client');
 
 const DEJAVU = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
 const HAS_DEJAVU = fs.existsSync(DEJAVU);
@@ -103,15 +104,18 @@ describe('s9c-pdf-export — ייצוא PDF מה-PageModel בלבד (9c.1)', () 
     const r = typeset(DOC, S, {});
     assert(!r.legacyProfile, 'המנוע המאוחד');
     assert(!!r.pageModel, 'PageModel קיים');
-    let called = 0;
-    const orig = pipeline.typeset;
-    pipeline.typeset = function () { called++; throw new Error('אסור עימוד שני בייצוא PDF (9c.1)'); };
+    let legacyCalls = 0;
+    const originalLegacyExport = exportApi.exportPdf;
+    exportApi.exportPdf = function () {
+      legacyCalls++;
+      throw new Error('נתיב PDF של המורשת אינו מותר בייצוא מהמודל (9c.1)');
+    };
     try {
       const res = exportPdfFromModel(r.pageModel, S, FONT_BYTES, 'DejaVu Sans');
       assert(res.ok, 'הייצוא מסתיים בהצלחה מהמודל בלבד');
-      assertEq(called, 0, 'typeset לא נקרא כלל');
+      assertEq(legacyCalls, 0, 'exportPdf של המורשת לא נקרא כלל');
     } finally {
-      pipeline.typeset = orig;
+      exportApi.exportPdf = originalLegacyExport;
     }
   });
 
@@ -124,17 +128,27 @@ describe('s9c-pdf-export — ייצוא PDF מה-PageModel בלבד (9c.1)', () 
     return new Promise(resolve => setTimeout(() => {
       assert(app.getState().hasResult, 'יש תוצאת עימוד');
       assert(!!app.pageModel(), 'PageModel התקבל בצרכן');
-      let reTypesets = 0;
-      const orig = pipeline.typeset;
-      pipeline.typeset = function () { reTypesets++; throw new Error('אסור עימוד שני בייצוא (9c.1)'); };
+      let modelCalls = 0, legacyCalls = 0;
+      const originalModelExport = exportApi.exportPdfFromModel;
+      const originalLegacyExport = exportApi.exportPdf;
+      exportApi.exportPdfFromModel = function (...args) {
+        modelCalls++;
+        return originalModelExport(...args);
+      };
+      exportApi.exportPdf = function () {
+        legacyCalls++;
+        throw new Error('אין fallback לייצוא PDF של המורשת (9c.1)');
+      };
       let out;
       try {
         out = app.exportRequest('pdf');
       } finally {
-        pipeline.typeset = orig;
+        exportApi.exportPdfFromModel = originalModelExport;
+        exportApi.exportPdf = originalLegacyExport;
       }
       assert(out && out.ok === true, 'הייצוא הצליח מהמודל שכבר חושב: ' + JSON.stringify(out && out.reason));
-      assertEq(reTypesets, 0, 'אפס עימודים חוזרים בייצוא');
+      assertEq(modelCalls, 1, 'ייצוא מהמודל נקרא פעם אחת');
+      assertEq(legacyCalls, 0, 'נתיב המורשת לא נקרא');
       assert(out.data && out.data.length > 1000, 'בתים של PDF אמיתי');
       resolve();
     }, 400));
@@ -157,6 +171,39 @@ describe('s9c-pdf-export — ייצוא PDF מה-PageModel בלבד (9c.1)', () 
     }
     assert(out === null, 'ללא תוצאת עימוד הייצוא מסורב מפורשות (null + הודעה) — לא עימוד חלופי');
     assertEq(reTypesets, 0, 'לא בוצע עימוד חלופי בשקט');
+  });
+
+  it('Worker E2E: אחרי typeset מאוחד ה-PDF נכתב מאותו PageModel בלי fallback', async () => {
+    if (!HAS_DEJAVU) { console.error('  [מדלג — DejaVu לא במערכת]'); return; }
+    const client = new WorkerEngineClient(createInlineTransport());
+    const settings = getDefaultSettings();
+    let modelCalls = 0, legacyCalls = 0;
+    const originalModelExport = exportApi.exportPdfFromModel;
+    const originalLegacyExport = exportApi.exportPdf;
+    exportApi.exportPdfFromModel = function (...args) {
+      modelCalls++;
+      return originalModelExport(...args);
+    };
+    exportApi.exportPdf = function () {
+      legacyCalls++;
+      throw new Error('Worker ניסה ליפול לנתיב PDF של המורשת');
+    };
+    try {
+      const job = client.requestTypeset({ text: DOC, settings });
+      const typesetResult = await job.promise;
+      assert(typesetResult && typesetResult.legacyProfile !== true, 'ה-Worker השלים עימוד בפרופיל המאוחד');
+
+      const pdf = await client.requestExport({
+        kind: 'pdf', text: DOC, settings, fontBytes: FONT_BYTES, fontName: 'DejaVu Sans'
+      });
+      assert(pdf && pdf.bytes && pdf.bytes.length > 1000, 'ה-Worker החזיר בתים של PDF אמיתי');
+      assert(pdf.info && pdf.info.pages > 0, 'פרטי הייצוא מכילים מספר עמודים');
+      assertEq(modelCalls, 1, 'ה-Worker קרא ל-exportPdfFromModel פעם אחת');
+      assertEq(legacyCalls, 0, 'ה-Worker לא קרא ל-exportPdf של המורשת');
+    } finally {
+      exportApi.exportPdfFromModel = originalModelExport;
+      exportApi.exportPdf = originalLegacyExport;
+    }
   });
 
   it('מקור ה-Worker: הנתיב המאוחד מכיל את השגיאה המפורשת; exportPdf בנתיב המורשת בלבד', () => {
