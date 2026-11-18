@@ -233,5 +233,23 @@ console.log('s9b-shadow-compare: בדיקות שליליות לליבת ההשו
   check('normWords: מסיר תווי כיוון/תוחמים/PUA', w.length === 3 && w[0] === 'שלום' && w[1] === 'הערה' && w[2] === 'עולם', JSON.stringify(w));
 }
 
+// ---------- 15. classifyByBudget (9b.4 — תקציב דליפת ציטוט בודד ל-G7) ----------
+{
+  const { classifyByBudget, multiset } = core;
+  // תקציב דליפה: "רשויות," "7" "–" "804)" "-" — כמו שורת "כותרת 7 (מקור – רשויות, 7 – 804) - טקסט"
+  const budget = multiset(['רשויות,', '7', '–', '804)', '-']);
+  const ok = classifyByBudget([{ w: 'רשויות,', miss: 1 }, { w: '7', miss: 1 }, { w: '–', miss: 1 }, { w: '804)', miss: 1 }, { w: '-', miss: 1 }], budget);
+  check('classifyByBudget: דליפה מלאה מסווגת', ok.unexplained.length === 0 && ok.classified.length === 5, JSON.stringify(ok));
+  // שלילה 1: מילת תוכן אמיתית שחסרה — נשארת unexplained (מכשילה את G7)
+  const neg1 = classifyByBudget([{ w: 'גדר', miss: 1 }, { w: '-', miss: 1 }], multiset(['-']));
+  check('classifyByBudget שלילה: מילת תוכן חסרה נשארת unexplained', neg1.unexplained.length === 1 && neg1.unexplained[0].w === 'גדר' && neg1.unexplained[0].miss === 1, JSON.stringify(neg1.unexplained));
+  // שלילה 2: חריגה מעל התקציב — עודף מדווח בשאריתו בלבד
+  const neg2 = classifyByBudget([{ w: '–', miss: 3 }], multiset(['–']));
+  check('classifyByBudget שלילה: חריגה מעל תקציב מדווחת בשארית', neg2.unexplained.length === 1 && neg2.unexplained[0].miss === 2, JSON.stringify(neg2.unexplained));
+  // שלילה 3: התקציב מתכלה — מילה שנצרכה פעם אחת לא מכסה מופע שני
+  const neg3 = classifyByBudget([{ w: 'רשויות,', miss: 2 }], multiset(['רשויות,']));
+  check('classifyByBudget שלילה: תקציב חד-פעמי אינו מכסה כפילות', neg3.unexplained.length === 1 && neg3.unexplained[0].miss === 1, JSON.stringify(neg3.unexplained));
+}
+
 console.log(`\ns9b-shadow-compare: ${passed} עברו, ${failed} נכשלו`);
 if (failed) process.exit(1);

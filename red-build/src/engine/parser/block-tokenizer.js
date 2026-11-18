@@ -5,6 +5,21 @@ const crypto = require('crypto');
 const { HEADING_RE, ENDNOTE_CLASS_RE, DEFAULT_ENDNOTE_PREFIX, compileEndnotePrefix } = require('./dfa-lexer');
 const { scanBrackets } = require('./bracket-scanner');
 
+/** **9b.4 (D-91 — התנהגות המקור היא המפרס):** האם בטקסט פותח-הערה שאין אחריו
+ * סוגר כלל — שיקוף מדויק של hasUnclosedNote של המורשת (indexOf ראשון; היעדר
+ * סוגר אחריו). שים לב: `[a] [b` אינו "פתוח" לפי הכלל הזה — הסוגר של הזוג
+ * הראשון נמצא אחרי הפותח הראשון — ולכן אין הדבקה (התנהגות המקור). */
+function hasUnclosedNote(text, open, close) {
+  if (!open || !close) return false;
+  const s = text.indexOf(open);
+  if (s === -1) return false;
+  return text.indexOf(close, s + open.length) === -1;
+}
+
+/** **9b.4:** שורה מבנית שנבלעת לתוך הדבקת הערה — חייבת ממצא מפורש (לא היעלמות
+ * שקטה): כותרת / קידומת הערת-סיום / הוראת כותרת עמודי ההערות. */
+const GLUE_STRUCTURAL_RE = /^(כותרת\s*[0-7]\b|הערת\s*סיון?\b|הערות\s*סיום\b|חלק\s+[א-ת]+\b|הקדמה\b)/;
+
 const ATOMIC_SPACE = '\uE000'; // V3/V4 breakthrough: רווח אטומי בתוך הערה — למדידה בלבד
 
 // **S5.2 (תיקון 12 — תיעוד, ללא שינוי התנהגות):** הנרמול שלהלן (״→׳ ו-‘ ’→") הוא
@@ -162,13 +177,53 @@ function tokenizeDetailed(bodyLines, opts = {}) {
   const fnEnabled = fnOpen.trim().length > 0 && fnClose.trim().length > 0;
   const tokens = [];
   const lines = [];
+  // **9b.4:** שורות גוף שנבלעו לתוך הדבקת הערה חוצת-שורות — הלולאה מדלגת עליהן;
+  // השלד שלהן נרשם על ידי השורה הראשית של הקבוצה (primaryBodyLineIndex).
+  const gluedInto = new Map(); // bodyLineIndex (נבלע) → bodyLineIndex (ראשית)
   for (let li = 0; li < bodyLines.length; li++) {
+    if (gluedInto.has(li)) continue;
     const rawOfLine = bodyLines[li];
     const s1 = normalizeStage(rawOfLine);
     let line = s1.pre;
     if (!line) {
       lines.push({ bodyLineIndex: li, kind: 'blank', stage1: s1 });
       continue;
+    }
+
+    // **9b.4 (D-91 — התנהגות המקור היא המפרס): הדבקת הערה חוצת-שורות.**
+    // שורה שיש בה פותח-הערה שאין אחריו סוגר כלל בולעת את השורות הבאות
+    // הלא-ריקות — חיבור ברווח בודד של השורות המקוצצות, עד שהפותח נסגר
+    // (בדיוק כמו לולאת ההדבקה של המורשת). שורה ריקה עוצרת את ההדבקה
+    // וההערה נשארת פתוחה — התוכן נשמר בגוף ו-unmatchedOpeners מדווח.
+    // מיקומי החיבור נשמרים ב-glueParts לשחזור מלא תו-לתו ב-round-trip.
+    // שורה מבנית שנבלעת מסומנת structural — ממצא מפורש, לא היעלמות שקטה.
+    let glueParts = null;
+    if (fnEnabled && hasUnclosedNote(line, fnOpen, fnClose)) {
+      const parts = [{ bodyLineIndex: li, preLength: s1.pre.length, stage1: s1 }];
+      let acc = line;
+      let j = li + 1;
+      while (hasUnclosedNote(acc, fnOpen, fnClose) && j < bodyLines.length) {
+        const s1n = normalizeStage(bodyLines[j]);
+        if (!s1n.pre) break; // שורה ריקה עוצרת (המורשת: if (!next) break)
+        acc = acc + ' ' + s1n.pre;
+        parts.push({ bodyLineIndex: j, preLength: s1n.pre.length, stage1: s1n, structural: GLUE_STRUCTURAL_RE.test(s1n.pre) });
+        j++;
+      }
+      if (parts.length > 1) {
+        glueParts = parts;
+        line = acc;
+        for (let k = 1; k < parts.length; k++) gluedInto.set(parts[k].bodyLineIndex, li);
+        // רשומות שלד לשורות שנבלעו — נרשמות מיד בזיהוי (לפני סיווג השורה
+        // הראשית): השלד אינדקסי, והשחזור מפצל את השורה המאוחדת במיקומי
+        // החיבור וממלא גם אותן — לכל סיווג (פסקה/כותרת/הערת-סיום).
+        for (let k = 1; k < parts.length; k++) {
+          lines.push({
+            bodyLineIndex: parts[k].bodyLineIndex, kind: 'glued',
+            primaryBodyLineIndex: li, stage1: parts[k].stage1,
+            structural: !!parts[k].structural
+          });
+        }
+      }
     }
 
     let m = line.match(HEADING_RE);
@@ -185,6 +240,7 @@ function tokenizeDetailed(bodyLines, opts = {}) {
       lines.push({
         bodyLineIndex: li, kind: 'heading', level, stage1: s1,
         ...(num != null ? { num } : {}), ...(citation ? { citation } : {}), // 9b.3: שדות סמנטיים למודל
+        ...(glueParts ? { glueParts } : {}), // 9b.4: קבוצת הדבקה (כותרת עם הערה פתוחה)
         spans: {
           match: { start: 0, end: m[0].length },
           title: { start: titleStart, end: line.length },
@@ -206,6 +262,7 @@ function tokenizeDetailed(bodyLines, opts = {}) {
         tokens.push(mkToken('endnote', { num, text: textVal, raw: line }));
         lines.push({
           bodyLineIndex: li, kind: 'endnote-numbered', num, stage1: s1,
+          ...(glueParts ? { glueParts } : {}), // 9b.4
           spans: { match: { start: 0, end: mNum[0].length }, num: { start: 0, end: mNum[0].length - textVal.length }, text: { start: textStart, end: line.length } },
           tokenId: tokens[tokens.length - 1].id
         });
@@ -220,6 +277,7 @@ function tokenizeDetailed(bodyLines, opts = {}) {
         tokens.push(mkToken('endnote', { text: textVal, raw: line }));
         lines.push({
           bodyLineIndex: li, kind: 'endnote', stage1: s1,
+          ...(glueParts ? { glueParts } : {}), // 9b.4
           spans: { match: { start: 0, end: mEnd[0].length }, text: { start: textStart, end: line.length } },
           tokenId: tokens[tokens.length - 1].id
         });
@@ -233,6 +291,7 @@ function tokenizeDetailed(bodyLines, opts = {}) {
       tokens.push(mkToken('endnote-class', { title, raw: line }));
       lines.push({
         bodyLineIndex: li, kind: 'endnote-class', stage1: s1,
+        ...(glueParts ? { glueParts } : {}), // 9b.4
         spans: { match: { start: 0, end: mCls[0].length }, title: { start: titleStart, end: line.length } },
         tokenId: tokens[tokens.length - 1].id
       });
@@ -248,7 +307,7 @@ function tokenizeDetailed(bodyLines, opts = {}) {
       stage2 = editorialStage(line);
       line = stage2.canonical;
       if (!line) {
-        lines.push({ bodyLineIndex: li, kind: 'editorial', stage1: s1, stage2, editorialTokenIds });
+        lines.push({ bodyLineIndex: li, kind: 'editorial', stage1: s1, stage2, editorialTokenIds, ...(glueParts ? { glueParts } : {}) });
         continue;
       }
     }
@@ -298,14 +357,17 @@ function tokenizeDetailed(bodyLines, opts = {}) {
       partRanges.push({ kind: 'text', start: segStart, end: segStart + tail.length });
     }
 
-    tokens.push(mkToken('paragraph', { parts, notes, unmatchedClosers: segs.unmatchedClosers, raw: line }));
+    tokens.push(mkToken('paragraph', { parts, notes, unmatchedClosers: segs.unmatchedClosers, unmatchedOpeners: segs.unmatchedOpeners, raw: line }));
     lines.push({
       bodyLineIndex: li, kind: 'paragraph', stage1: s1, stage2: stage2 || null,
       canonicalAfterEditorial: line, partRanges,
-      editorialTokenIds, unmatchedClosers: segs.unmatchedClosers,
+      editorialTokenIds, unmatchedClosers: segs.unmatchedClosers, unmatchedOpeners: segs.unmatchedOpeners,
       delimiters: { open: openCh, close: closeCh, enabled: fnEnabled },
+      ...(glueParts ? { glueParts } : {}),
       tokenId: tokens[tokens.length - 1].id
     });
+    // **9b.4:** רשומות השלד של השורות שנבלעו נרשמו כבר בזיהוי (לפני הסיווג) —
+    // אין כאן כלום; הפרסר ממשיך לשורה הבאה שאינה נבלעה.
   }
   return { tokens, lines, delimiters: { fnOpen, fnClose, fnEnabled } };
 }
@@ -325,4 +387,4 @@ function contentHash(tokens) {
   return crypto.createHash('sha256').update(stable, 'utf8').digest('hex');
 }
 
-module.exports = { tokenize, tokenizeDetailed, contentHash, normalizeText, normalizeStage, editorialStage, isNormalizedChar, ATOMIC_SPACE };
+module.exports = { tokenize, tokenizeDetailed, contentHash, normalizeText, normalizeStage, editorialStage, isNormalizedChar, hasUnclosedNote, ATOMIC_SPACE };

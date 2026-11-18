@@ -93,7 +93,8 @@ function modelToTokens(model) {
         }
       }
       const raw = rebuildCanonicalLine(blk, model);
-      tokens.push(mkToken('paragraph', { parts, notes, unmatchedClosers: blk.syntax.unmatchedClosers || [], raw, blockId: blk.id }));
+      // **9b.4:** unmatchedOpeners — בדיוק כמו הטוקנייזר (זהות מלאה round-trip).
+      tokens.push(mkToken('paragraph', { parts, notes, unmatchedClosers: blk.syntax.unmatchedClosers || [], unmatchedOpeners: blk.syntax.unmatchedOpeners || [], raw, blockId: blk.id }));
       continue;
     }
     throw new Error(`adapter: unsupported block kind ${blk.kind}`);

@@ -352,7 +352,14 @@ describe('S70 (R3-M2/M3) — כיול orphan/widow: רק הפרות אמיתיו
     // 151 שורות מכילות RLM בבסיס — 49 מהן נחלקו מחדש + שורות המשך-זרימה
     // באותן פסקאות; 197 שורות הועברו בין עמודים; אין שינוי מספר עמודים
     // (1110); הערות 129=129; contentPreserved=true. הקודם: e68e1f0b (H3-CSS).
-    assert(r.layoutHash.startsWith('008bbb68'), `layout unchanged (got ${r.layoutHash.slice(0, 8)})`);
+    // **הדבקת הערות חוצות-שורות (9b.4, 18.11 — D-91: התנהגות המקור היא המפרס):**
+    // נעילה מחודשת 008bbb68→fa1f06e2 (1218→1216 עמ.). שלוש הערות שנפתחו בשורה
+    // ונסגרו בהמשך (4637-4638, 4734-4737, 5644-5645) — הפרסר הקנוני מדביק את
+    // השורות הבאות עד לסגירה (מראה המורשת): 129→132 הערות-גוף בזהות מלאה;
+    // 1,066 מילים עברו מהגוף לאזורי ההערות (D-30). הוכחות שימור:
+    // contentPreserved=true; round-trip תו-לתו של very_long המלא; הקנוני
+    // ללא שינוי (fdff19d8). הקודם: 008bbb68 (RLM/9b.3).
+    assert(r.layoutHash.startsWith('fa1f06e2'), `layout unchanged (got ${r.layoutHash.slice(0, 8)})`);
     const count = (kind) => [...r.ledger.issues.values()].filter(x => x.kind === kind && x.status === 'persists').length;
     assertEq(count('widow-bottom'), 0, 'false widow-bottom flood eliminated (was 1176)');
     assertEq(count('orphan-top'), 0, 'false orphan-top flood eliminated (was 791)');

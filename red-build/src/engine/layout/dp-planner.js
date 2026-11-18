@@ -908,16 +908,23 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
         if (!rec || rec.page === pg || rec.page.index < pg.index) { keep.push(n); continue; }
         const target = rec.page;
         // הכנסה לפי מיקום הסמן בסדר הקריאה של עמוד היעד — הסדר החזותי במרזב
-        // עוקב אחר סדר הסמנים בגוף (מדויק ודטרמיניסטי; נפילה לסוף כשאין רשומות)
+        // עוקב אחר סדר הסמנים בגוף (מדויק ודטרמיניסטי).
+        // **9b.4 (תיקון שורש — סדר המרזב אחרי יישור עוגן):** נמצא ב-very_long
+        // (עמ' 834): פסקה חוצת-עמודים שסמן ההערה השני שלה נחת בעמוד הבא, בעוד
+        // הערה של פסקה מאוחרת כבר ישבה שם. הסריקה הישנה (מהסוף, עם ברירת
+        // מחדל "בסוף") השאירה את ההערה המועברת אחרי הערה שסמנה מאוחר יותר
+        // בגוף — אינברסיית סדר מרזב. הכלל הנכון: ההערה נכנסת **לפני** הרשומה
+        // הראשונה שסמנה אחרי סמנה שלנו בסדר הקריאה (עמודה/שורה); רשומות
+        // שאין להן זיהוי סמן או שסמנן בעמוד אחר נשארות לפנינו (התנהגות
+        // שמרנית, כפי שהייתה). אין רשומה כזו ⇒ בסוף הרשימה.
         const tRec = markerRecOf(n);
         let insertAt = target.footnotes.length;
-        for (let i = target.footnotes.length - 1; i >= 0; i--) {
+        for (let i = 0; i < target.footnotes.length; i++) {
           const other = markerRecOf(target.footnotes[i]);
-          if (other && other.page === target && (other.col < tRec.col || (other.col === tRec.col && other.li <= tRec.li))) {
-            insertAt = i + 1;
+          if (other && other.page === target && (other.col > tRec.col || (other.col === tRec.col && other.li > tRec.li))) {
+            insertAt = i;
             break;
           }
-          if (!other) { insertAt = i + 1; break; }
         }
         target.footnotes.splice(insertAt, 0, n);
         recomputeFnBudget(target);

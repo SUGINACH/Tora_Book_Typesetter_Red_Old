@@ -221,14 +221,24 @@ function diffToc(expected, actual) {
  * budgets: { grammar:Map, metaKeys:Map, metaValues:Map, h7Instruction:Map, citation:Map }
  */
 function classifyDrops(drops, budgets) {
+  // **9b.4:** העתקה הגנתית — התקציבים אינם מתכלים בין שערים (כל שער מקבל עותק
+  // טרי; בעבר G3 צרך את תקציב דליפת הציטוט לפני ש-G7 הספיק להשתמש בו).
+  const cp = (m) => (m instanceof Map ? new Map(m) : m);
+  const B = {
+    grammar: cp(budgets && budgets.grammar),
+    metaKeys: cp(budgets && budgets.metaKeys),
+    metaValues: cp(budgets && budgets.metaValues),
+    h7Instruction: cp(budgets && budgets.h7Instruction),
+    citation: cp(budgets && budgets.citation),
+  };
   const out = { grammar: [], metaKeys: [], metaValues: [], h7Instruction: [], citation: [], unexplained: [] };
   for (const d of drops) {
     const take = (m) => { const have = (m && m.get(d.w)) || 0; if (have >= d.miss) { m.set(d.w, have - d.miss); return d.miss; } if (have > 0) m.set(d.w, 0); return have; };
-    let n = take(budgets.grammar);
-    if (n < d.miss) n += take(budgets.h7Instruction);
-    if (n < d.miss) n += take(budgets.citation);
-    if (n < d.miss) n += take(budgets.metaKeys);
-    if (n < d.miss) n += take(budgets.metaValues);
+    let n = take(B.grammar);
+    if (n < d.miss) n += take(B.h7Instruction);
+    if (n < d.miss) n += take(B.citation);
+    if (n < d.miss) n += take(B.metaKeys);
+    if (n < d.miss) n += take(B.metaValues);
     if (n < d.miss) out.unexplained.push({ w: d.w, miss: d.miss - n }); // רק השארית הבלתי-מסווגת
   }
   return out;
@@ -243,6 +253,27 @@ function buildBudgets({ grammarWords, metaKeys, metaValues, h7InstructionWords, 
     h7Instruction: multiset(h7InstructionWords || []),
     citation: multiset(citationWords || []),
   };
+}
+
+/**
+ * **9b.4 (§2.6):** מסווג תקציב בודד — מסווג ירידות מול תקציב אחד ספציפי
+ * (בניגוד ל-classifyDrops שמפזר על שרשרת תקציבים). משמש את שער G7-side-parity:
+ * הירידות במאוחד מול המורשת מסווגות אך ורק מול תקציב דליפת הציטוט המדויק
+ * (שורה-שורה מהמקור) — מילת תוכן אמיתית שחסרה תישאר unexplained ותכשיל את השער.
+ */
+function classifyByBudget(drops, budget) {
+  // **9b.4:** העתקה הגנתית — המפעיל אינו מוטט את התקציב המקורי (שערים שונים
+  // משתמשים באותו מלאי מקור; צריכה של שער אחד אינה מרוקנת את רעהו).
+  const m = budget instanceof Map ? new Map(budget) : multiset(budget || []);
+  const out = { classified: [], unexplained: [] };
+  for (const d of drops) {
+    const have = m.get(d.w) || 0;
+    const t = Math.min(have, d.miss);
+    if (t > 0) m.set(d.w, have - t);
+    if (t >= d.miss) out.classified.push({ w: d.w, miss: d.miss });
+    else out.unexplained.push({ w: d.w, miss: d.miss - t });
+  }
+  return out;
 }
 
 // ---------- §2.7: סיכום שערים מרשימה אחת ----------
@@ -301,6 +332,6 @@ module.exports = {
   normWords, normText, multiset, mEqual, mDiff, sumDrops, fmtDrops,
   noteIdentity, matchNoteSets, diffNoteSets,
   tocExpectation, diffToc,
-  classifyDrops, buildBudgets, gateSummary,
+  classifyDrops, classifyByBudget, buildBudgets, gateSummary,
   reconstructLegacyNotes,
 };
