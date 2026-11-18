@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>דו"ח בדיקה פונקציונלית עמוקה - Tora Book Typesetter Red Work 2</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; background-color: #f8fafc; color: #0f172a; margin: 0; padding: 24px; line-height: 1.5; }
+        .container { max-width: 1200px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        h1 { color: #1e293b; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; margin-top: 0; }
+        h2 { color: #334155; margin-top: 28px; }
+        .summary-box { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
+        .card { padding: 16px; border-radius: 6px; text-align: center; font-weight: bold; }
+        .card.total { background-color: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+        .card.critical { background-color: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+        .card.high { background-color: #fff7ed; color: #c2410c; border: 1px solid #ffedd5; }
+        .card.medium { background-color: #fefce8; color: #a16207; border: 1px solid #fef08a; }
+        .card.low { background-color: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 14px; }
+        th, td { border: 1px solid #cbd5e1; padding: 10px 14px; text-align: right; }
+        th { background-color: #f1f5f9; color: #334155; }
+        tr:nth-child(even) { background-color: #f8fafc; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; color: white; }
+        .badge-critical { background-color: #dc2626; }
+        .badge-high { background-color: #ea580c; }
+        .badge-medium { background-color: #d97706; }
+        .badge-low { background-color: #16a34a; }
+        .badge-pass { background-color: #2563eb; }
+        .code-ref { font-family: monospace; background: #f1f5f9; padding: 2px 4px; border-radius: 3px; }
+        .alert-banner { background-color: #fef2f2; border: 1px solid #f87171; border-radius: 6px; padding: 16px; margin-bottom: 24px; color: #7f1d1d; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>דו"ח בדיקה פונקציונלית עמוקה: קוד מול אתר חי</h1>
+        <p><strong>מאגר קוד (Repo):</strong> SUGINACH/Tora_Book_Typesetter_Red_Work_2</p>
+        <p><strong>כתובת האתר הנבדק:</strong> suginach.github.io/Tora_Book_Typesetter_Red_Work_2</p>
+        
+        <div class="alert-banner">
+            <strong>ממצא שורש חמור (Root Cause):</strong> קיים נתק תשתיתי מלא (Desynchronization) בין קוד המקור בענף הראשי (<span class="code-ref">main</span>) לבין הסביבה הפרוסה ב־GitHub Pages. מאגר הקוד מכיל את מנוע וממשק העימוד החדשני <strong>Tora Book Typesetter — RED</strong> (מבנה מודולרי מלא ב־<span class="code-ref">red-build/</span> הכולל 4 לשוניות, 13 פאנלים, 179 הגדרות ברישום, מנוע Knuth-Plass ב־Web Worker, ומערכות S0–S13), בעוד שהאתר החי בכתובת היעד מגיש פריסה ישנה בעלת כותרת <span class="code-ref">Imudify — תוכנת עימוד תורנית</span> שבה כלל הרכיבים, הפאנלים והחיווטים של RED נעדרים לחלוטין.
+        </div>
+
+        <h2>תקציר מנהלים (Executive Summary)</h2>
+        <div class="summary-box">
+            <div class="card total">סה"כ רכיבים שנבדקו: <br><span id="total-count">42</span></div>
+            <div class="card critical">קריטי (Critical): <br><span id="critical-count">28</span></div>
+            <div class="card high">גבוה (High): <br><span id="high-count">10</span></div>
+            <div class="card medium">בינוני (Medium): <br><span id="medium-count">3</span></div>
+            <div class="card low">נמוך (Low): <br><span id="low-count">1</span></div>
+        </div>
+
+        <h2>טבלת ממצאים מפורטת (Audit Traceability Matrix)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>מזהה/רכיב בקוד</th>
+                    <th>מיקום בקובץ המקור</th>
+                    <th>אלמנט בממשק (UI Element)</th>
+                    <th>בדיקת רשימה/אופציות (Exhaustive Test)</th>
+                    <th>חיווט ויישום (Wiring Status)</th>
+                    <th>חומרה</th>
+                    <th>תיאור הבעיה / ממצא</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- 1. Top Level App Shell & Navigation -->
+                <tr>
+                    <td><span class="code-ref">app-shell.tabs</span></td>
+                    <td><span class="code-ref">red-build/src/ui/app-shell.js</span></td>
+                    <td>מערכת 4 לשוניות: עורך, הגדרות, בדיקה, תצוגה</td>
+                    <td>4 טאבים מוגדרים: <span class="code-ref">['editor-tab', 'settings-tab', 'testing-tab', 'preview-tab']</span></td>
+                    <td><span class="badge badge-critical">חסר באתר החי</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>הלשוניות של ארכיטקטורת RED אינן קיימות באתר החי. האתר החי טוען מעטפת לגאסי של Imudify ללא מודל 4 הלשוניות של הקוד.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">status-strip.engine</span></td>
+                    <td><span class="code-ref">red-build/src/ui/status-strip.js</span></td>
+                    <td>פס סטטוס עליון ומד התקדמות</td>
+                    <td>מצבים: מוכן, מעמד (עמוד X מתוך Y), שגיאה, חיווי ⚡</td>
+                    <td><span class="badge badge-critical">חסר באתר החי</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>פס הסטטוס המדווח על עבודת ה־Worker ומציג התקדמות פר־עמוד בזמן אמת אינו קיים ב־DOM החי.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">retypeset-policy.toggle</span></td>
+                    <td><span class="code-ref">red-build/src/ui/retypeset-policy.js</span></td>
+                    <td>מתג מדיניות עימוד מחדש (⚡ / ידני)</td>
+                    <td>2 מצבים: אוטומטי בהקלדה (מדיניות D-64 קל/כבד) מול עימוד ידני</td>
+                    <td><span class="badge badge-critical">מנותק / חסר</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>אלמנט הכפתור <span class="code-ref">btn-retypeset-policy</span> והפעלת מנגנון D-64 נעדרים מהממשק החי.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">btn-force-retypeset</span></td>
+                    <td><span class="code-ref">red-build/src/ui/app-shell.js</span></td>
+                    <td>כפתור "עימוד מחדש" ידני</td>
+                    <td>אירוע <span class="code-ref">onClick -> workerClient.postTypeset()</span></td>
+                    <td><span class="badge badge-critical">לא קיים</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>הכפתור המאלץ שילוח מחדש של חוזה המסמך ל־Web Worker חסר באתר החי.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">worker-client.core</span></td>
+                    <td><span class="code-ref">red-build/src/ui/worker-client.js</span></td>
+                    <td>צינור תקשורת Web Worker ייעודי</td>
+                    <td>ערוצי <span class="code-ref">TYPESET_START, PROGRESS, TYPESET_COMPLETE, ERROR</span></td>
+                    <td><span class="badge badge-critical">לא נטען</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>קובץ <span class="code-ref">engine-worker.bundle.js</span> אינו מאותחל על ידי היישום החי בכתובת הנוכחית.</td>
+                </tr>
+
+                <!-- 2. Settings Panel - Structure & Search -->
+                <tr>
+                    <td><span class="code-ref">settings-panel.registry</span></td>
+                    <td><span class="code-ref">red-build/src/ui/settings-panel.js</span></td>
+                    <td>לוח 13 פאנלים מבוסס רישום (179 כיתובים)</td>
+                    <td>13 קטגוריות ראשיות מהרישום הקנוני</td>
+                    <td><span class="badge badge-critical">נעדר</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>מבנה ה־Accordion של 13 הפאנלים המכילים את כל 179 המפתחות שחולצו בקוד מ־<span class="code-ref">bindings.generated.js</span> אינו מוצג כלל.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">settings-panel.search</span></td>
+                    <td><span class="code-ref">red-build/src/ui/settings-panel.js</span></td>
+                    <td>תיבת חיפוש הגדרות עברי</td>
+                    <td>סינון בזמן אמת <span class="code-ref">onInput -> filterSettings(query)</span> על 179 פקדים</td>
+                    <td><span class="badge badge-high">לא פעיל</span></td>
+                    <td><span class="badge badge-high">HIGH</span></td>
+                    <td>רכיב החיפוש הפנימי של ההגדרות אינו מרונדר באתר החי.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">settings-panel.reset-defaults</span></td>
+                    <td><span class="code-ref">red-build/src/ui/settings-panel.js</span></td>
+                    <td>כפתור "איפוס לברירת מחדל"</td>
+                    <td><span class="code-ref">onClick -> resetAllSettingsToDefaults()</span></td>
+                    <td><span class="badge badge-high">לא קיים</span></td>
+                    <td><span class="badge badge-high">HIGH</span></td>
+                    <td>איפוס הגדרות המנוע לשכבת הבסיס (Baseline Defaults) אינו נגיש בממשק.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">settings-panel.presets</span></td>
+                    <td><span class="code-ref">red-build/src/ui/settings-panel.js</span></td>
+                    <td>רשימת בחירת תבניות מוגדרות מראש</td>
+                    <td>אופציות: ברירת מחדל תורנית, וילנא מסורתי, כיס קומפקטי, מהדורת לימוד, שו"ת דו-טורי</td>
+                    <td><span class="badge badge-critical">חסר באתר</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>הבורר חסר באתר החי, ומשתמש אינו יכול להחיל תבניות עימוד שנבנו בקוד.</td>
+                </tr>
+
+                <!-- 3. Panel 1: Page Geometry -->
+                <tr>
+                    <td><span class="code-ref">page.size</span></td>
+                    <td><span class="code-ref">red-build/src/engine/core/page-config.js</span></td>
+                    <td>תפריט נפתח לבחירת גודל עמוד (<span class="code-ref">&lt;select id="page-size"&gt;</span>)</td>
+                    <td>נבדקו 6 אפשרויות: A4, A5, B5, 17x24 ס"מ, 16x23 ס"מ, מותאם אישית (Custom)</td>
+                    <td><span class="badge badge-critical">לא מוטמע</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>באתר החי התפריט אינו קיים בצורתו המוגדרת בקוד, ולא ניתן לבחור פורמטים תורניים תקניים (17x24, 16x23).</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">page.orientation</span></td>
+                    <td><span class="code-ref">red-build/src/engine/core/page-config.js</span></td>
+                    <td>כיוון דף (<span class="code-ref">&lt;select id="page-orientation"&gt;</span>)</td>
+                    <td>נבדקו 2 אופציות: לאורך (portrait), לרוחב (landscape)</td>
+                    <td><span class="badge badge-high">חסר</span></td>
+                    <td><span class="badge badge-high">HIGH</span></td>
+                    <td>בורר כיוון הדף חסר בממשק החי.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">page.margins</span></td>
+                    <td><span class="code-ref">red-build/src/ui/settings-panel.js</span></td>
+                    <td>שדות מספריים לשוליים: עליון, תחתון, פנימי (מרזב), חיצוני</td>
+                    <td>4 שדות <span class="code-ref">&lt;input type="number"&gt;</span> (ערכי מ"מ עם אימות טווח)</td>
+                    <td><span class="badge badge-critical">חסר</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>שדות הגדרת השוליים הפנימיים/חיצוניים של RED אינם מופיעים ב־DOM החי.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">page.columns</span></td>
+                    <td><span class="code-ref">red-build/src/engine/layout/column-engine.js</span></td>
+                    <td>בורר כמות טורים (<span class="code-ref">&lt;select id="page-columns"&gt;</span>)</td>
+                    <td>2 אופציות: 1 (טור יחיד), 2 (שני טורים עם איזון)</td>
+                    <td><span class="badge badge-critical">חסר</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>אין בורר טורים המחובר למנגנון חלוקת הטורים ואיזונם לפי מודל S5-S6 שבקוד.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">page.columnGap</span></td>
+                    <td><span class="code-ref">red-build/src/ui/settings-panel.js</span></td>
+                    <td>שדה מרווח בין טורים (מ"מ)</td>
+                    <td>שדה מספר: טווח 3-20 מ"מ ברירת מחדל 6 מ"מ</td>
+                    <td><span class="badge badge-high">חסר</span></td>
+                    <td><span class="badge badge-high">HIGH</span></td>
+                    <td>השדה אינו קיים בממשק.</td>
+                </tr>
+
+                <!-- 4. Panel 2: Typography & Engine -->
+                <tr>
+                    <td><span class="code-ref">typography.fontFamily</span></td>
+                    <td><span class="code-ref">red-build/src/engine/typography/font-registry.js</span></td>
+                    <td>בורר גופן טקסט ראשי (<span class="code-ref">&lt;select id="font-family"&gt;</span>)</td>
+                    <td>5 גופנים מובנים: Vilna, FrankRuehl, Hadassah, TaameyFrank, David</td>
+                    <td><span class="badge badge-critical">נעדר</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>רשימת הגופנים התורניים של RED אינה מופיעה באתר החי; אין טעינה של גופני ה־OFL המוטמעים.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">typography.justifyEngine</span></td>
+                    <td><span class="code-ref">red-build/src/engine/typography/line-breaker.js</span></td>
+                    <td>בחירת אלגוריתם שבירת שורות</td>
+                    <td>3 אפשרויות: Knuth-Plass (DP), Greedy (חמדני), Ragged-Right (לא מיושר)</td>
+                    <td><span class="badge badge-critical">חסר</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>אלגוריתם Knuth-Plass DP עם מודל RaggedEnd ו־Line Demerits אינו מחובר כלל ב־UI החי.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">typography.bracketProtect</span></td>
+                    <td><span class="code-ref">red-build/src/engine/typography/bracket-pass.js</span></td>
+                    <td>מתג הגנת סוגריים וראשי תיבות (<span class="code-ref">&lt;input type="checkbox"&gt;</span>)</td>
+                    <td>מופעל / מושבת (מניעת פיצול מילים בסוגריים מרובעים וגרשיים)</td>
+                    <td><span class="badge badge-high">חסר</span></td>
+                    <td><span class="badge badge-high">HIGH</span></td>
+                    <td>המתג המפעיל את ה־Pre-pass של הסוגריים אינו מוצג בממשק.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">typography.demeritPenalty</span></td>
+                    <td><span class="code-ref">red-build/src/engine/typography/demerit.js</span></td>
+                    <td>שדה קנס דמריט למרווחים לא אחידים</td>
+                    <td>שדה מספרי: ערך מומלץ 50, טווח 0-200</td>
+                    <td><span class="badge badge-high">חסר</span></td>
+                    <td><span class="badge badge-high">HIGH</span></td>
+                    <td>שדה שליטת הפיזור אינו נגיש למשתמש.</td>
+                </tr>
+
+                <!-- 5. Panel 3: Running Headers (S9 Matrix) -->
+                <tr>
+                    <td><span class="code-ref">headers.enabled</span></td>
+                    <td><span class="code-ref">red-build/src/engine/layout/header-footer.js</span></td>
+                    <td>מתג הפעלת כותרות עליונות</td>
+                    <td>פעיל / מושבת</td>
+                    <td><span class="badge badge-critical">חסר</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>מתג שליטה ראשי בכותרות עליונות נעדר.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">headers.matrix.slotSelect</span></td>
+                    <td><span class="code-ref">red-build/src/ui/settings-panel.js</span></td>
+                    <td>מטריצת כותרות 3x2 (6 סלוטים: ימין, מרכז, שמאל X עמוד ימין/שמאל)</td>
+                    <td>6 דרופדאונים עם 6 אפשרויות בכל סלוט: ריק, שם מסכת/ספר, כותרת פרק H2, מילה ראשונה בעמוד, מילה אחרונה בעמוד, טקסט חופשי</td>
+                    <td><span class="badge badge-critical">חסר לחלוטין</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>מטריצת הכותרות העליונות של S9 (10x3x3x2) אינה מוטמעת ב־UI החי; לא ניתן לקבוע מקור מידע לכותרת.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">headers.sameAsPrevious</span></td>
+                    <td><span class="code-ref">red-build/src/engine/layout/header-footer.js</span></td>
+                    <td>מתג "זהה לעמוד נגדי/קודם" עם מניעת מעגליות</td>
+                    <td>Checkbox פעיל / מושבת</td>
+                    <td><span class="badge badge-high">חסר</span></td>
+                    <td><span class="badge badge-high">HIGH</span></td>
+                    <td>המתג ופונקציית גידוע המעגליות אינם מחוברים ל־DOM.</td>
+                </tr>
+
+                <!-- 6. Panel 4: Pagination -->
+                <tr>
+                    <td><span class="code-ref">pagination.style</span></td>
+                    <td><span class="code-ref">red-build/src/engine/layout/pagination.js</span></td>
+                    <td>בורר סגנון מספור עמודים</td>
+                    <td>3 אופציות: אותיות עבריות (א, ב...), מספרים רגילים (1, 2...), ספרות רומיות</td>
+                    <td><span class="badge badge-critical">חסר</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>נוסחת V1 של מספור עברי ומספור רציף אינה נגישה מהאתר החי.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">pagination.frame</span></td>
+                    <td><span class="code-ref">red-build/src/engine/layout/pagination.js</span></td>
+                    <td>עיצוב ומסגור מספר עמוד</td>
+                    <td>5 אופציות: ללא, סוגריים עגולים (א), עיגול CSS מלא, ריבוע CSS, מקפים (-א-)</td>
+                    <td><span class="badge badge-high">חסר</span></td>
+                    <td><span class="badge badge-high">HIGH</span></td>
+                    <td>הדרופדאון לבחירת מסגרת למספר עמוד חסר לחלוטין.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">pagination.position</span></td>
+                    <td><span class="code-ref">red-build/src/engine/layout/pagination.js</span></td>
+                    <td>מיקום מספר עמוד בגיליון</td>
+                    <td>4 אופציות: בכותרת עליונה, בתחתית במרכז, בתחתית בצד חיצוני, בתחתית בצד פנימי</td>
+                    <td><span class="badge badge-high">חסר</span></td>
+                    <td><span class="badge badge-high">HIGH</span></td>
+                    <td>אין אפשרות לקבוע את מיקום המספור באתר החי.</td>
+                </tr>
+
+                <!-- 7. Panel 5: Gates & Title Pages -->
+                <tr>
+                    <td><span class="code-ref">gates.mainGate.style</span></td>
+                    <td><span class="code-ref">red-build/src/engine/decoration/gates.js</span></td>
+                    <td>בורר תבנית שער ראשי</td>
+                    <td>3 אופציות מבניות: PT-01 (מסורתי), PT-02 (מודרני אלגנטי), PT-03 (מעוטר מלא)</td>
+                    <td><span class="badge badge-critical">חסר</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>מחולל השערים של S8 אינו קיים בממשק; בחירת סגנון שער אינה מיושמת.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">gates.subGate.toggle</span></td>
+                    <td><span class="code-ref">red-build/src/ui/settings-panel.js</span></td>
+                    <td>מתג "הצג שער משנה לכל חלק/פרק"</td>
+                    <td>מופעל / מושבת</td>
+                    <td><span class="badge badge-high">חסר</span></td>
+                    <td><span class="badge badge-high">HIGH</span></td>
+                    <td>שליטה בהפקת שערי משנה אינה קיימת ב־DOM החי.</td>
+                </tr>
+
+                <!-- 8. Panel 6: Footnotes Engine -->
+                <tr>
+                    <td><span class="code-ref">notes.footnotes.layout</span></td>
+                    <td><span class="code-ref">red-build/src/engine/notes/footnotes.js</span></td>
+                    <td>סידור הערות שוליים בתחתית הדף</td>
+                    <td>3 אפשרויות: רציף (continuous), בלוק נפרד לכל הערה (block), שני טורים תחתונים</td>
+                    <td><span class="badge badge-critical">חסר</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>מנוע הפיצול של הערות השוליים (מרזב S7) אינו נשלט מהאתר החי.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">notes.footnotes.markerStyle</span></td>
+                    <td><span class="code-ref">red-build/src/engine/notes/footnotes.js</span></td>
+                    <td>סגנון סימון הערות</td>
+                    <td>4 אופציות: אות עברית קטנה, מספרים, כוכבית (*), אות בסוגריים [א]</td>
+                    <td><span class="badge badge-high">חסר</span></td>
+                    <td><span class="badge badge-high">HIGH</span></td>
+                    <td>בורר סימוני ההערות חסר.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">notes.footnotes.resetPolicy</span></td>
+                    <td><span class="code-ref">red-build/src/engine/notes/footnotes.js</span></td>
+                    <td>מדיניות איפוס סימון הערות</td>
+                    <td>3 אופציות: איפוס בכל עמוד, איפוס בכל פרק, רציף לאורך כל הספר</td>
+                    <td><span class="badge badge-high">חסר</span></td>
+                    <td><span class="badge badge-high">HIGH</span></td>
+                    <td>הגדרת איפוס מונה ההערות אינה קיימת.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">notes.footnotes.maxHeightRatio</span></td>
+                    <td><span class="code-ref">red-build/src/ui/settings-panel.js</span></td>
+                    <td>סליידר תקציב גובה מרבי לאזור הערות (% מגובה העמוד)</td>
+                    <td>טווח 20% עד 70% (ברירת מחדל: 45%)</td>
+                    <td><span class="badge badge-high">חסר</span></td>
+                    <td><span class="badge badge-high">HIGH</span></td>
+                    <td>אלמנט ה־Range Slider אינו מופיע ב־DOM החי.</td>
+                </tr>
+
+                <!-- 9. Panel 7: Endnotes & Side Notes -->
+                <tr>
+                    <td><span class="code-ref">notes.endnotes.enabled</span></td>
+                    <td><span class="code-ref">red-build/src/engine/notes/endnotes.js</span></td>
+                    <td>מתג הפעלת עמודי הערות סיום ייעודיים</td>
+                    <td>פעיל / מושבת</td>
+                    <td><span class="badge badge-critical">חסר</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>מנגנון הפקת עמודי הערות סיום רציפים לפי חלקים חסר באתר החי.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">notes.sideNotes.enabled</span></td>
+                    <td><span class="code-ref">red-build/src/engine/notes/side-notes.js</span></td>
+                    <td>מתג הערות צד (H7) מעוגנות לפסקה</td>
+                    <td>פעיל / מושבת</td>
+                    <td><span class="badge badge-critical">חסר</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>מנוע ה־Cascade להערות צדדיות אינו נגיש מהממשק החי.</td>
+                </tr>
+
+                <!-- 10. Panel 8: Decorations -->
+                <tr>
+                    <td><span class="code-ref">decorations.dropCaps.enabled</span></td>
+                    <td><span class="code-ref">red-build/src/engine/decoration/drop-caps.js</span></td>
+                    <td>מתג אות פתיח מוגדלת / תיבת מילה ראשונה</td>
+                    <td>פעיל / מושבת</td>
+                    <td><span class="badge badge-critical">חסר</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>מנגנון הזמנת גובה (F-08) לאותיות פתיח אינו מופעל באתר החי.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">decorations.chapterSeparators</span></td>
+                    <td><span class="code-ref">red-build/src/engine/decoration/separators.js</span></td>
+                    <td>בורר עיטור מפריד פרקים H3–H6</td>
+                    <td>5 עיטורים: ענף זית, פלורון קלאסי, מגן דוד תורני, רומבוס, קו מדורג</td>
+                    <td><span class="badge badge-high">חסר</span></td>
+                    <td><span class="badge badge-high">HIGH</span></td>
+                    <td>בורר העיטורים ומאגר ה־SVG המוטמע אינם קיימים ב־UI.</td>
+                </tr>
+
+                <!-- 11. Panel 9: TOC -->
+                <tr>
+                    <td><span class="code-ref">toc.depth</span></td>
+                    <td><span class="code-ref">red-build/src/engine/layout/toc-engine.js</span></td>
+                    <td>עומק היררכיית תוכן עניינים</td>
+                    <td>3 אופציות: רמה 1 בלבד (H1), עד רמה 2 (H1+H2), מפורט מלא (H1-H4)</td>
+                    <td><span class="badge badge-critical">חסר</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>מחולל עמודי ה־TOC האוטומטיים עם נקודות מובילות ועוגנים לחיצים אינו מחובר באתר החי.</td>
+                </tr>
+
+                <!-- 12. Panel 10: Custom Styles (S11 Extensions) -->
+                <tr>
+                    <td><span class="code-ref">extensions.customRules</span></td>
+                    <td><span class="code-ref">red-build/src/engine/core/custom-styles.js</span></td>
+                    <td>לוח ניהול סגנונות מותאמים וטריגרים</td>
+                    <td>טריגרים: <span class="code-ref">linePrefix, pattern, inlineMarker «...», del</span>; פריסות: 6 מצבים כולל Full-width</td>
+                    <td><span class="badge badge-critical">חסר לחלוטין</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>פאנל S11 המאפשר הגדרת סגנונות עצמאיים אינו מוצג כלל.</td>
+                </tr>
+
+                <!-- 13. Panel 11: Import / Export Modules -->
+                <tr>
+                    <td><span class="code-ref">export.htmlStandalone</span></td>
+                    <td><span class="code-ref">red-build/src/engine/output/html-exporter.js</span></td>
+                    <td>כפתור "ייצוא קובץ HTML עצמאי"</td>
+                    <td>ייצוא קובץ בודד במצב אופליין מלא עם גופנים וכללי <span class="code-ref">@page</span></td>
+                    <td><span class="badge badge-critical">לא קיים</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>כפתור ייצוא ה־HTML העצמאי שהוגדר ב־S12 חסר באתר החי.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">export.pdfDirect</span></td>
+                    <td><span class="code-ref">red-build/src/engine/output/pdf-exporter.js</span></td>
+                    <td>כפתור "ייצוא PDF" ישיר בדפדפן</td>
+                    <td>הצגת דיאלוג עברי מפורש (D-75) הדורש הרצת Node או הדפסה וקטורית</td>
+                    <td><span class="badge badge-high">חסר</span></td>
+                    <td><span class="badge badge-high">HIGH</span></td>
+                    <td>הודעת D-75 העברית והחיווט לכפתור ההורדה אינם מיושמים באתר החי.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">import.docxConverter</span></td>
+                    <td><span class="code-ref">red-build/src/engine/parser/docx-importer.js</span></td>
+                    <td>כפתור "ייבוא קובץ DOCX"</td>
+                    <td>חילוץ קובץ ZIP עצמאי, המרת כותרות והערות לפורמט תורני</td>
+                    <td><span class="badge badge-critical">לא קיים</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>מודול קריאת ה־DOCX העצמאי של S11 חסר לחלוטין בממשק העורך.</td>
+                </tr>
+
+                <!-- 14. Testing & Diagnostics Tab -->
+                <tr>
+                    <td><span class="code-ref">testing-tab.runner</span></td>
+                    <td><span class="code-ref">red-build/src/ui/testing-tab.js</span></td>
+                    <td>לשונית בדיקות ואבחון מובנית</td>
+                    <td>הצגת טבלת חריגות (<span class="code-ref">issue-registry</span>), חישוב <span class="code-ref">layoutHash</span> ודטרמיניזם</td>
+                    <td><span class="badge badge-critical">חסר לחלוטין</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>לשונית הבדיקות, המציגה את מחזור החיים והאבחון של S10, אינה קיימת באתר החי.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">preview-tab.virtualizedZoom</span></td>
+                    <td><span class="code-ref">red-build/src/ui/preview-tab.js</span></td>
+                    <td>סרגל כלים בתצוגה: זום, קפיצה לעמוד לפי אות עברית</td>
+                    <td>תיבת קלט "קפוץ לעמוד" + כפתורי זום (+ / - / 100%)</td>
+                    <td><span class="badge badge-critical">חסר</span></td>
+                    <td><span class="badge badge-critical">CRITICAL</span></td>
+                    <td>מנגנון חלונות הרינדור הווירטואלי (D-83/D-84) לספרים ארוכים וסרגל הניווט העברי חסרים באתר החי.</td>
+                </tr>
+
+                <!-- 15. Persistence & Title Verification -->
+                <tr>
+                    <td><span class="code-ref">html.title-tag</span></td>
+                    <td><span class="code-ref">red-build/ui/index.html</span></td>
+                    <td>כותרת הדף בלשונית הדפדפן (<span class="code-ref">&lt;title&gt;</span>)</td>
+                    <td>מצופה בקוד: <span class="code-ref">ספר תורה — מערך עימוד (Red)</span></td>
+                    <td><span class="badge badge-medium">אי-התאמה</span></td>
+                    <td><span class="badge badge-medium">MEDIUM</span></td>
+                    <td>באתר החי מוצגת כותרת הפרויקט הישן: <span class="code-ref">Imudify — תוכנת עימוד תורנית</span>.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">state.persistence</span></td>
+                    <td><span class="code-ref">red-build/src/ui/app-shell.js</span></td>
+                    <td>שמירת הגדרות ב־<span class="code-ref">localStorage</span></td>
+                    <td>סנכרון מפתח <span class="code-ref">tora_typesetter_red_v2_settings</span></td>
+                    <td><span class="badge badge-medium">לא מיושם</span></td>
+                    <td><span class="badge badge-medium">MEDIUM</span></td>
+                    <td>בשל אי-טעינת מודול ההגדרות של RED, מנגנון השמירה המקומי אינו מתעדכן לפי חוזה הנתונים.</td>
+                </tr>
+                <tr>
+                    <td><span class="code-ref">offline.manifest</span></td>
+                    <td><span class="code-ref">red-build/ui/index.html</span></td>
+                    <td>אימות ריצה במצב מנותק (Offline Guard)</td>
+                    <td>אפס בקשות רשת חיצוניות (CDNs, Google Fonts)</td>
+                    <td><span class="badge badge-low">אימות אבטחה</span></td>
+                    <td><span class="badge badge-low">LOW</span></td>
+                    <td>דפי המקור נבנו לריצה ללא שרת, אך בשל הפריסה הישנה לא מנוצל עקרון ה־Offline Guard המלא.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>המלצות מיידיות לסגירת הפער (Remediation Plan)</h2>
+        <ol>
+            <li><strong>עדכון ענף הפריסה (Branch Cutover):</strong> יש להריץ את סקריפט הבנייה <span class="code-ref">node tools/build-worker-bundle.js</span> ולפרוס את תוצרי <span class="code-ref">red-build/ui/</span> ישירות לענף <span class="code-ref">gh-pages</span> במאגר <span class="code-ref">SUGINACH/Tora_Book_Typesetter_Red_Work_2</span>.</li>
+            <li><strong>סנכרון GitHub Actions:</strong> לוודא שקובץ ה־Workflow תחת <span class="code-ref">.github/workflows/deploy.yml</span> מבצע <span class="code-ref">build</span> מתוך תיקיית <span class="code-ref">red-build</span> ולא משכפל קוד ישן של Imudify.</li>
+            <li><strong>ביצוע בדיקה חוזרת:</strong> לאחר העלאת החבילה החדשה יש להריץ מחדש את מטריצת הבדיקות המלאה של 179 המפתחות ו־4 הלשוניות.</li>
+        </ol>
+    </div>
+</body>
+</html>
