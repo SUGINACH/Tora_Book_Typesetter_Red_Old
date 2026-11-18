@@ -58,6 +58,8 @@ function makeDoc() {
     scrollIntoView() { this._scrolled = true; }
     focus() { this._focused = true; }
     _matchesPart(sel) {
+      const cp = sel.match(/^([a-zA-Z][a-zA-Z0-9]*)((?:\.[^.]+)+)$/); // tag.class (a.toc-link)
+      if (cp) return this.tagName === cp[1].toUpperCase() && cp[2].slice(1).split('.').every(c => this.classList.contains(c));
       if (sel.startsWith('.')) return this.classList.contains(sel.slice(1));
       if (sel.startsWith('#')) return this.getAttribute('id') === sel.slice(1);
       if (sel.startsWith('[')) { const m = sel.match(/^\[([^\]]+)\]$/); return !!m && (m[1] in this.dataset || m[1] in this.attrs); }
@@ -213,6 +215,38 @@ describe('s9c-dom-preview — התצוגה מה-PageModel בלבד (9c.3)', () =
     }
     for (let p = 0; p < fromResult.pageCount; p++) {
       assertEq(fromModel.pageToCaret(p), fromResult.pageToCaret(p), `pageToCaret(${p}) זהה`);
+    }
+  });
+
+  it('TOC click בתצוגה החיה (§4.3): מלבני הקישור מהמודל ב-preview — לחיצה מסונכרנת', () => {
+    const S = getDefaultSettings();
+    const r = typeset(DOC, S, {});
+    assert(!!r.pageModel, 'PageModel קיים');
+    const tocLinks = (r.pageModel.document && r.pageModel.document.tocLinks) || [];
+    const doc = makeDoc();
+    const pv = buildPreviewTab(doc, {});
+    const activated = [];
+    const pvWithClick = buildPreviewTab(doc, { onActivatePage: (i) => activated.push(i) });
+    pv.setResult(serializeTypesetResult(r), S, { pageModel: r.pageModel, profile: 'unified' });
+    pvWithClick.setResult(serializeTypesetResult(r), S, { pageModel: r.pageModel, profile: 'unified' });
+    if (tocLinks.length) {
+      // הקישורים מוקרנים כשכבת-על בעמודי התצוגה — אותו מקור כמו הייצוא
+      const links = pv.root.querySelectorAll('a.toc-link');
+      assertEq(links.length, tocLinks.length, 'כל מלבני הקישור מהמודל בתצוגה');
+      const hrefs = new Set(links.map(a => a.getAttribute('href')));
+      const targets = new Set(pv.root.querySelectorAll('.preview-page').map(p => p.getAttribute && p.getAttribute('id')));
+      for (const l of tocLinks) assert(hrefs.has(`#page-${l.targetPage}`), `קישור לעמוד ${l.targetPage}`);
+      for (const h of hrefs) assert(targets.has(h.slice(1)), `יעד הקישור ${h} קיים בתצוגה`);
+      // קליק על קישור TOC מפעיל סנכרון (onActivatePage עם אינדקס היעד) —
+      // על המופע שחובר למאזין
+      const linksLive = pvWithClick.root.querySelectorAll('a.toc-link');
+      const href = linksLive[0].getAttribute('href');
+      const target = Number(href.slice(6));
+      linksLive[0].click();
+      assert(activated.includes(target), `הקליק הפעיל סנכרון לעמוד ${target}`);
+    } else {
+      // מסמך ללא TOC — אין קישורים ואין קליקים (התנהגות נקייה)
+      assertEq(pv.root.querySelectorAll('a.toc-link').length, 0, 'אין קישורים כשאין tocLinks במודל');
     }
   });
 });

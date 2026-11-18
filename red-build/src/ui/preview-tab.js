@@ -141,7 +141,7 @@ function buildPreviewTab(doc, opts) {
   // placeholders בגובה האמיתי ורינדור עצל של חלון סביב הגלילה/היעד.
   const VIRTUAL_THRESHOLD = 60;
   const VIRTUAL_WINDOW = 4; // ריפוד משני צידי הטווח הנראה
-  const virtual = { on: false, pages: [], settings: null, rendered: new Set(), phW: 794, phH: 1123 };
+  const virtual = { on: false, pages: [], settings: null, rendered: new Set(), phW: 794, phH: 1123, tocLinks: [] };
   // **פרוסה 3 (§2.3 — הפרדת פרופילים מפורשת):** legacy = הרנדרר הישן (עד
   // שלב 9); unified = המקרין הטהור מה-PageModel בלבד. בפרופיל unified היעדר
   // מודל הוא **שגיאה מפורשת** — לא נפילה שקטה לרנדרר הישן (§2.3).
@@ -150,10 +150,16 @@ function buildPreviewTab(doc, opts) {
   let scrollRaf = null;
 
   /** בניית אלמנט עמוד אחד (מקור יחיד לרינדור מלא ולווירטואלי) — כולל ⏬ ולחיצה.
-   * פרופיל unified: העמוד הוא עמוד PageModel והרינדור טהור מהמודל (§2.2). */
+   * פרופיל unified: העמוד הוא עמוד PageModel והרינדור טהור מהמודל (§2.2).
+   * **9c.3:** מלבני קישורי ה-TOC מועברים למקרין (§4.3 — TOC click). */
   function buildPageEl(page) {
+    // **9c.3:** הנתיב המאוחד — המקרין הטהור מה-PageModel בלבד (חסר-מודל =
+    // שגיאת פרופיל מפורשת ב-setResult, לעיל). נתיב ה-renderPage הישן הוא
+    // **9c.4-marker** — צריכת result.pages הגולמיים של פרופיל המורשת בלבד;
+    // יוסר עם הסרת המנוע ב-9c.4 (אחרי הוכחת DOM parity — s8d).
     const el = profile === 'unified'
       ? renderModelPage(page, virtual.settings, doc, {
+          tocLinks: virtual.tocLinks,
           onDiagnostic: (d) => { if (opts.onModelDiagnostic) opts.onModelDiagnostic(page.index, d); }
         })
       : renderPage(page, virtual.settings, doc);
@@ -471,6 +477,9 @@ function buildPreviewTab(doc, opts) {
     // **9c.3:** מקור העמודים הקנוני — unified: עמודי ה-PageModel בלבד;
     // legacy: result.pages (ענף 9c.4-marker). מכאן ואילך הכל נגזר מ-virtual.pages.
     const pageSource = profile === 'unified' ? modelPages : (serializedResult.pages || []);
+    // **9c.3 (§4.3):** מלבני קישורי ה-TOC מהמודל — מועברים למקרין (קליק מסונכרן).
+    virtual.tocLinks = (profile === 'unified' && options.pageModel && options.pageModel.document && Array.isArray(options.pageModel.document.tocLinks))
+      ? options.pageModel.document.tocLinks : [];
     virtual.on = Array.isArray(pageSource) && pageSource.length > VIRTUAL_THRESHOLD;
     virtual.settings = settings;
     virtual.pages = pageSource;

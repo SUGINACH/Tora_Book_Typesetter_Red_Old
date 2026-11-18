@@ -97,29 +97,12 @@ function exportHtmlFromModel(model, settings, doc, meta = {}) {
     throw new Error('exportHtmlFromModel: נדרש PageModel תקין (pagemodel-v1) — ייצוא מהמודל בלבד, אין נתיב חלופי');
   }
   const pagesHtml = [];
-  const linkGetter = typeof doc.createElement === 'function' ? doc : null;
+  // **9c.3 (§4.3 — מקור יחיד לקישורי TOC):** המקרין מהמודל מקרין את מלבני
+  // הקישור (document.tocLinks) כשכבת-על לחיצה — אותו קוד כמו התצוגה החיה;
+  // אין עוד הוספת קישורים ידנית כאן (מנע סטייה בין התצוגה לייצוא).
+  const tocLinks = (model.document && Array.isArray(model.document.tocLinks)) ? model.document.tocLinks : [];
   for (const mp of model.pages) {
-    const el = renderModelPage(mp, settings, doc);
-    // **קישורי TOC (§3 — bookmarks/קישורים):** מלבני הקישור מהמודל — הקרנה
-    // טהורה לעוגן <a href="#page-N">; היעדים הם ה-id של אלמנטי העמוד.
-    const links = (model.document && model.document.tocLinks || []).filter(l => l.page === mp.index);
-    if (links.length && linkGetter) {
-      for (const l of links) {
-        const a = doc.createElement('a');
-        a.className = 'toc-link';
-        a.setAttribute('href', `#page-${l.targetPage}`);
-        a.setAttribute('dir', 'rtl');
-        if (a.style) {
-          a.style.position = 'absolute';
-          a.style.left = `${Math.round(l.x * 100) / 100}px`;
-          a.style.top = `${Math.round(l.y * 100) / 100}px`;
-          a.style.width = `${Math.round(l.w * 100) / 100}px`;
-          a.style.height = `${Math.round(l.h * 100) / 100}px`;
-        }
-        el.appendChild(a);
-      }
-    }
-    pagesHtml.push(elementOuterHtml(el));
+    pagesHtml.push(elementOuterHtml(renderModelPage(mp, settings, doc, { tocLinks })));
   }
   const sizeMm = pageMmOf(settings);
   const pageRules = settings['export-html-page-rules'] !== false
