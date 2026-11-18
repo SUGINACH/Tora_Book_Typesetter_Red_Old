@@ -506,6 +506,28 @@ function renderModelPage(mp, settings, doc, opts = {}) {
     root.appendChild(renderModelDecoration(d, doc, diags));
   }
 
+  // **9c.3 (§4.3 — TOC click בתצוגה החיה):** מלבני הקישור מהמודל
+  // (document.tocLinks) מוקרנים כשכבת-על לחיצה — אותה הקרנה כמו בייצוא
+  // ה-HTML העצמאי. הקריאה מעבירה את הרשימה דרך opts.tocLinks; היעדים
+  // הם ה-id של אלמנטי העמוד (#page-N) — קליק מסונכרן ב-preview-tab.
+  if (Array.isArray(opts.tocLinks)) {
+    for (const l of opts.tocLinks) {
+      if (l.page !== mp.index) continue;
+      const a = doc.createElement('a');
+      a.className = 'toc-link';
+      a.setAttribute('href', `#page-${l.targetPage}`);
+      a.setAttribute('dir', 'rtl');
+      if (a.style) {
+        a.style.position = 'absolute';
+        a.style.left = `${Math.round(l.x * 100) / 100}px`;
+        a.style.top = `${Math.round(l.y * 100) / 100}px`;
+        a.style.width = `${Math.round(l.w * 100) / 100}px`;
+        a.style.height = `${Math.round(l.h * 100) / 100}px`;
+      }
+      root.appendChild(a);
+    }
+  }
+
   // חשבונאות גלויה (§2.4): פריט שלא מוקרן — diagnostic בר-צפייה, לא היעלמות
   const projectedLineIds = new Set([...(mp.lines || [])].map(l => l.id));
   for (const ln of (mp.lines || [])) {
