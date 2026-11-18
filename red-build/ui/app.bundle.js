@@ -1336,6 +1336,9 @@ function createApp(doc, opts = {}) {
           status.setNotice('יוצא HTML עצמאי מה-PageModel (חד־קובץ, offline, אין עימוד שני).');
           return { ok: true, kind, data: html };
         }
+        // **9c.2/9c.4-marker:** נתיב מורשת — צריכת result.pages הגולמיים.
+        // יוסר עם הסרת המנוע ב-9c.4; עד אז האתחול בפרופיל המורשת זקוק לו.
+        // אין fallback בנתיב המאוחד — PageModel חסר = שגיאה מפורשת (לעיל).
         const html = exportHtml(result, settings, doc, { title: (result.metadata && result.metadata['ספר']) || 'ספר', fontCss });
         if (opts.onExportFile) opts.onExportFile('html', html, 'book.html');
         status.setNotice('יוצא HTML עצמאי (חד־קובץ, offline).');
