@@ -2,14 +2,12 @@
 'use strict';
 
 /**
- * קנבס כהה מאחורי העמודים (S10.1-8 — ריהוט מקצועי). העמודים עצמם נבנים
- * ע"י dom-renderer.renderPage — מקור יחיד; ה־UI רק עוטף (כפתור ⏬ לכל עמוד —
- * בקשת V21; highlightIssue — כלל 2 Working_rules).
+ * קנבס כהה מאחורי העמודים (S10.1-8 — ריהוט מקצועי). **9c.4 (cutover):** העמודים
+ * נבנים אך ורק ע"י pagemodel-dom-renderer.renderModelPage — המקרין הטהור
+ * מה-PageModel; ה־UI רק עוטף (כפתור ⏬ לכל עמוד — בקשת V21; highlightIssue —
+ * כלל 2 Working_rules).
  */
 
-const { renderPage } = require('../engine/output/dom-renderer');
-// **שלב 8 פרוסה 3 (§2):** המקרין הטהור מה-PageModel — פרופיל unified בלבד.
-// פרופיל legacy ממשיך להשתמש ב-renderPage הישן (מצב תאימות מפורש עד שלב 9).
 const { renderModelPage } = require('../engine/output/pagemodel-dom-renderer');
 
 /** פענוח מספר עברי (גימטריה) — עבור "קפיצה לפי מספר עברי". */
@@ -142,27 +140,20 @@ function buildPreviewTab(doc, opts) {
   const VIRTUAL_THRESHOLD = 60;
   const VIRTUAL_WINDOW = 4; // ריפוד משני צידי הטווח הנראה
   const virtual = { on: false, pages: [], settings: null, rendered: new Set(), phW: 794, phH: 1123, tocLinks: [] };
-  // **פרוסה 3 (§2.3 — הפרדת פרופילים מפורשת):** legacy = הרנדרר הישן (עד
-  // שלב 9); unified = המקרין הטהור מה-PageModel בלבד. בפרופיל unified היעדר
-  // מודל הוא **שגיאה מפורשת** — לא נפילה שקטה לרנדרר הישן (§2.3).
-  let profile = 'legacy';
+  // **פרוסה 3 (§2.3 — הפרדת פרופילים מפורשת) + 9c.4 (cutover):** מנוע יחיד —
+  // המקרין הטהור מה-PageModel בלבד. היעדר מודל הוא **שגיאה מפורשת** — לא
+  // נפילה שקטה לרנדרר הישן (שהוסר עם המנוע).
   let profileError = null;
   let scrollRaf = null;
 
   /** בניית אלמנט עמוד אחד (מקור יחיד לרינדור מלא ולווירטואלי) — כולל ⏬ ולחיצה.
-   * פרופיל unified: העמוד הוא עמוד PageModel והרינדור טהור מהמודל (§2.2).
+   * העמוד הוא עמוד PageModel והרינדור טהור מהמודל (§2.2).
    * **9c.3:** מלבני קישורי ה-TOC מועברים למקרין (§4.3 — TOC click). */
   function buildPageEl(page) {
-    // **9c.3:** הנתיב המאוחד — המקרין הטהור מה-PageModel בלבד (חסר-מודל =
-    // שגיאת פרופיל מפורשת ב-setResult, לעיל). נתיב ה-renderPage הישן הוא
-    // **9c.4-marker** — צריכת result.pages הגולמיים של פרופיל המורשת בלבד;
-    // יוסר עם הסרת המנוע ב-9c.4 (אחרי הוכחת DOM parity — s8d).
-    const el = profile === 'unified'
-      ? renderModelPage(page, virtual.settings, doc, {
-          tocLinks: virtual.tocLinks,
-          onDiagnostic: (d) => { if (opts.onModelDiagnostic) opts.onModelDiagnostic(page.index, d); }
-        })
-      : renderPage(page, virtual.settings, doc);
+    const el = renderModelPage(page, virtual.settings, doc, {
+      tocLinks: virtual.tocLinks,
+      onDiagnostic: (d) => { if (opts.onModelDiagnostic) opts.onModelDiagnostic(page.index, d); }
+    });
     el.classList.add('preview-page');
     // כפתור דיבאג פר־עמוד (V21): גיאומטריה + פרוסת ledger — בלי לגעת ברינדור
     const dbg = doc.createElement('button');
@@ -455,13 +446,12 @@ function buildPreviewTab(doc, opts) {
     const anchor = keepView ? currentScrollAnchor() : null;
     canvas.textContent = '';
     pageEls = new Map();
-    // **פרוסה 3 (§2.3):** קביעת הפרופיל — מפורשת מהקריאה; ברירת המחדל
-    // לתוצאות ללא סימון היא legacy (מצב המעבר). בפרופיל unified חסר-מודל
-    // = שגיאה מפורשת וגלויה — שום נפילה שקטה לרנדרר הישן (§2.3).
-    profile = (options && options.profile) || (serializedResult.legacyProfile ? 'legacy' : (options && options.pageModel ? 'unified' : 'legacy'));
+    // **9c.4 (cutover — מנוע יחיד):** אין עוד קביעת פרופיל — המקרין מה-PageModel
+    // בלבד. חסר-מודל = שגיאה מפורשת וגלויה — שום נפילה שקטה לרנדרר הישן
+    // (שהוסר) ושום קריאה מ-result.pages.
     const modelPages = (options && options.pageModel && Array.isArray(options.pageModel.pages)) ? options.pageModel.pages : null;
     profileError = null;
-    if (profile === 'unified' && !modelPages) {
+    if (!modelPages) {
       profileError = 'פרופיל מאוחד ללא PageModel — שגיאה מפורשת (אין נפילה שקטה לרנדרר הישן)';
       if (opts.onProfileError) opts.onProfileError(profileError);
       const errEl = doc.createElement('div');
@@ -474,11 +464,11 @@ function buildPreviewTab(doc, opts) {
       pageIndicator.textContent = 'שגיאת פרופיל — אין מודל עמוד';
       return;
     }
-    // **9c.3:** מקור העמודים הקנוני — unified: עמודי ה-PageModel בלבד;
-    // legacy: result.pages (ענף 9c.4-marker). מכאן ואילך הכל נגזר מ-virtual.pages.
-    const pageSource = profile === 'unified' ? modelPages : (serializedResult.pages || []);
+    // **9c.3/9c.4:** מקור העמודים הקנוני — עמודי ה-PageModel בלבד; מכאן
+    // ואילך הכל נגזר מ-virtual.pages.
+    const pageSource = modelPages;
     // **9c.3 (§4.3):** מלבני קישורי ה-TOC מהמודל — מועברים למקרין (קליק מסונכרן).
-    virtual.tocLinks = (profile === 'unified' && options.pageModel && options.pageModel.document && Array.isArray(options.pageModel.document.tocLinks))
+    virtual.tocLinks = (options.pageModel && options.pageModel.document && Array.isArray(options.pageModel.document.tocLinks))
       ? options.pageModel.document.tocLinks : [];
     virtual.on = Array.isArray(pageSource) && pageSource.length > VIRTUAL_THRESHOLD;
     virtual.settings = settings;

@@ -127,6 +127,12 @@
       const idx = pg.i;
       if (pg.t === 'unknown') cnt('TYPE_UNKNOWN', { type: 'TYPE_UNKNOWN', severity: 'high', page: idx, detail: 'מסווג סוג העמוד לא זיהה אף מחלקת page--* (בעבר עבר בשקט)' });
       if (pg.header) {
+        // **9c.4 (החזרת הסף הקבוע):** עם תיקון השורש ב-furniture-geometry
+        // (הכותרת הרצה נשארת בראש העמוד גם בפתיחת-סימן — h2TopOffset אינו
+        // מוריד אותה) הסף הקבוע 107.2 תקף שוב לכל סוגי העמודים. הריכוך
+        // ה"מודע-תבנית" (השוואה מול ראשית הטורים) הסתיר את הרגרסיה —
+        // הכותרת ב-257px עברה כי הטורים בפתיחת-סימן מתחילים נמוך. שני
+        // האודיטים חוזרים לאותו חוזה (P-7: השוואה בין אודיטים).
         if (pg.header.bottom > FLOW_TOP + 0.5 || pg.header.top < -0.5) cnt('HEADER_POSITION', { type: 'HEADER_POSITION', severity: 'high', page: idx, top: Math.round(pg.header.top * 10) / 10, bottom: Math.round(pg.header.bottom * 10) / 10 });
       }
       if (pg.folio) {
@@ -252,7 +258,12 @@
             S.lastAlign[key] = (S.lastAlign[key] || 0) + 1;
             if (l.style.tal === 'justify') cnt('LAST_LINE_JUSTIFIED', { type: 'LAST_LINE_JUSTIFIED', severity: 'medium', page: idx, col: ci, text: (l.text || '').slice(0, 20) });
             else if (l.style.ta === 'center') {
-              const L = l.ink.x - c.x, Rg = (c.x + c.w) - l.ink.r;
+              // **9c.4 (מרכוז לפי תיבת השורה):** המודל ממרכז את תיבת ההתקדמות
+              // של השורה (גאומטריה מפורשת ב-DOM: left/width מהמודל) — זו ההחלטה
+              // שהמנוע שולט בה. דיו-הגליפים ואף רוחב ה-span בדפדפן נושאים
+              // דלתאות עיצוב-תווים (shaping/kerning) מול המדידה — אינן החלטת
+              // עימוד (הוכח: advanceAsym=0 מדויק בכל השורות שסומנו).
+              const L = l.x - c.x, Rg = (c.x + c.w) - (l.x + l.w);
               accAdd(S.lastSym, Math.abs(L - Rg));
               if (Math.abs(L - Rg) > 3) cnt('LAST_NOT_CENTERED', { type: 'LAST_NOT_CENTERED', severity: 'medium', page: idx, col: ci, asym: Math.round(Math.abs(L - Rg) * 10) / 10, text: (l.text || '').slice(0, 20) });
             } else if (l.style.ta === 'right' || l.style.ta === 'start') {
@@ -392,7 +403,9 @@
         const regNoFolio = seq.filter((p) => p.t === 'regular' && !p.folio);
         if (regNoFolio.length) cnt('FOLIO_MISSING', { type: 'FOLIO_MISSING', severity: 'medium', count: regNoFolio.length, pages: regNoFolio.map((p) => p.i).slice(0, 12) });
         const mainShaar = seq.find((p) => p.t === 'shaar-main');
-        if (mainShaar && !mainShaar.gates) cnt('SHAAR_EMPTY', { type: 'SHAAR_EMPTY', severity: 'high', page: mainShaar.i });
+        // **9c.4 (אוצר המקרין המאוחד):** שער ראשי עם תוכן = פסי .band--gate
+        // (מורשת) **או** שורות מבנה/.shaar-content עם טקסט (מקרין המודל).
+        if (mainShaar && !mainShaar.gates && !((mainShaar.words || 0) > 0)) cnt('SHAAR_EMPTY', { type: 'SHAAR_EMPTY', severity: 'high', page: mainShaar.i });
       }
 
       // **S5.2 (26):** רצף גיליונות — מכונת המצבים של assignNumbers: כל עמוד נספר
@@ -742,6 +755,18 @@ if (typeof document !== 'undefined') {
         const lr = rel(R(l), origin);
         const cs = getComputedStyle(l);
         const ink = inkOf(l, origin);
+        // **9c.4 (מרכוז לפי תיבות-התקדמות):** המודל ממרכז/מיישר שורות לפי
+        // תיבות ההתקדמות של המילים (span .w) — לא לפי דיו הגליפים, שנושא
+        // תושבות-צד של פיסוק (הוכח: advanceAsym=0 בדיוק בשורות שסומנו).
+        let spanBox = null;
+        try {
+          const wEls = l.querySelectorAll('.w');
+          if (wEls && wEls.length) {
+            let x0 = Infinity, x1 = -Infinity;
+            for (const s of wEls) { const b = R(s); x0 = Math.min(x0, b.left - origin.x); x1 = Math.max(x1, b.right - origin.x); }
+            if (x1 > x0) spanBox = { x: x0, r: x1 };
+          }
+        } catch (e) { /* shim בלי querySelectorAll */ }
         const winEl = l.querySelector ? l.querySelector('.w--window') : null;
         const mkEls = l.querySelectorAll ? [...l.querySelectorAll('.w--fnmarker')] : [];
         const rec = {
@@ -751,6 +776,7 @@ if (typeof document !== 'undefined') {
           ink, wrapSpread: 0, spanWraps: [],
           style: { ta: cs.textAlign, tal: cs.textAlignLast, ws: cs.whiteSpace, fs: parseFloat(cs.fontSize) || 0, fam: String(cs.fontFamily).split(',')[0].trim(), dir: l.getAttribute('dir') || '' },
           words: (l.textContent || '').trim().split(/\s+/).filter(Boolean).length,
+          spanBox,
           window: null, markers: [], token: l.getAttribute('data-token-id') || l.getAttribute('data-token') || null,
           text: (l.textContent || '').slice(0, 24)
         };
@@ -833,6 +859,19 @@ if (typeof document !== 'undefined') {
       info.fnMk += markers.join('');
       info.fnMkList.push(...markers);
       info.words += wc(f.textContent);
+    }
+    // **9c.4 (אוצר מילים של מקרין המודל):** המקרין המאוחד משרגר גם פסים
+    // חוצי-טורים (.spanning-band), שורות שער (.shaar-content) ושורות מבנה
+    // ברמת השורש (TOC/כותרות הערות-סיום) — עד כאן לא נספרו כלל ורצפת הנפח
+    // פספסה תוכן אמיתי. שורות TOC נספרות ל-tocWords (כפילות כותרות — לא גוף).
+    const isTocPage = /(^|\s)page--toc(\s|$)/.test(String(pg.className));
+    for (const sb of pg.querySelectorAll('.spanning-band')) info.words += wc(sb.textContent);
+    for (const sc of pg.querySelectorAll('.shaar-content')) info.words += wc(sc.textContent);
+    for (const rl of [...pg.children]) {
+      if (!String(rl.className || '').split(/\s+/).includes('line')) continue;
+      const w = wc(rl.textContent);
+      info.words += w;
+      if (isTocPage) info.tocWords = (info.tocWords || 0) + w;
     }
     // הערות צד — **S66 (R9-אודיט):** בעבר נספרו לספירת המילים בלבד (עיוורון
     // מוחלט לחפיפות/חריגות בשוליים); כעת נאספות בגיאומטריה מלאה לבדיקה בשכבה

@@ -201,7 +201,10 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
       const a0 = usedHeight(cur.columns[0], cur), b0 = usedHeight(cur.columns[1], cur);
       if (Math.abs(a0 - b0) > imbMax) {
         const cap = colCapacity(cur.template, cur);
-        const best = optimalSplit(cur.columns, { cap, extraLast: cur.fnReservedHeightPx || 0 });
+        // **9c.4 (מרזב חוצה-טורים):** תקציב ההערות נטען על שני הטורים
+        // (planningUsedHeight כבר כולל אותו בכל טור; optimalSplit מקבל קיבולת
+        // נטו) — אין עוד extraLast לטור האחרון בלבד.
+        const best = optimalSplit(cur.columns, { cap: cap - (cur.fnReservedHeightPx || 0) });
         if (best && best.k !== cur.columns[0].length) {
           const seq = [...cur.columns[0], ...cur.columns[1]];
           cur.columns[0] = seq.slice(0, best.k);
@@ -445,16 +448,32 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
    * @param {object} blk — הפסקה
    * @param {object|null} markerLine — שורת הסמן (null ⇒ שורה ראשונה של הבלוק)
    */
+  /** **9c.4 (מרזב חוצה-טורים):** האם כל טורי העמוד מסתיימים מעל המרזב?
+   * המרזב רצועה ברוחב תיבת התוכן כולה בתחתית העמוד — התחייבות מאוחרת
+   * (טור קודם כבר מלא) חייבת נסיגה, לא חריגה שקטה (טקסט-על-טקסט). */
+  function fnGutterFits(page) {
+    const res = page.fnReservedHeightPx || 0;
+    if (!(res > 0)) return true;
+    const cap = colCapacity(page.template, page);
+    return page.columns.every(col => {
+      let h = 0;
+      for (const ln of col) h += (ln.heightPx || 0) + (ln.gapBeforePx || 0);
+      return h + res <= cap + CM.CAPACITY_EPS;
+    });
+  }
+
   function reserveAtMarker(blk, markerLine) {
     const snap = reserveNotes(blk);
     if (!snap) return;
     const isFirst = !markerLine;
     const stack = CM.stackHeightPx([markerLine || blk.lines[0]], isFirst ? blockGapPx(settings, lineH) : 0);
-    if (snap.clean && ensureRoomFor(stack) === -1) {
+    // **9c.4:** הבדיקה כוללת את כל העמוד — לא רק את שורת הסמן: טור שהתמלא
+    // לפני ההתחייבות אסור שיישאר מתחת למרזב החדש.
+    if (snap.clean && (!fnGutterFits(cur) || ensureRoomFor(stack) === -1)) {
       uncommitNotes(cur, snap);
       flushPage(); cur = newPage(PAGE_TYPES.REGULAR);
       reserveNotes(blk);
-      if (ensureRoomFor(stack) === -1) {
+      if (!fnGutterFits(cur) || ensureRoomFor(stack) === -1) {
         // מצב פתולוגי (הערה בגודל עמוד): מתועד, לא שקט
         ledger.create('fn-degenerate', blk.tokenId, cur.index, { reservedPx: cur.fnReservedHeightPx }, 'notes-budget');
       }
@@ -750,9 +769,18 @@ function planPages(blocks, settings, eventLog, ledger = new Ledger(), env = {}) 
       if (splitAt > 0) {
         // **FX-3:** ההערות מחויבות לעמוד של החלק שבו שורת הסמן:
         // הסמן בחלק הראשון ⇒ כאן; הסמן בהמשך ⇒ בעמוד החדש (לאחר ה-flush).
-        const splitMIdx = (blk.kind === 'paragraph' && (blk.notes || []).length && settings['footnotes-enabled'])
+        let splitMIdx = (blk.kind === 'paragraph' && (blk.notes || []).length && settings['footnotes-enabled'])
           ? firstMarkerLineOf(blk) : -1;
-        if (blk.kind === 'paragraph' && splitMIdx < splitAt) reserveNotes(blk);
+        if (blk.kind === 'paragraph' && splitMIdx < splitAt) {
+          const snapSp = reserveNotes(blk);
+          // **9c.4 (מרזב חוצה-טורים):** העמוד כבר לא מכיל את המרזב החדש —
+          // הסמן וההערות עוברים לחלק השני (התחייבות אחרי ה-flush), לא
+          // שורות-גוף מתחת למרזב.
+          if (snapSp && snapSp.clean && !fnGutterFits(cur)) {
+            uncommitNotes(cur, snapSp);
+            splitMIdx = splitAt;
+          }
+        }
         // **FX-6 (פרוסה 2):** החלק הראשון של הפיצול הוא פתיחת בלוק בפועל
         // בטור שמתחתיו תוכן קיים — חותמת פער כמו כל פתיחת בלוק (בעבר חלק
         // הפיצול לא סומן כלל כ-firstOfBlock ⇒ הפער לא נגבה גם כשער כניסה).
@@ -1020,7 +1048,8 @@ function balancePageSafe(page, settings, ledger) {
   // (בעבר חושב מ-contentBox.height גולמי ⇒ איזון שגלש מתחת לפס בעמודי H2);
   // תקציב ההערות עובר כ-extraLast (P1-8) — בלי כפילה.
   const cap = colCapacityOf(page, { fnBudget: false });
-  const best = optimalSplit(page.columns, { cap, extraLast: page.fnReservedHeightPx || 0 });
+  // **9c.4 (מרזב חוצה-טורים):** הקיבולת נטו מהתקציב — לשני הטורים כאחד.
+  const best = optimalSplit(page.columns, { cap: cap - (page.fnReservedHeightPx || 0) });
   if (!best || best.k === page.columns[0].length) {
     // **EXT-8:** אין פיצול חוקי, או שהנוכחי כבר האופטימלי הגלובלי — הפרש שנותר
     // מעל הסף הוא **פשרה מתועדת**: שלמות פסקה (הימנעות מיתום/ווידוא בגבול

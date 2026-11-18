@@ -42,6 +42,8 @@ const { importImudSettings } = require(path.join(RB, 'src/engine/core/legacy-set
 const { getSettingDefs, getDefaultSettings } = require(path.join(RB, 'src/engine/core/settings-registry'));
 const { registerFont } = require(path.join(RB, 'src/engine/typography/measure-api'));
 const { typeset } = require(path.join(RB, 'src/engine/core/pipeline'));
+// **9c.4:** הפורט הנאמן נקרא ישירות — אין עוד dispatch ב-typeset (מנוע יחיד).
+const { legacyTypeset } = require(path.join(RB, 'src/engine/layout/legacy-imud-flow'));
 const { buildShaarBlocks } = require(path.join(RB, 'src/engine/output/shaar-content'));
 
 // ---------- §2.7: רשימת השערים — מקור יחיד לספירה ולדוח ----------
@@ -86,7 +88,8 @@ function legacySettings() {
     if (fs.existsSync(p)) for (const f of JSON.parse(fs.readFileSync(p, 'utf8'))) families.add(f.family);
   }
   const imp = importImudSettings(legacy, new Set(getSettingDefs().map(r => r.id)), { availableFonts: families });
-  return { ...getDefaultSettings(), ...imp.settings, 'body-font': 'Guttman Rashi', 'measure-impl': 'font-metrics' };
+  // **9c.4:** ה-raw מוצמד לקריאה הישירה של הפורט (אין עוד dispatch ב-typeset).
+  return { ...getDefaultSettings(), ...imp.settings, _imudRaw: legacy, 'body-font': 'Guttman Rashi', 'measure-impl': 'font-metrics' };
 }
 
 // ---------- §2.4: מלאי המקור — מהדקדוק הקנוני, עם מזהים יציבים ----------
@@ -482,14 +485,14 @@ function unifiedInventory(r) {
 
   const legSettings = legacySettings();
   const tL = Date.now();
-  const legacyRes = typeset(text, legSettings, {});
+  const legacyRes = legacyTypeset(text, legSettings, {}); // 9c.4: קריאה ישירה לפורט הנאמן
   if (!legacyRes.legacyProfile) { console.error('הרצת המורשת לא הופעלה'); process.exit(2); }
   const leg = legacyInventory(legacyRes, legSettings);
   console.log(`מורשת: ${leg.pages} עמודים (${Date.now() - tL}ms) | מילים: ${leg.all.length.toLocaleString()} | הערות (שוחזרו מסמנים): ${leg.notes.length} | אזורים: ${leg.fnAreas} | המשכים: ${leg.continuationFragments} | ביאורי-צד: ${leg.sideNotes.length}`);
 
   const uniSettings = argv.includes('--dp-defaults')
     ? { ...getDefaultSettings(), 'measure-impl': 'font-metrics' }
-    : (() => { const s2 = { ...legacySettings() }; delete s2['_layout-profile']; delete s2['_imudRaw']; return s2; })();
+    : (() => { const s2 = { ...legacySettings() }; delete s2['_imudRaw']; return s2; })(); // 9c.4: הייבוא כבר אינו מצמד
   const tU = Date.now();
   const uniRes = typeset(text, uniSettings, {});
   if (uniRes.legacyProfile) { console.error('ההרצה המאוחדת נפלה למורשת'); process.exit(2); }

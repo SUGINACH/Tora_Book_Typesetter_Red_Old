@@ -36,7 +36,8 @@ const LEGACY_DEFAULTS = JSON.parse(fs.readFileSync(path.join(REPO, 'ui/assets/im
 function imudSettings() {
   const regKeys = new Set(getSettingDefs().map(r => r.id));
   const { settings } = importImudSettings(LEGACY_DEFAULTS, regKeys, {});
-  return Object.assign({}, getDefaultSettings(), settings);
+  // **9c.4:** ה-raw מוצמד לקריאה הישירה של הפורט (legacyTypeset) — אין עוד dispatch.
+  return Object.assign({}, getDefaultSettings(), settings, { _imudRaw: LEGACY_DEFAULTS });
 }
 
 /** מדידת תחתית-דיו לפי מיקומי y בפועל (כמו האודיט החי) — עמודי גוף דו-טוריים. */
@@ -234,7 +235,13 @@ describe('S72.2 DP — יישור תחתיות ככלל עימוד (שיפורי
     // **9b.3 (דקדוק הכותרות המלא — D-91):** ננעל מחדש 4a1773cc→0e657636 —
     // 27 שורות נוסח "מספר N"/"(מקור: …)" במסמך הבדיקה סווגו מפסקאות-גוף
     // לכותרות/ביאורי-צד; הוראות הדקדוק אינן נרנדרות כתוכן; contentPreserved=true.
-    assert(result.layoutHash.startsWith('0e657636'), `hash הקורפוס השתנה: ${result.layoutHash.slice(0, 16)}`);
+    // **9c.4 (מרזב חוצה-טורים — תיקון שור):** ננעל מחדש 0e657636→ad283e71 —
+    // התקציב נטען על כל טור (התאמה ל-S6.0 R3-C2) + נסיגה בהתחייבות מאוחרת
+    // + הרכבת aqStretch. המסמך הקבוע מכיל הערות-גוף ⇒ אריזת העמודים חוזרה
+    // לחישוב; זרם התוכן זהה (הבדיקות לעיל עברו); contentPreserved=true.
+    // הוכחות המלאות לשינוי הכללי: s8b + cross-check-locks +
+    // audits/S9C_FOOTNOTE_GUTTER_2026-11-18.md.
+    assert(result.layoutHash.startsWith('ad283e71'), `hash הקורפוס השתנה: ${result.layoutHash.slice(0, 16)}`);
     const r2 = typeset(corpus, getDefaultSettings(), {});
     assertEq(result.layoutHash, r2.layoutHash, 'דטרמיניזם');
     // הקנוני — נעילת fdff19d8 ממקטע ב׳ (מאומת ב-s13-acceptance)

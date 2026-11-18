@@ -17,6 +17,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { typeset } = require('../../src/engine/core/pipeline');
 const { importImudSettings } = require('../../src/engine/core/legacy-settings-map');
+const { legacyTypeset } = require('../../src/engine/layout/legacy-imud-flow'); // 9c.4: קריאה ישירה
 const { getSettingDefs } = require('../../src/engine/core/settings-registry');
 const { projectLegacyDocument, projectLegacyPage } = require('../../src/engine/output/legacy-projector');
 const { MeasureAPI } = require('../../src/engine/typography/measure-api');
@@ -45,7 +46,8 @@ function it(name, fn) {
 function legacySettings(overrides) {
   const reg = new Set(getSettingDefs().map(r => r.id));
   const { settings } = importImudSettings(IMUD_RAW, reg, {});
-  return { ...settings, ...(overrides || {}) };
+  // **9c.4:** ה-raw מוצמד לקריאה הישירה של הפורט (legacyTypeset) — אין עוד dispatch.
+  return { ...settings, _imudRaw: IMUD_RAW, ...(overrides || {}) };
 }
 
 // ============ 3+5. visualOrderRtl — שיקוף סוגריים וריצות LTR ============
@@ -80,7 +82,7 @@ it('D-89 (רגרסיה): מילה עם גרשיים — בע"מ', () => {
 // ============ 2. הערות רב-שורתיות — בסיס פר-שורה ============
 it('D-89/2: לכל שורת הערה בסיס משלה; אין ערימת שורות (הערה רב-שורתית)', () => {
   const S = { ...legacySettings(), 'body-font': 'Frank Ruhl Libre', 'measure-impl': 'font-metrics' };
-  const r = typeset(BOOK, S, { noRecommendations: true });
+  const r = legacyTypeset(BOOK, S, { noRecommendations: true });
   const proj = projectLegacyDocument(r, S);
   let multiChecked = 0;
   for (const pg of proj.pages) {
@@ -150,7 +152,7 @@ it('D-89/1: המקרן מקטין רק סמן-מודל (markerIdx) — לא מי
 
 it('D-89/1 (אינטגרציה): כל מילה שאינה סמן-מודל ואינה בסוגריים — בגודל הגוף המלא', () => {
   const S = { ...legacySettings(), 'body-font': 'Frank Ruhl Libre', 'measure-impl': 'font-metrics' };
-  const r = typeset(BOOK, S, { noRecommendations: true });
+  const r = legacyTypeset(BOOK, S, { noRecommendations: true });
   const proj = projectLegacyDocument(r, S);
   let checked = 0; const violations = [];
   for (let pi = 0; pi < r.pages.length; pi++) {
@@ -188,7 +190,7 @@ it('D-89/1 (אינטגרציה): כל מילה שאינה סמן-מודל ואי
 // ============ 4. עיצוב שערים + כלל כותרת ============
 it('D-89/4: שער-משנה — פאנל מ-55% וגל; שער אחורי — פאנל שמאלי; ראשי — מסגרת; גוף — כלל כותרת', () => {
   const S = legacySettings();
-  const r = typeset(BOOK, S, { noRecommendations: true });
+  const r = legacyTypeset(BOOK, S, { noRecommendations: true });
   const sub = r.pages.find(p => p.type === 'shaar-sub');
   const back = r.pages.find(p => p.type === 'shaar-back');
   const main = r.pages.find(p => p.type === 'shaar-main');
@@ -229,7 +231,7 @@ it('D-89/4: שער-משנה — פאנל מ-55% וגל; שער אחורי — פ
 
 it('D-89/4: תיבות השערים — כותרת-משנה ממורכזת ב-184pt, בלוקי שער אחורי ב-411pt (כמו הייחוס)', () => {
   const S = legacySettings();
-  const r = typeset(BOOK, S, { noRecommendations: true });
+  const r = legacyTypeset(BOOK, S, { noRecommendations: true });
   const proj = projectLegacyDocument(r, S);
   const subIdx = r.pages.findIndex(p => p.type === 'shaar-sub');
   const backIdx = r.pages.findIndex(p => p.type === 'shaar-back');
@@ -257,7 +259,7 @@ it('D-89/3+5 (PDF בפועל): הטלפון נחלץ קריא; מאזן סוגר
   try { execFileSync('pdftotext', ['-v'], { stdio: 'pipe' }); } catch (e) { HAS = false; }
   if (!HAS) { console.error('  [מדלג — poppler לא במערכת]'); return; }
   const S = { ...legacySettings(), 'body-font': 'Frank Ruhl Libre', 'measure-impl': 'font-metrics' };
-  const res = exportPdf(BOOK, S, FONT, 'Frank Ruhl Libre');
+  const res = exportPdf(BOOK, S, FONT, 'Frank Ruhl Libre', { engine: 'legacy' });
   assert(res.ok, 'ייצוא עבר: ' + (res.error || ''));
   const tmp = path.join(__dirname, '..', 'artifacts', 'd89-check.pdf');
   fs.writeFileSync(tmp, res.bytes);
@@ -267,7 +269,7 @@ it('D-89/3+5 (PDF בפועל): הטלפון נחלץ קריא; מאזן סוגר
   const open = (txt.match(/\(/g) || []).length;
   const close = (txt.match(/\)/g) || []).length;
   assertEq(open, close, 'מאזן סוגריים בחילוץ');
-  const res2 = exportPdf(BOOK, S, FONT, 'Frank Ruhl Libre');
+  const res2 = exportPdf(BOOK, S, FONT, 'Frank Ruhl Libre', { engine: 'legacy' });
   assert(res2.ok && res2.bytes.equals(res.bytes), 'ייצוא כפול ⇒ בתים זהים');
 });
 

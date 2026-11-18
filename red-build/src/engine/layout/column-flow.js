@@ -124,9 +124,14 @@ function capacityReservationsOf(page, opts = {}) {
 function planningUsedHeight(col, page) {
   let h = 0;
   for (const ln of col) h += (ln.heightPx || 0) + (ln.gapBeforePx || 0);
-  if (page && page.fnReservedHeightPx > 0 && page.columns[page.columns.length - 1] === col) {
-    h += page.fnReservedHeightPx; // נשמר פעם אחת — בסוף הטור האחרון
-  }
+  // **9c.4 (התאמה ל-S6.0 R3-C2 — מרזב חוצה-טורים):** עד כאן נרשם התקציב
+  // בטור האחרון בלבד (F-17), בהנחה used+fn ≤ cap ⟺ used ≤ cap−fn — שקילות
+  // שנכונה רק לטור האחרון. אזור ההערות נמשך לרוחב תיבת התוכן כולה
+  // (כמו ש-colCapacityOf כבר מניח ב-fnBudget), ולכן התקציב נטען כעת
+  // על **כל** טור — טור קודם שהתמלא לפני ההתחייבות נבדק בנסיגה
+  // (reserveAtMarker). הוכח ב-very_long: 26 עמודים עם שורות גוף מתחת
+  // למרזב (עד 543px, טקסט-על-טקסט) מול 0 הפרות בפורט המורשת.
+  if (page && page.fnReservedHeightPx > 0) h += page.fnReservedHeightPx;
   return h;
 }
 

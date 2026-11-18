@@ -2,12 +2,12 @@
   "schema": "s5-corpus-comparison-v1",
   "basis": "main@dfb4168 (לפני פרוסה 1 של שלב 5) מול המסלול הקנוני עם FX-1..FX-5 + SSOT",
   "pages": {
-    "was": 1216,
-    "now": 1216
+    "was": 1241,
+    "now": 1241
   },
   "hash": {
-    "was": "fa1f06e2fbe39da9",
-    "now": "fa1f06e2fbe39da9"
+    "was": "2f8d492ec661b097",
+    "now": "2f8d492ec661b097"
   },
   "blocks": {
     "total": 3636,

@@ -130,6 +130,13 @@ describe('גיאומטריית ריהוט — מקור יחיד ל-DOM ול-PDF 
       assertEq(out.header.y, headerGeometry(pg).y, 'ראש הכותרת מהמקור היחיד');
     }
     assert(headerGeometry({ template: { contentBox: { top: 60 } } }).y === 42, 'הנוסחה (top−18) נשמרת');
+    // **9c.4 (רגרסיית layout-audit):** בפתיחת-סימן תיבת התוכן מורדת בכוונה
+    // (h2TopOffset) — הכותרת הרצה נשארת בראש העמוד ולא יורדת עם התוכן.
+    // לפני התיקון: 275−18=257 — הפרת HEADER_POSITION (סף 107.2) בעמוד 7.
+    assert(headerGeometry({ template: { contentBox: { top: 275 }, h2TopOffset: 229 } }).y === 28,
+      'פתיחת-סימן: h2TopOffset מופחת — הכותרת בראש העמוד (257→28)');
+    assert(headerGeometry({ template: { contentBox: { top: 275 }, h2TopOffset: 300 } }).y === 0,
+      'קלמפ ל-0 כשההורדה עולה על השוליים');
   });
 });
 

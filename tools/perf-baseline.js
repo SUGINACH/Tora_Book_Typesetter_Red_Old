@@ -222,10 +222,12 @@ for (const doc of DOCS) {
     const raw = JSON.parse(fs.readFileSync(setFile, 'utf8'));
     const regKeys = new Set(getSettingDefs().map(r => r.id));
     const { settings: imported } = importImudSettings(raw, regKeys, {});
-    const merged = Object.assign({}, getDefaultSettings(), imported);
+    // **9c.4:** ה-raw מוצמד לקריאה הישירה של הפורט — אין עוד dispatch ב-typeset.
+    const merged = Object.assign({}, getDefaultSettings(), imported, { _imudRaw: raw });
     const text = fs.readFileSync(vlPath, 'utf8');
     const t0 = performance.now();
-    const res = typeset(text, merged, {});
+    const { legacyTypeset } = require(path.join(RB, 'src/engine/layout/legacy-imud-flow.js'));
+    const res = legacyTypeset(text, merged, {}); // 9c.4: פורט המורשת (מדידת הביצועים של הפורט)
     const ms = performance.now() - t0;
     results.push({
       id: 'very_long_legacy', label: 'very_long — נתיב המורשת (ערכת תלמוד)', bytes: Buffer.byteLength(text, 'utf8'),

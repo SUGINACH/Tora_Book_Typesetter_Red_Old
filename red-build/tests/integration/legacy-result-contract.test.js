@@ -28,6 +28,8 @@ const { describe, it, assert, assertEq, report } = require('../harness');
 
 const { typeset } = require('../../src/engine/core/pipeline');
 const { importImudSettings } = require('../../src/engine/core/legacy-settings-map');
+// **9c.4:** הפורט הנאמן נקרא ישירות — אין עוד dispatch ב-typeset (מנוע יחיד).
+const { legacyTypeset } = require('../../src/engine/layout/legacy-imud-flow');
 const { getSettingDefs } = require('../../src/engine/core/settings-registry');
 const { serializeTypesetResult } = require('../../src/ui/worker-protocol');
 const { buildReport } = require('../../src/audit/report-schema');
@@ -36,14 +38,12 @@ const ASSETS = path.join(__dirname, '..', '..', 'ui', 'assets', 'imud');
 const CORPUS = fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'imud_default_text.txt'), 'utf8');
 const HEX64 = /^[0-9a-f]{64}$/;
 
-const legacyDefaults = () => importImudSettings(
-  JSON.parse(fs.readFileSync(path.join(ASSETS, 'default_settings.json'), 'utf8')),
-  new Set(getSettingDefs().map(r => r.id))
-).settings;
+const LEGACY_RAW = JSON.parse(fs.readFileSync(path.join(ASSETS, 'default_settings.json'), 'utf8'));
+const legacyDefaults = () => ({ ...importImudSettings(LEGACY_RAW, new Set(getSettingDefs().map(r => r.id))).settings, _imudRaw: LEGACY_RAW }); // 9c.4: קריאה ישירה לפורט
 
 describe('U-5 — חוזה תוצאת נתיב המורשת: contentHashIn (ui-result-v1)', () => {
   it('קיום ותקינות: contentHashIn הוא sha256 hex באורך 64', () => {
-    const r = typeset(CORPUS, legacyDefaults(), { noRecommendations: true });
+    const r = legacyTypeset(CORPUS, legacyDefaults(), { noRecommendations: true });
     assert(r.legacyProfile === true, 'הקורפוס רץ בפרופיל המורשת');
     assert(typeof r.contentHashIn === 'string', 'contentHashIn קיים (מחרוזת)');
     assert(HEX64.test(r.contentHashIn), `תבנית sha256 תקינה (קיבלנו: ${String(r.contentHashIn).slice(0, 20)}…)`);
@@ -51,16 +51,16 @@ describe('U-5 — חוזה תוצאת נתיב המורשת: contentHashIn (ui-r
 
   it('דטרמיניזם: אותו קלט ⇒ אותו contentHashIn ואותו layoutHash', () => {
     const s = legacyDefaults();
-    const a = typeset(CORPUS, s, { noRecommendations: true });
-    const b = typeset(CORPUS, s, { noRecommendations: true });
+    const a = legacyTypeset(CORPUS, s, { noRecommendations: true });
+    const b = legacyTypeset(CORPUS, s, { noRecommendations: true });
     assertEq(b.contentHashIn, a.contentHashIn, 'contentHashIn דטרמיניסטי');
     assertEq(b.layoutHash, a.layoutHash, 'layoutHash דטרמיניסטי');
   });
 
   it('רגישות קלט: שינוי טקסט ⇒ contentHashIn משתנה', () => {
     const s = legacyDefaults();
-    const base = typeset(CORPUS, s, { noRecommendations: true });
-    const changed = typeset(CORPUS + '\nפסקת בדיקה נוספת לשינוי הקלט.', s, { noRecommendations: true });
+    const base = legacyTypeset(CORPUS, s, { noRecommendations: true });
+    const changed = legacyTypeset(CORPUS + '\nפסקת בדיקה נוספת לשינוי הקלט.', s, { noRecommendations: true });
     assert(changed.contentHashIn !== base.contentHashIn, 'קלט שונה ⇒ hash קלט שונה');
     assert(changed.contentPreserved === true, 'הקלט המשונה עדיין נשמר במלואו');
   });
@@ -72,8 +72,8 @@ describe('U-5 — חוזה תוצאת נתיב המורשת: contentHashIn (ui-r
     // הקונסיסטנטיות של שני המקורות). show-back-shaar=false מסיר עמוד
     // שער-אחורי — פריסה משתנה, קלט לא.
     const noBack = { ...defaults, 'shaar-back-enabled': false, _imudRaw: { ...(defaults._imudRaw || {}), 'show-back-shaar': false } };
-    const a = typeset(CORPUS, defaults, { noRecommendations: true });
-    const b = typeset(CORPUS, noBack, { noRecommendations: true });
+    const a = legacyTypeset(CORPUS, defaults, { noRecommendations: true });
+    const b = legacyTypeset(CORPUS, noBack, { noRecommendations: true });
     assertEq(b.contentHashIn, a.contentHashIn, 'contentHashIn תלוי-קלט בלבד');
     assert(b.pages.filter(p => p.type === 'shaar-back').length < a.pages.filter(p => p.type === 'shaar-back').length,
       'סניטה: ההגדרה אכן משנה את הפריסה (פחות שער-אחורי)');
@@ -84,14 +84,14 @@ describe('U-5 — חוזה תוצאת נתיב המורשת: contentHashIn (ui-r
     // שתי הרצות עם אותו קלט: hash הפריסה זהה לחלוטין — השדה החדש אינו
     // נכנס לחישוב הגיאומטריה (legacyLayoutHashDigest מקבל pages בלבד).
     const s = legacyDefaults();
-    const a = typeset(CORPUS, s, { noRecommendations: true });
-    const b = typeset(CORPUS, s, { noRecommendations: true });
+    const a = legacyTypeset(CORPUS, s, { noRecommendations: true });
+    const b = legacyTypeset(CORPUS, s, { noRecommendations: true });
     assertEq(b.layoutHash, a.layoutHash, 'layoutHash זהה — אפס השפעת פריסה');
     assert(a.layoutHash.startsWith('legacy-'), 'וסגנונו נשאר legacy-<digest>');
   });
 
   it('העברה בחוזה: serializeTypesetResult ו-buildReport מקבלים את הערך', () => {
-    const r = typeset(CORPUS, legacyDefaults(), { noRecommendations: true });
+    const r = legacyTypeset(CORPUS, legacyDefaults(), { noRecommendations: true });
     const serialized = serializeTypesetResult(r);
     assertEq(serialized.schema, 'ui-result-v1', 'סכמת התוצאה');
     assertEq(serialized.contentHashIn, r.contentHashIn, 'serializeTypesetResult מעביר את contentHashIn');

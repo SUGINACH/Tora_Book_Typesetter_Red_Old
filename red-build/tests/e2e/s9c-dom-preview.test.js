@@ -134,31 +134,27 @@ describe('s9c-dom-preview — התצוגה מה-PageModel בלבד (9c.3)', () =
     assertEq(pages.length, 0, 'אף עמוד לא רונדר מהמסלול הישן (אין נפילה)');
   });
 
-  it('פרופיל המורשת: הרנדרר הישן עדיין עובד (9c.4-marker — תחום להסרת המנוע)', () => {
+  it('9c.4 (cutover): אין עוד ענף רינדור מורשת — המקרין מהמודל בלבד גם בלי סימון פרופיל', () => {
     const S = getDefaultSettings();
     const r = typeset(DOC, S, {});
     const doc = makeDoc();
     const pv = buildPreviewTab(doc, {});
-    // סימון תוצאה כמורשת (מצב המעבר — האתחול החי עד 9c.4)
-    const serialized = serializeTypesetResult({ ...r, legacyProfile: true });
-    pv.setResult(serialized, S, {});
-    const pages = pv.root.querySelectorAll('.preview-page');
-    assertEq(pages.length, r.pages.length, 'הרנדרר הישן מציג את כל העמודים (עד 9c.4)');
+    // בלי options.pageModel בכלל — שגיאה מפורשת (אין נפילה לרנדרר ישן)
+    pv.setResult(serializeTypesetResult(r), S, {});
+    const errs = pv.root.querySelectorAll('.preview-profile-error');
+    assertEq(errs.length, 1, 'חסר-מודל = שגיאת פרופיל מפורשת');
+    assertEq(pv.root.querySelectorAll('.preview-page').length, 0, 'אף עמוד לא רונדר');
   });
 
-  it('מקור preview-tab: הנתיב המאוחד לפני המורשת; renderPage מסומן 9c.4-marker', () => {
+  it('מקור preview-tab: המקרין מהמודל בלבד — אין renderPage, אין result.pages (9c.4)', () => {
     const src = fs.readFileSync(path.join(RB, 'src/ui/preview-tab.js'), 'utf8');
-    assert(src.includes('9c.4-marker'), 'סמן נתיב המורשת קיים');
-    assert(src.includes('renderModelPage(page, virtual.settings, doc'), 'הנתיב המאוחד מהמודל');
+    assert(src.includes('renderModelPage(page, virtual.settings, doc'), 'המקרין מהמודל');
     assert(src.includes('preview-profile-error'), 'שגיאת פרופיל מפורשת קיימת');
-    const unifiedIdx = src.indexOf('renderModelPage(page');
-    const legacyIdx = src.indexOf(': renderPage(page, virtual.settings, doc)');
-    assert(unifiedIdx >= 0 && legacyIdx > unifiedIdx, 'המורשת אחרי המאוחד (ענף אחר)');
-    // **9c.3:** אין עוד צריכת result.pages מחוץ לענף המורשת — המחוונים,
-    // הגיליונות והניווט נגזרים מ-virtual.pages (המקור הקנוני לפי הפרופיל).
-    assert(!/lastResult\s*\.\s*pages/.test(src), 'אין קריאת lastResult.pages בתצוגה');
-    const legacyBranch = src.slice(src.indexOf('const pageSource'));
-    assert(legacyBranch.includes('(serializedResult.pages || [])'), 'עמודי התוצאה בענף המורשת בלבד');
+    // **9c.4:** הרנדרר הישן הוסר — אין ייבוא, אין ענף, אין צריכת result.pages.
+    assert(!/require\('\.\.\/engine\/output\/dom-renderer'\)/.test(src), 'אין ייבוא dom-renderer (renderPage)');
+    assert(!/renderPage\(page/.test(src), 'אין קריאת renderPage');
+    assert(!/serializedResult\.pages/.test(src), 'אין צריכת result.pages בתצוגה');
+    assert(!/lastResult\s*\.\s*pages/.test(src), 'אין קריאת lastResult.pages');
   });
 
   it('בדיקה שלילית (§4.4): result.pages מוחלף בנתון מכשיל — כל פעולות התצוגה והניווט עובדות מהמודל', () => {

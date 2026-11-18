@@ -412,7 +412,7 @@ describe('S5.2 (6/7/12) — תצוגה: גלילה אופקית, keepView, גי�
   it('(6) מצב אופקי: גלילה לאזור עמוד 80 מרנדר אותו — לא תיבות ריקות', async () => {
     const doc = makeDoc();
     const pv = buildPreviewTab(doc, {});
-    pv.setResult(ser, settings);
+    pv.setResult(ser, settings, { pageModel: result.pageModel });
     assert(pv.isVirtual(), 'מסמך >60 עמודים — מצב וירטואלי');
     const n = ser.pages.length;
     const w = ser.pages[0].template.width; // 794
@@ -440,7 +440,7 @@ describe('S5.2 (6/7/12) — תצוגה: גלילה אופקית, keepView, גי�
   it('(7) keepView: רינדור־קל שומר זום+יעד; מסמך חדש מאפס', () => {
     const doc = makeDoc();
     const pv = buildPreviewTab(doc, {});
-    pv.setResult(ser, settings);
+    pv.setResult(ser, settings, { pageModel: result.pageModel });
     assertEq(pv.getZoom(), 100, 'התחלה 100%');
     const plus = pv.root.querySelectorAll('.btn--icon').find(b => b.getAttribute('aria-label').includes('הגדל'));
     for (let i = 0; i < 5; i++) fire(plus, 'click');
@@ -448,21 +448,21 @@ describe('S5.2 (6/7/12) — תצוגה: גלילה אופקית, keepView, גי�
     pv.scrollToPage(30);
     assertEq(pv._lastScrollTarget(), 30);
     // רינדור קל (אותה תוצאה, הגדרות חדשות) — עדכון צבע לא אמור לאפס תצוגה
-    pv.setResult(ser, Object.assign({}, settings, { 'background-color': '#abcdef' }), { keepView: true });
+    pv.setResult(ser, Object.assign({}, settings, { 'background-color': '#abcdef' }), { keepView: true, pageModel: result.pageModel });
     assertEq(pv.getZoom(), 150, 'הזום נשמר');
     assertEq(pv._lastScrollTarget(), 30, 'יעד הגלילה נשמר');
     assert(pv.getRenderedCount() > 0 && pv.getRenderedCount() <= 25, 'החלון החי סביב היעד (וירטואלי): ' + pv.getRenderedCount());
     const phs = pv.root.querySelectorAll('.preview-page--placeholder');
     assertEq(phs.filter(p => p.getAttribute('data-page-index') === '30').length, 0, 'עמוד היעד רונדר בחזרה');
     // מסמך חדש באמת — איפוס התנהגות מקורי
-    pv.setResult(ser, settings);
+    pv.setResult(ser, settings, { pageModel: result.pageModel });
     assertEq(pv.getZoom(), 100, 'מסמך חדש מאפס זום');
   });
 
   it('(12) קפיצה לפי מספר עברי — אל העמוד שמציג את הגיליון, לא לאינדקס הפיזי', () => {
     const doc = makeDoc();
     const pv = buildPreviewTab(doc, {});
-    pv.setResult(ser, settings);
+    pv.setResult(ser, settings, { pageModel: result.pageModel });
     // מציאת עמוד שגיליונו שונה ממספרו הפיזי (בספר אמת עם שער/תוכן לא-נספרים)
     let probe = null;
     for (let i = 0; i < ser.pages.length; i++) {
@@ -487,7 +487,7 @@ describe('S5.2 (6/7/12) — תצוגה: גלילה אופקית, keepView, גי�
   it('(3) setExportBusy: נעילת שלושת כפתורי הייצוא בזמן ייצוא מרוחק', () => {
     const doc = makeDoc();
     const pv = buildPreviewTab(doc, {});
-    pv.setResult(ser, settings);
+    pv.setResult(ser, settings, { pageModel: result.pageModel });
     const btns = pv.root.querySelectorAll('.export-bar button');
     assertEq(btns.length, 3, 'שלושה כפתורים: HTML/PDF/ZIP');
     assert(btns.every(b => !b.disabled), 'פתוחים כברירת מחדל');

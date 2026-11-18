@@ -32,11 +32,12 @@ const SETS = ['תלמוד', 'פרשנות', 'קונטרס'];
 const CORPUS = fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'imud_default_text.txt'), 'utf8');
 
 const loadSet = (name) => JSON.parse(fs.readFileSync(path.join(SETS_DIR, `${name}.json`), 'utf8'));
-const importSet = (name) => importImudSettings(
-  loadSet(name),
-  new Set(getSettingDefs().map(r => r.id)),
-  { availableFonts: AVAILABLE }
-);
+// **9c.4:** ה-raw מוצמד להחזרה לקריאה הישירה של הפורט (legacyTypeset) — אין עוד dispatch.
+const importSet = (name) => {
+  const raw = loadSet(name);
+  const imp = importImudSettings(raw, new Set(getSettingDefs().map(r => r.id)), { availableFonts: AVAILABLE });
+  return { ...imp, settings: { ...imp.settings, _imudRaw: raw } };
+};
 
 describe('EXT-14 — ערכות סגנון-ספר מהמקור: הטמעה + ייבוא lossless', () => {
   it('שלוש הערכות מוטמעות בריפו (249 מפתחות כמו במקור)', () => {
@@ -87,21 +88,21 @@ describe('EXT-14 — ערכות סגנון-ספר מהמקור: הטמעה + י�
     assertEq(sizes, [22, 24, 30], '22 (תלמוד) / 24 (פרשנות) / 30 (קונטרס)');
   });
 
-  it('נתיב המורשת: ההבדל המוצרך מגיע לפריסה — בלי עמוד שער-אחורי בכל הערכות', () => {
+  it('פורט ה-legacy: ההבדל המוצרך מגיע לפריסה — בלי עמוד שער-אחורי בכל הערכות', () => {
+    // **9c.4:** הפורט הנאמן נקרא ישירות — אין עוד dispatch ב-typeset (מנוע יחיד).
+    const { legacyTypeset } = require('../../src/engine/layout/legacy-imud-flow');
     // ברירת המחדל המלאה מכניסה שער-אחורי (show-back-shaar=true)
-    const base = typeset(CORPUS, importImudSettings(
-      JSON.parse(fs.readFileSync(path.join(ASSETS, 'default_settings.json'), 'utf8')),
-      new Set(getSettingDefs().map(r => r.id))
-    ).settings, { noRecommendations: true });
-    assert(base.legacyProfile === true, 'פרופיל המורשת הופעל (ברירת המחדל)');
+    const baseRaw = JSON.parse(fs.readFileSync(path.join(ASSETS, 'default_settings.json'), 'utf8'));
+    const base = legacyTypeset(CORPUS, { ...importImudSettings(baseRaw, new Set(getSettingDefs().map(r => r.id))).settings, _imudRaw: baseRaw }, { noRecommendations: true });
+    assert(base.legacyProfile === true, 'הפורט הנאמן הופעל (ברירת המחדל, קריאה ישירה)');
     const baseBack = base.pages.filter(p => p.type === 'shaar-back').length;
     assert(baseBack >= 1, `ברירת המחדל: יש עמוד שער-אחורי (${baseBack})`);
 
     // הערכות: show-back-shaar=false ⇒ אין שער-אחורי — ההבדל מוכח מבנית
     for (const name of SETS) {
       const { settings } = importSet(name);
-      const r = typeset(CORPUS, settings, { noRecommendations: true });
-      assert(r.legacyProfile === true, `${name}: פרופיל המורשת`);
+      const r = legacyTypeset(CORPUS, settings, { noRecommendations: true });
+      assert(r.legacyProfile === true, `${name}: הפורט הנאמן`);
       assert(r.contentPreserved === true, `${name}: שימור תוכן`);
       const back = r.pages.filter(p => p.type === 'shaar-back').length;
       assertEq(back, 0, `${name}: אין עמוד שער-אחורי (show-back-shaar=false מגיע לפריסה)`);

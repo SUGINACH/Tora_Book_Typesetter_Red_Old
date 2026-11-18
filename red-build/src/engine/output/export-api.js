@@ -160,8 +160,21 @@ function exportPdf(text, settingsIn, fontBytes, fontName, env) {
       'body-font': profileName,
       'measure-impl': 'font-metrics'
     };
-    const result = typeset(text, settings, { noRecommendations: true, ...(env || {}) });
-    // **S4.9:** פרופיל IMUD — הקרנה ממקרן ה-legacy (גיאומטריה מפורשת מהייחוס)
+    // **9c.4 (cutover — שני פורטים מפורשים, לא dispatch):** יציאת Node זו היא
+    // לבדיקות/כלים בלבד — נקודות הכניסה של המוצר מייצאות מה-PageModel
+    // (exportPdfFromModel; אין עימוד שני). ברירת המחדל = המנוע המאוחד
+    // (typeset → projectDocument) — בדיוק התנהגות ברירת המחדל טרום ה-cutover;
+    // env.engine === 'legacy' מפעיל את פורט המורשת המפורש (legacyTypeset →
+    // projectLegacyDocument) לבדיקות נאמנות הפורט וכלי ה-parity. הדגל
+    // מחייב _imudRaw בהגדרות — אין נפילה שקטה לקונפיגורציה ריקה.
+    const wantLegacy = !!(env && env.engine === 'legacy');
+    if (wantLegacy && !(settingsIn && settingsIn._imudRaw)) {
+      return { ok: false, error: 'legacy-port-requires-_imudRaw: פורט המורשת דורש _imudRaw בהגדרות (בדיקות הפורט מצרפות את ה-raw בעצמן)' };
+    }
+    const result = wantLegacy
+      ? require('../layout/legacy-imud-flow').legacyTypeset(text, settings, { noRecommendations: true, ...(env || {}) })
+      : typeset(text, settings, { noRecommendations: true, ...(env || {}) });
+    // **S4.9 + 9c.4:** פורט המורשת מקרין מהמקרן המפורש שלו; הנתיב המאוחד —
     // **S71.1 (double-check — projection measurement consistency):** the
     // projection must measure with the SAME impl that built the model
     // (impl B — registered-font metrics). Until now projectDocument built
@@ -173,7 +186,7 @@ function exportPdf(text, settingsIn, fontBytes, fontName, env) {
     // display≠export, exactly the class EXT-13 closed for live↔export on the
     // typeset side. resolveMeasureImpl = the same single source as pipeline;
     // with no registered font it falls back to 'table' (previous behaviour).
-    const projected = result.legacyProfile
+    const projected = wantLegacy
       ? require('./legacy-projector').projectLegacyDocument(result, settings)
       : projectDocument(result, settings, new MeasureAPI(settings, resolveMeasureImpl(settings)));
     const drawnParts = [];

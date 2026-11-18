@@ -23,6 +23,7 @@ const { describe, it, assert, assertEq, report } = require('../harness');
 
 const { typeset } = require('../../src/engine/core/pipeline');
 const { importImudSettings } = require('../../src/engine/core/legacy-settings-map');
+const { legacyTypeset } = require('../../src/engine/layout/legacy-imud-flow'); // 9c.4: קריאה ישירה
 const { getSettingDefs } = require('../../src/engine/core/settings-registry');
 const { renderPage } = require('../../src/engine/output/dom-renderer');
 
@@ -64,14 +65,15 @@ function hasClass(el, cls) { return String(el.className || '').split(/\s+/).incl
 function legacySettings() {
   const reg = new Set(getSettingDefs().map(r => r.id));
   const { settings } = importImudSettings(IMUD_RAW, reg, {});
-  return settings;
+  // **9c.4:** ה-raw מוצמד לקריאה הישירה של הפורט (legacyTypeset) — אין עוד dispatch.
+  return { ...settings, _imudRaw: IMUD_RAW };
 }
 
 describe('s15-view-justify', () => {
 
   it('legacy view: שורות גוף מלאות מקבלות normal+justify+text-align-last (לא nowrap)', () => {
     const settings = legacySettings();
-    const r = typeset(BOOK, settings, { noRecommendations: true });
+    const r = legacyTypeset(BOOK, settings, { noRecommendations: true });
     assert(r.pages.length > 0, 'must typeset');
     // מצא עמוד regular עם שורות גוף
     const pg = r.pages.find(p => String(p.type) === 'regular' && (p.columns || []).some(c => c.length > 5));
@@ -101,7 +103,7 @@ describe('s15-view-justify', () => {
 
   it('legacy view: מילת-החלון היא הצמת הראשון של השורה (ראש השורה = צד ימין ב-RTL)', () => {
     const settings = legacySettings();
-    const r = typeset(BOOK, settings, { noRecommendations: true });
+    const r = legacyTypeset(BOOK, settings, { noRecommendations: true });
     const pgs = r.pages.filter(p => String(p.type) === 'regular');
     let found = 0;
     for (const pg of pgs) {

@@ -40,7 +40,9 @@ const bytesOf = (fam) => {
 function imudSettings() {
   const available = new Set(CATALOG.map(e => e.family));
   const { settings } = importImudSettings(LEGACY_DEFAULTS, new Set(getSettingDefs().map(r => r.id)), { availableFonts: available });
-  return Object.assign({}, getDefaultSettings(), settings);
+  // **9c.4:** ה-raw מוצמד לקריאה הישירה של הפורט (legacyTypeset / exportPdf
+  // עם engine:'legacy') — אין עוד dispatch ב-typeset.
+  return Object.assign({}, getDefaultSettings(), settings, { _imudRaw: LEGACY_DEFAULTS });
 }
 
 function registerCoreFonts(s) {
@@ -259,7 +261,7 @@ describe('S77 בקשה 2 — גרשיים בהערות: גליפים קומפו�
   it('exportPdf: הגרשיים שלומות בחילוץ הטקסט (ToUnicode) וה-PDF נוצר בהצלחה', () => {
     const s = imudSettings();
     registerCoreFonts(s);
-    const exp = exportPdf(QUOTE_DOC, s, bytesOf(s['body-font']), s['body-font']);
+    const exp = exportPdf(QUOTE_DOC, s, bytesOf(s['body-font']), s['body-font'], { engine: 'legacy' }); // 9c.4: פורט המורשת המפורש
     assert(exp.ok, 'הייצוא הצליח: ' + (exp.error || ''));
     const raw = exp.bytes.toString('latin1');
     assert(/\/Length1 \d+[^>]*>>\nstream\n/.test(raw), 'יש גופנים מוטמעים');

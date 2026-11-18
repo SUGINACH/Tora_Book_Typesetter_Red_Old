@@ -22,7 +22,7 @@ const { importImudSettings } = require('../../src/engine/core/legacy-settings-ma
 const { getSettingDefs } = require('../../src/engine/core/settings-registry');
 const { renderPage } = require('../../src/engine/output/dom-renderer');
 const { MeasureAPI } = require('../../src/engine/typography/measure-api');
-const { GEO, SZ, FLOW_BOTTOM, SINGLE_W, headingItemH, LineBreaker, wrapText, readConfig } = require('../../src/engine/layout/legacy-imud-flow');
+const { GEO, SZ, FLOW_BOTTOM, SINGLE_W, headingItemH, LineBreaker, wrapText, readConfig, legacyTypeset } = require('../../src/engine/layout/legacy-imud-flow');
 
 const RB = path.join(__dirname, '..', '..');
 const IMUD_RAW = JSON.parse(fs.readFileSync(path.join(RB, 'ui', 'assets', 'imud', 'default_settings.json'), 'utf8'));
@@ -59,7 +59,8 @@ function hasClass(el, cls) { return String(el.className || '').split(/\s+/).incl
 function legacySettings(overrides) {
   const reg = new Set(getSettingDefs().map(r => r.id));
   const { settings } = importImudSettings(IMUD_RAW, reg, {});
-  return { ...settings, ...(overrides || {}) };
+  // **9c.4:** ה-raw מוצמד לקריאה הישירה של הפורט (legacyTypeset) — אין עוד dispatch.
+  return { ...settings, _imudRaw: IMUD_RAW, ...(overrides || {}) };
 }
 const norm = (s) => String(s).replace(/\s+/g, ' ').trim();
 
@@ -69,7 +70,7 @@ describe('s24-fullmath-fixes', () => {
   it('h4 ארוך מרוחב הטור נעטף לשורות כותרת — כל שורה נכנסת בטור, פס 1.45×', () => {
     const LONG_H4 = 'ההפרדה וההגדרה של הרשויות בשבת ובמלאכות האסורות מהתורה ומדבריהם לאורך כל הפרק';
     const DOC = `כותרת 1 - חלק ראשון\nכותרת 4 - ${LONG_H4}\nפסקה ראשונה למילוי העמוד בתוכן שוטף. עוד מילים למילוי הטור בשורות תקינות לחלוטין וללא בעיות כלשהן בעימוד.\n`;
-    const r = typeset(DOC, legacySettings(), { noRecommendations: true });
+    const r = legacyTypeset(DOC, legacySettings(), { noRecommendations: true });
     assertEq(r.legacyProfile, true, 'legacy profile active');
     const heads = [];
     for (const pg of r.pages) for (const col of (pg.columns || [])) for (const ln of col) {
@@ -88,7 +89,7 @@ describe('s24-fullmath-fixes', () => {
   it('h5 ארוך — אותו טיפול (גודל 11.5pt)', () => {
     const LONG_H5 = 'משמעויות הקיימות רק ביחס למעשה שהוא כהמשך של כל הסיפור ההלכתי המלא והשלם';
     const DOC = `כותרת 1 - חלק\nכותרת 5 - ${LONG_H5}\nפסקה למילוי. עוד מילים למילוי הטור בשורות תקינות לחלוטין וללא בעיות כלשהן בעימוד הספר.\n`;
-    const r = typeset(DOC, legacySettings(), { noRecommendations: true });
+    const r = legacyTypeset(DOC, legacySettings(), { noRecommendations: true });
     const heads = [];
     for (const pg of r.pages) for (const col of (pg.columns || [])) for (const ln of col) {
       if (ln.kind === 'heading' && ln.level === 5) heads.push(ln);
@@ -102,7 +103,7 @@ describe('s24-fullmath-fixes', () => {
   it('h3-span ארוך מרוחב הפס — נעטף לפסים נפרדים, כל שורה ברוחב הפס', () => {
     const LONG_SPAN = 'וזו כותרת רוחבית ארוכה במיוחד שחייבת להישבר לשתי שורות ברוחב הפס של העמוד כולו כי היא ארוכה ממנו';
     const DOC = `כותרת 1 - חלק\nכותרת 3 - ${LONG_SPAN}\nפסקה ראשונה אחרי הכותרת הרוחבית עם עוד תוכן שוטף למילוי הבלוק בשתי הטורים כראוי ובסדר מלא.\n`;
-    const r = typeset(DOC, legacySettings(), { noRecommendations: true });
+    const r = legacyTypeset(DOC, legacySettings(), { noRecommendations: true });
     const spans = [];
     for (const pg of r.pages) for (const b of (pg.bands || [])) if (b.kind === 'h3-title') spans.push(b);
     assert(spans.length >= 2, `long h3 span must wrap to ≥2 bands (got ${spans.length})`);
@@ -117,7 +118,7 @@ describe('s24-fullmath-fixes', () => {
   it('h2-title ארוך מרוחב הפס — נעטף; הראשונה במיקום המכויל', () => {
     const LONG_H2 = 'בענין הזכרת שבת וראש חודש בברכת המזון של סעודת מלאכת ערב שבת קודש ובפרט בפרטי דינים אלו';
     const DOC = `כותרת 1 - חלק ראשון\nכותרת 2 - ${LONG_H2}\nפסקה ראשונה של הסימן עם תוכן שוטף למילוי שני הטורים בעמוד פתיחת הסימן ובעמודים הבאים אחריו.\n`;
-    const r = typeset(DOC, legacySettings(), { noRecommendations: true });
+    const r = legacyTypeset(DOC, legacySettings(), { noRecommendations: true });
     const h2pg = r.pages.find(p => (p.bands || []).some(b => b.kind === 'h2-title'));
     assert(h2pg, 'h2 sign page exists');
     const titles = h2pg.bands.filter(b => b.kind === 'h2-title');
@@ -142,7 +143,7 @@ describe('s24-fullmath-fixes', () => {
   it('רינדור: קו פס מקבל text-align-last:auto (inline) — מרוכז גם כשהכלל הכללי מוזרק', () => {
     const DOC = `כותרת 1 - חלק ראשון\nכותרת 3 - כותרת רוחבית\nפסקה ראשונה למילוי העמוד בתוכן שוטף. עוד מילים למילוי הטור בשורות תקינות לחלוטין וללא שום בעיות בעימוד של הספר הזה.\n`;
     const settings = legacySettings();
-    const r = typeset(DOC, settings, { noRecommendations: true });
+    const r = legacyTypeset(DOC, settings, { noRecommendations: true });
     const pg = r.pages.find(p => (p.bands || []).length);
     assert(pg, 'page with bands exists');
     const doc = makeDoc();
@@ -159,7 +160,7 @@ describe('s24-fullmath-fixes', () => {
 
   it('המודל מייצא parenStarts/parenEnds מיושרים למילים — מקור יחיד לרווח 10pt', () => {
     const DOC = `כותרת 1 - חלק\nפסקת מבחן ראשונה עם ביטוי בסוגריים (וזו הערה ארוכה בסוגריים שצריכה להימדד בגודל המוקטן עם רווחים נכונים בין כל המילים שלה) ואז המשך הפסקה בגודל רגיל עוד ועוד מילים למילוי שורות הטור והעמוד כולו בתוכן שוטף.\n`;
-    const r = typeset(DOC, legacySettings(), { noRecommendations: true });
+    const r = legacyTypeset(DOC, legacySettings(), { noRecommendations: true });
     let sawPair = false;
     for (const pg of r.pages) for (const col of (pg.columns || [])) for (const ln of col) {
       if (ln.kind !== 'paragraph' || !Array.isArray(ln.parenFlags)) continue;
@@ -178,7 +179,7 @@ describe('s24-fullmath-fixes', () => {
   it('רינדור: הרווח בין שתי מילים בתוך סוגריים ב-span של 10pt (13.33px)', () => {
     const DOC = `כותרת 1 - חלק\nפסקת מבחן ראשונה עם ביטוי בסוגריים (וזו הערה ארוכה בסוגריים שצריכה להימדד בגודל המוקטן עם רווחים נכונים בין כל המילים שלה ועוד קצת) ואז המשך הפסקה בגודל רגיל עוד ועוד מילים למילוי שורות הטור והעמוד כולו בתוכן שוטף לחלוטין כאן.\n`;
     const settings = legacySettings();
-    const r = typeset(DOC, settings, { noRecommendations: true });
+    const r = legacyTypeset(DOC, settings, { noRecommendations: true });
     let found = false;
     for (const pg of r.pages) {
       const doc = makeDoc();
@@ -192,7 +193,7 @@ describe('s24-fullmath-fixes', () => {
   it('מילה של RLM בלבד — מודבקת לשכנה בלי רווח פנטום בכל הרינדור', () => {
     const DOC = `כותרת 1 - חלק\nפסקה עם סיומת מיוחדת בסוף המשפט האחרון כאן. \u200f\nעוד פסקה קצרה למילוי. עוד תוכן שוטף לגמרי כאן בשביל הבדיקה הזאת בדיוק ולחלוטין.\n`;
     const settings = legacySettings();
-    const r = typeset(DOC, settings, { noRecommendations: true });
+    const r = legacyTypeset(DOC, settings, { noRecommendations: true });
     let sawRlmLine = false;
     for (const pg of r.pages) {
       const doc = makeDoc();
@@ -217,7 +218,7 @@ describe('s24-fullmath-fixes', () => {
   const FN_CAP_PX = Math.floor((GEO.FLOW_H - 38.5 - 12 * (96 / 72) * 1.34) / GEO.FN_PITCH) * GEO.FN_PITCH;
 
   it('תקרת קיבולת העמוד: הערה ארוכה ממלאת את העמוד עד תומו (לא 220px)', () => {
-    const r = typeset(FN_DOC, legacySettings(), { noRecommendations: true });
+    const r = legacyTypeset(FN_DOC, legacySettings(), { noRecommendations: true });
     assert(r.pages.some(p => (p.footnotes || []).length), 'footnotes exist');
     let maxH = 0;
     for (const pg of r.pages) {
@@ -231,7 +232,7 @@ describe('s24-fullmath-fixes', () => {
   });
 
   it('פיצול: ההמשך בעמוד הבא פותח ב-(המשך) בלי אות סימון', () => {
-    const r = typeset(FN_DOC, legacySettings(), { noRecommendations: true });
+    const r = legacyTypeset(FN_DOC, legacySettings(), { noRecommendations: true });
     // זרימה רציפה: מזהים המשך לפי טוקן '(המשך)' — ומוודאים שאין לפניו סמן
     // (דיווח משתמש: "להסיר את אות הסימון מהערה שהיא המשך").
     let contPages = 0;
@@ -264,7 +265,7 @@ describe('s24-fullmath-fixes', () => {
   });
 
   it('אין חפיפת גוף/הערות: תחתית הגוף מעל ראש מרזב ההערות בכל עמוד', () => {
-    const r = typeset(FN_DOC, legacySettings(), { noRecommendations: true });
+    const r = legacyTypeset(FN_DOC, legacySettings(), { noRecommendations: true });
     for (const pg of r.pages) {
       if (!(pg.footnotes || []).length) continue;
       const placedH = pg.footnotes.reduce((a, f) => a + f.lines.length * GEO.FN_PITCH, 0);
@@ -276,7 +277,7 @@ describe('s24-fullmath-fixes', () => {
   });
 
   it('שימור תוכן: שרשור כל חלקי ההערה (עם ההמשכים) = הטקסט המקורי', () => {
-    const r = typeset(FN_DOC, legacySettings(), { noRecommendations: true });
+    const r = legacyTypeset(FN_DOC, legacySettings(), { noRecommendations: true });
     // **S4.26 (זרימה רציפה):** משחזרים פריטי הערה מהטוקנים — מקטע שפותח
     // ב-'(המשך)' משורשר לקודמו; מקטע עם סמן פותח הערה חדשה.
     const parts = [];

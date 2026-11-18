@@ -24,6 +24,8 @@ const { describe, it, assert, assertEq, report } = require('../harness');
 const { importImudSettings } = require('../../src/engine/core/legacy-settings-map');
 const { getSettingDefs } = require('../../src/engine/core/settings-registry');
 const { typeset } = require('../../src/engine/core/pipeline');
+// **9c.4:** הפורט הנאמן נקרא ישירות — אין עוד dispatch ב-typeset (מנוע יחיד).
+const { legacyTypeset } = require('../../src/engine/layout/legacy-imud-flow');
 
 const FX = path.join(__dirname, '..', 'fixtures');
 const ASSETS = path.join(__dirname, '..', '..', 'ui', 'assets', 'imud');
@@ -40,7 +42,11 @@ const VARIANTS = {
 };
 const MAIN = JSON.parse(fs.readFileSync(path.join(FX, 'imud_default_settings.json'), 'utf8'));
 const loadVariant = (f) => JSON.parse(fs.readFileSync(path.join(FX, f), 'utf8'));
-const importVariant = (f) => importImudSettings(loadVariant(f), RED, { availableFonts: AVAILABLE });
+const importVariant = (f) => {
+  const raw = loadVariant(f);
+  const imp = importImudSettings(raw, RED, { availableFonts: AVAILABLE });
+  return { ...imp, settings: { ...imp.settings, _imudRaw: raw } }; // 9c.4: ה-raw לקריאה הישירה של הפורט
+};
 
 describe('EXT-14/S4.2-4 — מיגרציה lossless של כל וריאנטי default_settings מהמקור', () => {
   it('כל הווריאנטים מוטמעים כ-fixtures מחייבים (בתים-בתים מהארכיון)', () => {
@@ -111,8 +117,8 @@ describe('EXT-14/S4.2-4 — מיגרציה lossless של כל וריאנטי def
   it('כל וריאנט מעמד ספר אמת ללא קריסה (פרופיל המורשת + שימור)', () => {
     for (const [name, f] of Object.entries(VARIANTS)) {
       const { settings } = importVariant(f);
-      const r = typeset(CORPUS, settings, { noRecommendations: true });
-      assert(r.legacyProfile === true, `${name}: פרופיל המורשת הופעל`);
+      const r = legacyTypeset(CORPUS, settings, { noRecommendations: true });
+      assert(r.legacyProfile === true, `${name}: הפורט הנאמן הופעל (קריאה ישירה)`);
       assert(r.contentPreserved === true, `${name}: שימור תוכן`);
       assert(r.pages.length > 0, `${name}: יש עמודים`);
       console.log(`  [variant:${name}] typeset: pages=${r.pages.length} hash=${r.layoutHash.slice(0, 12)}`);

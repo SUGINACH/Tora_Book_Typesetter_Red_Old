@@ -106,7 +106,9 @@ function balancePage(page, maxDelta) {
   // החוצה־טורים; תקציב ההערות עובר כ-extraLast של הטור האחרון (כמו ב-dp-planner,
   // P1-8) — בעבר חושב מ-contentBox.height גולמי והתעלם משניהם.
   const cap = colCapacityOf(page, { fnBudget: false });
-  const best = optimalSplit(page.columns, { cap, extraLast: page.fnReservedHeightPx || 0 });
+  // **9c.4 (מרזב חוצה-טורים):** הקיבולת נטו מהתקציב — לשני הטורים כאחד
+  // (המרזב רצועה ברוחב תיבת התוכן כולה, כמו ב-dp-planner).
+  const best = optimalSplit(page.columns, { cap: cap - (page.fnReservedHeightPx || 0) });
   if (!best || best.k === page.columns[0].length) {
     // אין פיצול חוקי-קיבולת, או שהנוכחי כבר האופטימלי — לא מדווח שינוי
     return { changed: false, before, after: before, rollback_reason: best ? 'at-optimum' : 'capacity' };
@@ -180,19 +182,28 @@ function alignColumnBottoms(pages, settings, eventLog, opts = {}) {
     // ושני המקדמים בגבולות המוגדרים [lo,hi]. רק אם גם זה אינו אפשרי
     // (פער גדול על טורים קצרים) — מתיחה חד-צדדית עד התקרה ושארית
     // מדווחת באירוע (clamped=true).
+    // **9c.4 (תקרת מרזב למתיחה):** המקדם נחתך גם בתקרת המרזב — גם כשהתקרה
+    // החד-צדדית (hi) מרשה, הטור אסור שיימתח מתחת לאזור ההערות. הוכח ב-very_long
+    // ‏p730: מתיחה ×1.049 דחפה 20px לתוך המרזב למרות fnCeil שחושב ולא נאכף.
+    const fnCeil = page.fnReservedHeightPx > 0 ? capAll - page.fnReservedHeightPx : capAll;
+    const ceilFactorS = partsS.lines > 0.5 ? Math.max(1, (fnCeil - partsS.gaps) / partsS.lines) : 1;
     const mid = (Math.max(h0, h1) + usedS) / 2;
     const partsT = columnStretchParts(tallCol);
-    const fShort = stretchTo(mid);
+    // **9c.4:** במצב המשותף הטור הארוך **מכווץ** בלבד — fTall > 1 אינו כיווץ
+    // אלא מתיחה של הטור הגבוה מעל המרזב ללא תקרה; תנאי נוסף להפעלת המצב.
+    const fShort = Math.min(stretchTo(mid), ceilFactorS);
     const fTall = partsT.lines > 0.5 ? (mid - partsT.gaps) / partsT.lines : 1;
     let factor, shared = false;
-    if (raw > hi + 1e-9 && fShort <= hi + 1e-9 && fTall >= lo - 1e-9) {
+    if (raw > hi + 1e-9 && fShort <= hi + 1e-9 && fTall >= lo - 1e-9 && fTall <= 1 + 1e-9) {
       factor = fShort; shared = true;
     } else {
-      factor = Math.min(hi, raw);
+      factor = Math.min(hi, raw, ceilFactorS);
       if (!(factor > 1 + 1e-4)) continue;
     }
-    for (const ln of shortCol) ln.aqStretch = factor;
-    if (shared) for (const ln of tallCol) ln.aqStretch = fTall;
+    // **9c.4 (הרכבה, לא דריסה):** המקדם חושב מהמצב הנוכחי (hh כולל aqStretch
+    // קיים) — החלתו כדריסה הייתה מבטלת כיווץ/מתיחה קודמים ומפרת את היעד.
+    for (const ln of shortCol) ln.aqStretch = (ln.aqStretch || 1) * factor;
+    if (shared) for (const ln of tallCol) ln.aqStretch = (ln.aqStretch || 1) * fTall;
     aligned++;
     // **FX-6:** דיווח מדויק — הגובה בפועל אחרי מתיחה = Σgap + Σ(heightPx×factor)
     const afterShort = partsS.gaps + partsS.lines * factor;
@@ -278,7 +289,10 @@ function autoQualityPass(pages, settings, eventLog) {
           if (settings['aq-shared-load']) {
             if (stage !== 'word-spacing') continue;
           } else if (factor >= hi && stage !== 'word-spacing') continue;
-          for (const ln of lines) ln.aqStretch = factor;
+          // **9c.4 (הרכבה, לא דריסה):** rawFactor חושב מהמצב הנוכחי (parts
+          // כוללים aqStretch קיים) — דריסה הייתה מבטלת כיווץ קודם וגורמת
+          // חריגה מעל היעד (הוכח ב-very_long: 863 מול תקרה 843).
+          for (const ln of lines) ln.aqStretch = (ln.aqStretch || 1) * factor;
           applied++;
           eventLog.emit('justify', `aq-${stage}`, { page: page.index, col: c, factor: Number(factor.toFixed(4)) }, page.index);
           break;
@@ -292,7 +306,7 @@ function autoQualityPass(pages, settings, eventLog) {
           const [lo, hi] = stageBounds(settings, stage);
           const factor = Math.max(lo, Math.min(hi, rawFactor));
           if (Math.abs(factor - 1) < 1e-4) continue;
-          for (const ln of lines) ln.aqStretch = factor;
+          for (const ln of lines) ln.aqStretch = (ln.aqStretch || 1) * factor;
           applied++;
           eventLog.emit('justify', `aq-${stage}-compress`, { page: page.index, col: c, factor: Number(factor.toFixed(4)) }, page.index);
           break;

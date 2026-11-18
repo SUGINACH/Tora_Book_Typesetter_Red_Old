@@ -54,10 +54,22 @@ function folioGeometry(page, settings, folioMeasure) {
   };
 }
 
-/** ראש אזור הכותרת העליונה במרחב העמוד (מקור: המקרן ההיסטורי — contentBox.top − 18). */
+/**
+ * ראש אזור הכותרת העליונה במרחב העמוד (מקור: המקרן ההיסטורי — contentBox.top − 18).
+ *
+ * **9c.4 (תיקון רגרסיית HEADER_POSITION בעמודי פתיחת-סימן):** ב-sign-open תיבת
+ * התוכן מורדת בכוונה (h2TopOffset — הכותרת המעוטרת של הפרק יושבת נמוך), אבל
+ * הכותרת העליונה הרצה נשארת בראש העמוד — כמו במקרן המורשת, שמיקם אותה
+ * בתיבה קבועה (y=52, בסיס 71.9) לכל סוגי העמודים. בלי הפחתת ההורדה הכותרת
+ * "יורדת עם התוכן" ונחתמת בגוף העמוד (257px) — הפרת HEADER_POSITION
+ * שנתפסה ב-audit-in-page (סף קבוע 107.2) והוסתרה ב-full-math-audit עקב
+ * ריכוך הסף שנעשה באותו PR. תיקון שורש במקור היחיד: DOM ו-PDF מוקרנים
+ * מכאן גם יחד.
+ */
 function headerGeometry(page) {
   const tpl = page.template;
-  return { y: Math.max(0, tpl.contentBox.top - 18) };
+  const drop = (tpl && tpl.h2TopOffset) || 0; // הורדת תוכן מכוונת בפתיחת-סימן — לא של הכותרת
+  return { y: Math.max(0, tpl.contentBox.top - drop - 18) };
 }
 
 module.exports = {

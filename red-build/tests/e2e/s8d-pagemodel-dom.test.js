@@ -401,17 +401,17 @@ describe('S8D-5 פרוסה 3 — פרופילים בתצוגה: unified מהמו
     assertEq(errEl.length, 1, 'הודעת השגיאה גלויה בקנבס');
   });
 
-  it('legacy — הרנדרר הישן ממשיך לעבוד (תקופת המעבר; בלי מודל ובלי שינוי)', () => {
+  it('9c.4 (cutover): אין עוד רינדור מורשת בתצוגה — בלי מודל = שגיאה מפורשת; renderPage הישן אינו נקרא מה-UI', () => {
     const { r, S } = buildRich();
     const { tab } = bootPreview();
-    tab.setResult(r, S, { pageModel: null, profile: 'legacy' });
-    const pages = collectByClass(tab.root, 'page');
-    assertEq(pages.length, r.pages.length, 'כל עמודי התוצאה ברנדרר הישן');
-    assertEq(collectByClass(tab.root, 'pmr-page').length, 0, 'המקרין החדש אינו מעורב');
-    // renderPage עדיין עובד ישירות על עמודי התוכנית
+    tab.setResult(r, S, { pageModel: null });
+    assertEq(collectByClass(tab.root, 'page').length, 0, 'אף עמוד לא רונדר בלי מודל');
+    assertEq(collectByClass(tab.root, 'pmr-page').length, 0, 'המקרין אינו מעורב בלי מודל');
+    assertEq(collectByClass(tab.root, 'preview-profile-error').length, 1, 'שגיאת פרופיל מפורשת');
+    // renderPage הישן עדיין עובד ישירות (פונקציית פורט לבדיקות) — אך אינו נתיב התצוגה
     const doc2 = makeDoc();
     const el = renderPage(r.pages[r.pages.length - 1], S, doc2);
-    assert(String(el.className).includes('page'), 'renderPage הישן תקין');
+    assert(String(el.className).includes('page'), 'renderPage הישן תקין כפונקציית פורט ישירה');
   });
 
   it('וירטואליזציה במסמך ארוך: placeholders במידות geometry של המודל + חלון חי (§2.6-7)', () => {

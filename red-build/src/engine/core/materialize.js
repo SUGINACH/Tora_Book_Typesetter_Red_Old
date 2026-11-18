@@ -257,7 +257,14 @@ function projectPage(page, settings, apiOrOpts) {
         // פער הבלוקים מהחותמת שנקבעה בתכנון (gapBeforePx) — בדיוק כמו
         // margin-top ב-DOM. מקור יחיד: אין כאן חישוב פער עצמאי ואין כפילה.
         y += ln.gapBeforePx || 0;
-        out.lines.push(projectLine(ln, col.x, y, col.w, settings, measure, lastAlignOf(ln, settings), production));
+        // **9c.4 (כותרות עטופות — יישור עיצוב, לא כלל-גוף):** עד כאן קיבלו כל
+        // שורות הטור את lastAlignOf (יישור-מלא לכל שורה שאינה אחרונה) — גם
+        // שורות כותרת. שורה ראשונה של כותרת עטופה נמתחה מילה-מילה לכל רוחב
+        // הטור (פערים של ~50px) בניגוד לעיצוב המקור (כל שורות הכותרת
+        // ממורכזות; הוכח באודיט — 26 פגיעות HEAD_JUSTIFIED). כותרת בטור ⇒
+        // מרכוז לכל שורותיה; פס חוצה-טורים נותר 'right' (לעיל).
+        const lineAlignOf = (ln2) => (ln2.kind === 'heading' ? 'center' : lastAlignOf(ln2, settings));
+        out.lines.push(projectLine(ln, col.x, y, col.w, settings, measure, lineAlignOf(ln), production));
         // **EXT-20:** מקדם ה-AQ מיושם על גובה השורה (אנכי) — השורות שאחריה
         // זזות בהתאם; התיבה והבסיס מחושבים מהגובה הנמתח (מודל תיבת שורה).
         // **FX-6:** הפער קבוע — אינו מתמתח עם השורות.
@@ -979,6 +986,23 @@ function projectLine(ln, colX, y, colW, settings, measure, align, production) {
   for (let i = 0; i < words.length; i++) {
     const eff = effSizeOf(i);
     const frags = (lm && lm.wordFrags && lm.wordFrags[i]) || null;
+    // **9c.4 (פליטה פר-פרגמנט כללית):** מילה עם מספר פרגמנטים שכולם
+    // מופרדים ברווחים ('מילה א״ג', 'א״ט א״י', 'מילה א״ג א״ד') — כל פרגמנט
+    // נפלט כמילה בפני עצמה: טקסט בגודלו, סמן בגודל הרישום + דגל mk.
+    // בעבר טופל רק הצורה [טקסט, סמן] — ומילה של שני סמנים רצופים הקריעה
+    // את הראשון כטקסט-גוף (הערה יתומה באודיט; א״ט ב-very_long).
+    if (frags && frags.length >= 2
+      && frags.every(f => f && f.advance > 0)
+      && String(words[i]).split(' ').length === frags.length) {
+      const pieces = String(words[i]).split(' ');
+      for (let k = 0; k < frags.length; k++) {
+        cursor -= frags[k].advance;
+        if (frags[k].kind === 'noteMarker') emitWord(pieces[k], frags[k].advance, fnSizePt, { mk: true });
+        else emitWord(pieces[k], frags[k].advance, eff, null);
+      }
+      cursor -= gapW;
+      continue;
+    }
     const mkFrag = frags && frags.length >= 2 ? frags[frags.length - 1] : null;
     if (mkFrag && mkFrag.kind === 'noteMarker' && mkFrag.advance > 0 && widths[i] > mkFrag.advance) {
       // פיצול: [טקסט ..., סמן] — הסמן החלק האחרון (מודבק אחרי המילה)
@@ -992,6 +1016,13 @@ function projectLine(ln, colX, y, colW, settings, measure, align, production) {
       emitWord(txtTxt, txtW, eff, null);
       cursor -= mkW;
       emitWord(mkTxt, mkW, fnSizePt, { mk: true });
+    } else if (frags && frags.length === 1 && frags[0].kind === 'noteMarker' && frags[0].advance > 0) {
+      // **9c.4 (סמן עצמאי — הערות רצופות):** 'מילה[נ1][נ2][נ3]' — הסמן הראשון
+      // נדבק למילה (הענף לעיל) אך הבאים אחריו הם מילים עצמאיות שכולן פתיחת-
+      // הערה (frag בודד מסוג noteMarker). בלי דגל mk האודיט רואה אותן כטקסט
+      // גוף ומדווח 'הערה יתומה' (א״ה/א״ט ב-very_long).
+      cursor -= widths[i];
+      emitWord(words[i], widths[i], fnSizePt, { mk: true });
     } else {
       cursor -= widths[i];
       // **S68:** סמן גודל פר-מילה רק כשהוא שונה מגודל השורה — שורות רגילות

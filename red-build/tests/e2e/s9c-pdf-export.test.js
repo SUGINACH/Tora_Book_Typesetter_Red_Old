@@ -209,17 +209,12 @@ describe('s9c-pdf-export — ייצוא PDF מה-PageModel בלבד (9c.1)', () 
     }
   });
 
-  it('מקור ה-Worker: הנתיב המאוחד מכיל את השגיאה המפורשת; exportPdf בנתיב המורשת בלבד', () => {
+  it('מקור ה-Worker: ייצוא PDF מהמודל בלבד — אין ענף מורשת ואין dispatch (9c.4)', () => {
     const src = fs.readFileSync(path.join(RB, 'src/ui/engine-worker-main.js'), 'utf8');
-    assert(src.includes('model-required'), 'שגיאת model-required קיימת ב-Worker');
-    const legacyMarker = src.indexOf('9c.4-marker');
-    const exportPdfCall = src.indexOf('exportPdf(msg.text');
-    const unifiedCall = src.indexOf('exportPdfFromModel(_lastTypesetResult.pageModel');
-    assert(legacyMarker >= 0, 'סמן נתיב המורשת (9c.4) קיים');
-    assert(exportPdfCall > legacyMarker, 'קריאת exportPdf בנתיב המורשת בלבד (אחרי הסמן)');
-    assert(unifiedCall >= 0 && unifiedCall < legacyMarker, 'הנתיב המאוחד מייצא מהמודל לפני נתיב המורשת');
-    // הפרדת הפרופילים לפי legacyProfile בלבד — לא לפי קיום המודל (אין נפילה שקטה)
-    assert(src.includes('isLegacyProfile'), 'הפיצול לפי פרופיל מפורש');
+    assert(src.includes('exportPdfFromModel(_lastTypesetResult.pageModel'), 'הנתיב מהמודל');
+    assert(src.includes('model-required'), 'חסר-מודל = כשל מפורש');
+    assert(!/exportPdf\(msg\.text/.test(src), 'אין קריאת exportPdf הישן ב-Worker');
+    assert(!src.includes('isLegacyProfile'), 'אין פיצול לפי פרופיל (מנוע יחיד)');
   });
 });
 

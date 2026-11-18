@@ -29,6 +29,8 @@ const { describe, it, assert, assertEq, report } = require('../harness');
 const fm = require('../../src/engine/typography/font-metrics');
 const { MeasureAPI, registerFont, unregisterFont, clearRegisteredFonts, resolveMeasureImpl } = require('../../src/engine/typography/measure-api');
 const { typeset } = require('../../src/engine/core/pipeline');
+// **9c.4:** הפורט הנאמן נקרא ישירות — אין עוד dispatch ב-typeset (מנוע יחיד).
+const { legacyTypeset } = require('../../src/engine/layout/legacy-imud-flow');
 const { getDefaultSettings, getSettingDefs } = require('../../src/engine/core/settings-registry');
 const { importImudSettings } = require('../../src/engine/core/legacy-settings-map');
 const { exportPdf } = require('../../src/engine/output/export-api');
@@ -258,13 +260,14 @@ describe('EXT-9 ד — עימוד ספר-אמת שלם במדידת גופן ת�
     // נרשם (imud-library registerFont), ואז העימוד מודד ב-hmtx אמיתי.
     const available = new Set(CATALOG.map(e => e.family));
     const { settings } = importImudSettings(LEGACY_DEFAULTS, new Set(getSettingDefs().map(r => r.id)), { availableFonts: available });
+    settings._imudRaw = LEGACY_DEFAULTS; // 9c.4: לקריאה הישירה של הפורט
     const reg = registerFont(settings['body-font'], bytesOf(fileOf(settings['body-font'])));
     assert(reg.ok, 'גופן הגוף נרשם: ' + reg.error);
-    const r1 = typeset(REAL_BOOK, settings, { noRecommendations: true });
-    assert(r1.legacyProfile === true, 'פרופיל המורשת של המקור הופעל');
+    const r1 = legacyTypeset(REAL_BOOK, settings, { noRecommendations: true });
+    assert(r1.legacyProfile === true, 'הפורט הנאמן של המקור (קריאה ישירה)');
     assert(r1.contentPreserved === true, 'שימור תוכן במדידת גופן אמיתי');
     assert(r1.pages.length > 50, `ספר אמת שלם (קיבלנו ${r1.pages.length} עמודים)`);
-    const r2 = typeset(REAL_BOOK, settings, { noRecommendations: true });
+    const r2 = legacyTypeset(REAL_BOOK, settings, { noRecommendations: true });
     assertEq(r1.layoutHash, r2.layoutHash, 'דטרמיניזם גם במדידת hmtx אמיתית');
     console.log(`  [real-fonts] ספר-אמת בגופן Frank Ruhl Libre: pages=${r1.pages.length} hash=${r1.layoutHash.slice(0, 12)}`);
   });

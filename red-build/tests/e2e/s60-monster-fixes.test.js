@@ -18,7 +18,8 @@ const IMUD_RAW = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'ui
 function legacySettings(overrides) {
   const reg = new Set(getSettingDefs().map(r => r.id));
   const { settings } = importImudSettings(IMUD_RAW, reg, {});
-  return { ...settings, ...(overrides || {}) };
+  // **9c.4:** ה-raw מוצמד לקריאה הישירה של הפורט (legacyTypeset) — אין עוד dispatch.
+  return { ...settings, _imudRaw: IMUD_RAW, ...(overrides || {}) };
 }
 const DEJAVU = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
 const HAS_DEJAVU = fs.existsSync(DEJAVU);
@@ -28,8 +29,8 @@ describe('S6.0 — הבדיקה המפלצתית: רגרסיות תיקוני ש
   it('F1 — מגן בליעת-חלון: מילה בודדת רחבה מהטור בפסקת-יחידה אינה נבלעת (אובדן תוכן מלא)', () => {
     const LONG = 'מ'.repeat(30); // 336px > COL_W 269.41 ⇒ estLines=2 ⇒ היה נבלע כחלון
     const doc = 'כותרת 2 - פרק\n\n' + LONG + '\n\nפסקה רגילה אחרי המילה הארוכה.';
-    const r = typeset(doc, legacySettings(), { noRecommendations: true });
-    assertEq(r.legacyProfile, true, 'פרופיל מורשת פעיל');
+    const r = legacyTypeset(doc, legacySettings(), { noRecommendations: true });
+    assertEq(r.legacyProfile, true, 'הפורט הנאמן (קריאה ישירה)');
     assert(r.contentPreserved === true, 'חשבונאות שימור-תוכן — המילה הארוכה קיימת בפלט (לא נבלעה): ' + JSON.stringify((r.report && r.report.missing) || []));
     const allWords = [];
     for (const p of r.pages) for (const c of p.columns || []) for (const ln of c) allWords.push(...(ln.words || []));
@@ -39,13 +40,13 @@ describe('S6.0 — הבדיקה המפלצתית: רגרסיות תיקוני ש
   it('F1-ב — drop-word-count=2 עם פסקה בת שתי מילים רחבות: לא נבלעת', () => {
     const w = 'א'.repeat(28);
     const doc = 'כותרת 2 - פרק\n\n' + w + ' ' + w + '\n';
-    const r = typeset(doc, legacySettings({ 'first-word-count': 2 }), { noRecommendations: true });
+    const r = legacyTypeset(doc, legacySettings({ 'first-word-count': 2 }), { noRecommendations: true });
     assert(r.contentPreserved === true, 'שתי מילים = חלון מלא; הפסקה לא נעלמת');
   });
 
   it('F3 — זהות מופע: שתי הערות [שם] באותו פרק ⇒ שתי רשומות נפרדות (לא מיזוג לאחת)', () => {
     const doc = 'כותרת 2 - פרק\n\nפסקה ראשונה עם הערה [שם] בתוכה.\n\nפסקה שניה עם הערה [שם] נוספת.\n';
-    const r = typeset(doc, legacySettings(), { noRecommendations: true });
+    const r = legacyTypeset(doc, legacySettings(), { noRecommendations: true });
     assert(r.contentPreserved === true, 'שתי ההערות קיימות בפלט — לא אוחדו (בעבר: missing "שם (1/2)")');
     let noteListings = 0;
     const markersSeen = new Set();
@@ -83,7 +84,7 @@ describe('S6.0 — הבדיקה המפלצתית: רגרסיות תיקוני ש
     const bigNote = Array.from({ length: 700 }, (_, i) => 'הערה' + i).join(' ');
     const paras = Array.from({ length: 40 }, (_, i) => 'פסקה ' + i + ' עם טקסט מסוים למילוי עמודים.').join('\n\n');
     const doc = 'כותרת 2 - פרק א\n\n' + paras + '\n\nפסקה אחרונה עם הערה [' + bigNote + ']\n\nכותרת 2 - פרק ב\n\nפתיחת הפרק השני עם תוכן כלשהו למילוי.\n';
-    const r = typeset(doc, legacySettings(), { noRecommendations: true });
+    const r = legacyTypeset(doc, legacySettings(), { noRecommendations: true });
     assert(r.contentPreserved === true, 'שימור תוכן גם עם carry ענק (המשכים זורמים בעמודים הבאים)');
     let overlaps = 0;
     for (const p of r.pages) {
@@ -101,7 +102,7 @@ describe('S6.0 — הבדיקה המפלצתית: רגרסיות תיקוני ש
   it('F5 — עטיפת שורות TOC: כותרת בת 180 תווים נעטפת ואינה גולשת מהעמוד', () => {
     const long = 'כותרת ארוכה מאוד ' + 'ל'.repeat(160);
     const doc = 'כותרת 1 - חלק\n\nכותרת 2 - ' + long + '\n\nתוכן קצר.';
-    const r = typeset(doc, legacySettings({ 'enable-detailed-toc': true, 'toc-detail-enabled': true, 'detailed-toc-enabled': true }), { noRecommendations: true });
+    const r = legacyTypeset(doc, legacySettings({ 'enable-detailed-toc': true, 'toc-detail-enabled': true, 'detailed-toc-enabled': true }), { noRecommendations: true });
     const tocRows = [];
     for (const p of r.pages) if (p.toc) for (const row of p.toc.rows || []) tocRows.push(row);
     assert(tocRows.length > 0, 'נבנו שורות TOC');
@@ -113,7 +114,7 @@ describe('S6.0 — הבדיקה המפלצתית: רגרסיות תיקוני ש
   it('F6 — נוסחת מתיחת ה-TOC: naturalGap מנכה את גובה השורה האחרונה (הענף אינו מת עוד)', () => {
     // בדיקת יחידה על הנוסחה: עמוד דליל (5 שורות בנפח של 40) — המתיחה ממלאת עד התחתית
     const doc = 'כותרת 1 - חלק\n\n' + Array.from({ length: 3 }, (_, i) => 'כותרת 2 - פרק ' + i).join('\n\n') + '\n\nתוכן.';
-    const r = typeset(doc, legacySettings(), { noRecommendations: true });
+    const r = legacyTypeset(doc, legacySettings(), { noRecommendations: true });
     let stretched = 0;
     for (const p of r.pages) {
       if (!p.toc || !p.toc.rows || p.toc.rows.length < 2) continue;
@@ -130,9 +131,9 @@ describe('S6.0 — הבדיקה המפלצתית: רגרסיות תיקוני ש
 
   it('F10/F12/F16 — חשבונאות: [ לא-סגור, קידומת סימן ב-h2, ושער-אחורי כבוי — בלי דגלי אובדן שקריים', () => {
     const doc = 'כותרת 2 - סימן א - פרק\n\nפסקה עם סוגר פתוח [הערה בלי סגירה.\n';
-    const rOn = typeset(doc, legacySettings(), { noRecommendations: true });
+    const rOn = legacyTypeset(doc, legacySettings(), { noRecommendations: true });
     assert(rOn.contentPreserved === true, 'תוחם לא-מאוזן + קידומת סימן — החשבונאות סימטרית');
-    const rOff = typeset('כותרת 2 - פ\n\nתוכן.\n', legacySettings({ 'show-back-shaar': false }), { noRecommendations: true });
+    const rOff = legacyTypeset('כותרת 2 - פ\n\nתוכן.\n', legacySettings({ 'show-back-shaar': false }), { noRecommendations: true });
     assert(rOff.contentPreserved === true, 'שער-אחורי כבוי — שדות השער אינם נספרים כחסרים');
   });
 });
@@ -142,7 +143,7 @@ describe('S6.0 — רגרסיות ייצוא/PDF (תצוגה=ייצוא)', () =>
   it('R5-C1 — סדר מילים בהערות-שוליים בייצוא: המילה הראשונה בלוגי היא הימנית (RTL)', () => {
     if (!HAS_DEJAVU) { console.error('  [מדלג — DejaVu]'); return; }
     const doc = 'כותרת 2 - פרק\n\nפסקה עם הערה [ראשונה שניה שלישית] בגוף.\n';
-    const exp = exportPdf(doc, legacySettings(), fs.readFileSync(DEJAVU), 'DejaVu Sans');
+    const exp = exportPdf(doc, legacySettings(), fs.readFileSync(DEJAVU), 'DejaVu Sans', { engine: 'legacy' });
     assert(exp.ok, 'ייצוא: ' + exp.error);
     let checked = 0;
     for (const pg of exp.projected.pages) {
@@ -164,7 +165,7 @@ describe('S6.0 — רגרסיות ייצוא/PDF (תצוגה=ייצוא)', () =>
     registerFont(profile, fontBytes);
     const had = registeredFonts.has(profile);
     assert(had, 'רישום התצוגה קיים לפני הייצוא');
-    const exp = exportPdf('כותרת 2 - פ\n\nתוכן.\n', legacySettings({ 'body-font': profile }), fontBytes, profile);
+    const exp = exportPdf('כותרת 2 - פ\n\nתוכן.\n', legacySettings({ 'body-font': profile }), fontBytes, profile, { engine: 'legacy' });
     assert(exp.ok, 'ייצוא: ' + exp.error);
     assert(registeredFonts.has(profile), 'הרישום שוחזר אחרי הייצוא (בעבר נמחק ⇒ מדידה חיה ב-table)');
     unregisterFont(profile);
@@ -174,7 +175,7 @@ describe('S6.0 — רגרסיות ייצוא/PDF (תצוגה=ייצוא)', () =>
     if (!HAS_DEJAVU) { console.error('  [מדלג — DejaVu]'); return; }
     // הערת-שוליים במורשת נצבעת #404040; הגיליון וההערות באים אחריה באותו עמוד
     const doc = 'כותרת 2 - פרק\n\nפסקה עם הערת שוליים {{שוליים: הערה אפורה ארוכה למדי}} והערת גוף [הערת גוף] בפסקה.\n';
-    const exp = exportPdf(doc, legacySettings(), fs.readFileSync(DEJAVU), 'DejaVu Sans');
+    const exp = exportPdf(doc, legacySettings(), fs.readFileSync(DEJAVU), 'DejaVu Sans', { engine: 'legacy' });
     assert(exp.ok, 'ייצוא: ' + exp.error);
     // חילוץ זרם התוכן של העמוד הראשון עם דיו אפור + טקסט נוסף אחריו
     const latin = exp.bytes.toString('latin1');
@@ -194,7 +195,7 @@ describe('S6.0 — רגרסיות ייצוא/PDF (תצוגה=ייצוא)', () =>
 
   it('R5-M6 — תיבות עמוד חוקיות: בליד 3מ״מ (ברירת מחדל) ⇒ MediaBox מכיל את ה-BleedBox', () => {
     if (!HAS_DEJAVU) { console.error('  [מדלג — DejaVu]'); return; }
-    const exp = exportPdf('כותרת 2 - פ\n\nתוכן.\n', legacySettings(), fs.readFileSync(DEJAVU), 'DejaVu Sans');
+    const exp = exportPdf('כותרת 2 - פ\n\nתוכן.\n', legacySettings(), fs.readFileSync(DEJAVU), 'DejaVu Sans', { engine: 'legacy' });
     assert(exp.ok);
     const boxes = [...exp.bytes.toString('latin1').matchAll(/\/MediaBox \[([^\]]+)\] \/TrimBox \[([^\]]+)\] \/BleedBox \[([^\]]+)\]/g)];
     assert(boxes.length > 0, 'נמצאו תיבות עמוד');
