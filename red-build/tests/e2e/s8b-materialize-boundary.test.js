@@ -113,7 +113,8 @@ describe('שלב 8 ביקורת (§3.1) — גבולות materialization', () =>
     // מלאה; 1,066 מילים עברו מהגוף לאזורי ההערות (D-30). הוכחות שימור:
     // contentPreserved=true; round-trip תו-לתו של very_long המלא; הקנוני
     // ללא שינוי (fdff19d8). הקודם: 008bbb68 (RLM/9b.3).
-    assert(r.layoutHash.startsWith('fa1f06e2'), `layoutHash very_long נשמר (${r.layoutHash.slice(0, 8)})`);
+    // **9c.4 (18.11, תיקון שורש מאומת באודיט החי): נעילה מחודשת fa1f06e2→2f8d492e (1216→1241 עמ').** מרזב ההערות הוא רצועה ברוחב תיבת התוכן כולה — אך התקציב נרשם בטור האחרון בלבד (F-17), וטור קודם שהתמלא לפני ההתחייבות המשיך מתחת למרזב. הוכח באודיט החי של very_long (מדידת גופן אמיתי): 26 עמודים עם טקסט-על-טקסט (עד 543px חדירה; עמ' 742 נבדק ויזואלית) מול 0 הפרות בפורט המורשת. תיקונים: (1) planningUsedHeight מטעין את התקציב על כל טור (התאמה למודל S6.0 R3-C2 של colCapacityOf); (2) נסיגה ב-reserveAtMarker ובנתיב הפיצול כשהעמוד כולו אינו מתאים; (3) תקרת מרזב למתיחת ה-AQ; (4) הרכבת aqStretch (דריסה ביטלה כיווץ קודם — שורש עקבי שנחשף בעמ' 730). הוכחות שימור מלאות: contentPreserved=true; 86,825=86,825 שורות (column 62,137 / margin 23,186 / structural 1,072 / spanning 430 — זהים); מילים — גוף 319,163=319,163, שוליים 25,069=25,069, הערות 16,048=16,048; 132=132 הערות בזהות מלאה (סדר סמנים/עוגנים — אוסף ממוין זהה); s5-corpus-comparison 3,636/3,636 בלוקים זהים, 0 בלתי-מסווגים; הקנוני ללא שינוי (fdff19d8 נשמר); המורשת ללא שינוי (legacy-28f52 נשמר). +25 עמודים = שורות שירדו מתחת למרזבים נפרצו לעמודים הבאים. דוח מלא: audits/S9C_FOOTNOTE_GUTTER_2026-11-18.md.
+    assert(r.layoutHash.startsWith('2f8d492e'), `layoutHash very_long נשמר (${r.layoutHash.slice(0, 8)})`);
     assertEq(r.pageModel.meta.materializeFallbacks, 0, 'אפס נפילות (בעבר: 852 שווא-נפילות רוחב-רווח)');
     const mfViol = r.pageModelValidation.violations.filter(v => v.code === 'materialize-fallback');
     assertEq(mfViol.length, 0, 'אפס violations');

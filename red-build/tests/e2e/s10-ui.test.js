@@ -984,7 +984,7 @@ describe('D-84 — רינדור מחלונות (virtualization) לספרים א�
     assert(result.pages.length > 60, `נדרש >60 עמודים להפעלת וירטואליזציה (קיבלנו ${result.pages.length})`);
     const doc = makeDoc();
     const pv = buildPreviewTab(doc, {});
-    pv.setResult(serializeTypesetResult(result), getDefaultSettings());
+    pv.setResult(serializeTypesetResult(result), getDefaultSettings(), { pageModel: result.pageModel });
     assertEq(pv.isVirtual(), true, 'מעל הסף ⇒ מצב וירטואלי');
     assertEq(pv.getPageCount(), result.pages.length, 'ספירת העמודים שלמה');
     const allPages = pv.root.querySelectorAll('.preview-page');
@@ -993,16 +993,16 @@ describe('D-84 — רינדור מחלונות (virtualization) לספרים א�
     assert(rendered > 0 && rendered <= 20, `חלון חי קטן (קיבלנו ${rendered})`);
     const phs = pv.root.querySelectorAll('.preview-page--placeholder');
     assertEq(phs.length, result.pages.length - rendered, 'placeholders = כולם פחות החלון החי');
-    // מבנה גיאומטרי: ל-placeholder יש רוחב/גובה מהתבנית (מקור יחיד)
-    const t0 = result.pages[0].template;
-    assert(phs.every(p => p.style && p.style.height === `${t0.height}px`), 'גובה placeholder = גובה תבנית');
+    // מבנה גיאומטרי: ל-placeholder יש רוחב/גובה מהמודל (מקור יחיד — 9c.3)
+    const g0 = result.pageModel.pages[0].geometry;
+    assert(phs.every(p => p.style && p.style.height === `${g0.height}px`), 'גובה placeholder = גובה המודל');
   });
 
   it('קפיצה לעמוד רחוק: נרנדר עצל לפני הגלילה; DOM נשאר קטן', () => {
     const result = typeset(REAL, getDefaultSettings());
     const doc = makeDoc();
     const pv = buildPreviewTab(doc, {});
-    pv.setResult(serializeTypesetResult(result), getDefaultSettings());
+    pv.setResult(serializeTypesetResult(result), getDefaultSettings(), { pageModel: result.pageModel });
     const target = result.pages.length - 5;
     pv.scrollToPage(target);
     assertEq(pv._lastScrollTarget(), target, 'יעד הגלילה נשמר');
@@ -1023,7 +1023,7 @@ describe('D-84 — רינדור מחלונות (virtualization) לספרים א�
     assert(result.pages.length <= 60, 'הקורפוס הקנוני קטן מהסף');
     const doc = makeDoc();
     const pv = buildPreviewTab(doc, {});
-    pv.setResult(serializeTypesetResult(result), getDefaultSettings());
+    pv.setResult(serializeTypesetResult(result), getDefaultSettings(), { pageModel: result.pageModel });
     assertEq(pv.isVirtual(), false, 'מתחת לסף ⇒ רינדור מלא');
     assertEq(pv.getRenderedCount(), result.pages.length, 'כל העמודים חיים');
     assertEq(pv.root.querySelectorAll('.preview-page--placeholder').length, 0, 'אין placeholders');

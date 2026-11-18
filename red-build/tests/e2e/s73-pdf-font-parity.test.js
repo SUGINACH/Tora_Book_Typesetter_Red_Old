@@ -22,9 +22,10 @@ const fs = require('fs');
 const path = require('path');
 const { describe, it, assert, assertEq, report } = require('../harness');
 
-const { typeset } = require('../../src/engine/core/pipeline');
 const { getDefaultSettings, getSettingDefs } = require('../../src/engine/core/settings-registry');
 const { importImudSettings } = require('../../src/engine/core/legacy-settings-map');
+// **9c.4:** הפורט הנאמן נקרא ישירות — אין עוד dispatch ב-typeset (מנוע יחיד).
+const { legacyTypeset } = require('../../src/engine/layout/legacy-imud-flow');
 const { exportPdf } = require('../../src/engine/output/export-api');
 const { projectLegacyDocument } = require('../../src/engine/output/legacy-projector');
 const { renderPage } = require('../../src/engine/output/dom-renderer');
@@ -45,6 +46,7 @@ function liveSetup() {
   clearRegisteredFonts();
   const available = new Set(CATALOG.map(e => e.family));
   const { settings } = importImudSettings(LEGACY_DEFAULTS, new Set(getSettingDefs().map(r => r.id)), { availableFonts: available });
+  settings._imudRaw = LEGACY_DEFAULTS; // 9c.4: לקריאה הישירה של הפורט
   const fams = new Set([
     settings['body-font'], settings['shaar-title-font'], settings['shaar-subtitle-font'],
     settings['shaar-desc-font'], settings['shaar-sections-font'], settings['shaar-author-font'],
@@ -59,8 +61,8 @@ function liveSetup() {
 describe('S73 א — תצוגה=ייצוא בגופני השער והכותרות (תיקון שורש)', () => {
   it('שורות השער מוקרנות ב-fontKey של המשפחה מההגדרות — לא בגוף הטקסט', () => {
     const settings = liveSetup();
-    const r = typeset(TEXT, settings, { noRecommendations: true });
-    assert(r.legacyProfile === true, 'פרופיל המורשת');
+    const r = legacyTypeset(TEXT, settings, { noRecommendations: true });
+    assert(r.legacyProfile === true, 'הפורט הנאמן (קריאה ישירה)');
     const proj = projectLegacyDocument(r, settings);
     const main = proj.pages[0];
     assert(main.lines.some(l => l.kind === 'gate'), 'שורות שער הוקרנו');
@@ -75,7 +77,7 @@ describe('S73 א — תצוגה=ייצוא בגופני השער והכותרו�
 
   it('ה-PDF מטמיע תתי-גופנים ייעודיים למשפחות ומצייר בהם — הכותרת אינה ב-/F1', () => {
     const settings = liveSetup();
-    const exp = exportPdf(TEXT, settings, bytesOf(settings['body-font']), settings['body-font']);
+    const exp = exportPdf(TEXT, settings, bytesOf(settings['body-font']), settings['body-font'], { engine: 'legacy' });
     assert(exp.ok, 'הייצוא הצליח: ' + (exp.error || ''));
     const raw = exp.bytes.toString('latin1');
     // המשפחות מההגדרות מוטמעות כגופנים נפרדים (BaseFont דינמי ToraEx*)
@@ -100,8 +102,8 @@ describe('S73 א — תצוגה=ייצוא בגופני השער והכותרו�
 
   it('דטרמיניזם: ייצוא כפול ⇒ בתים זהים גם עם הגופנים הדינמיים', () => {
     const settings = liveSetup();
-    const a = exportPdf(TEXT, settings, bytesOf(settings['body-font']), settings['body-font']);
-    const b = exportPdf(TEXT, settings, bytesOf(settings['body-font']), settings['body-font']);
+    const a = exportPdf(TEXT, settings, bytesOf(settings['body-font']), settings['body-font'], { engine: 'legacy' });
+    const b = exportPdf(TEXT, settings, bytesOf(settings['body-font']), settings['body-font'], { engine: 'legacy' });
     assert(a.ok && b.ok, 'שני הייצואים הצליחו');
     assertEq(a.bytes.length, b.bytes.length, 'אורך זהה');
     assert(a.bytes.equals(b.bytes), 'בתים זהים ביט-לביט');
@@ -112,7 +114,7 @@ describe('S73 א — תצוגה=ייצוא בגופני השער והכותרו�
 describe('S73 ב — קווים על טקסט השער הראשי (תיקון גיאומטרי)', () => {
   it('הכללים האופקיים של השער אינם חוצים את אזור הטקסט — מקטעי-שוליים בלבד', () => {
     const settings = liveSetup();
-    const r = typeset(TEXT, settings, { noRecommendations: true });
+    const r = legacyTypeset(TEXT, settings, { noRecommendations: true }); // 9c.4: פורט המורשת (קריאה ישירה)
     const main = r.pages.find(p => p.type === 'shaar-main');
     const hrs = (main.decorations || []).filter(d => d.kind === 'frame-h');
     assertEq(hrs.length, 4, 'ארבעה מקטעים (2 לכל קו)');
@@ -152,7 +154,7 @@ describe('S73 ג — צבע פר-גופן: ברירת מחדל שחורה ללא
 
   it('ברירת מחדל שחורה ⇒ אפס אופרטורי rg בפלט (בתים חסכוניים)', () => {
     const settings = liveSetup();
-    const exp = exportPdf(TEXT, settings, bytesOf(settings['body-font']), settings['body-font']);
+    const exp = exportPdf(TEXT, settings, bytesOf(settings['body-font']), settings['body-font'], { engine: 'legacy' });
     assert(exp.ok, 'ייצוא');
     const page1 = firstPageContent(exp.bytes.toString('latin1'));
     assert(!/^[01]? ?[01]? ?[01]? rg$/m.test(page1) || !/0\.0\d+ 0\.0\d+ 0\.0\d+ rg/.test(page1) || true, 'sanity');
@@ -168,7 +170,7 @@ describe('S73 ג — צבע פר-גופן: ברירת מחדל שחורה ללא
   it('צבע לא-שחור זורם: הגדרה ⇒ מילה מוקרנת ⇒ אופרטור rg בכותב', () => {
     const settings = liveSetup();
     settings['shaar-title-color'] = '#1010a0';
-    const r = typeset(TEXT, settings, { noRecommendations: true });
+    const r = legacyTypeset(TEXT, settings, { noRecommendations: true }); // 9c.4: פורט המורשת (קריאה ישירה)
     const proj = projectLegacyDocument(r, settings);
     const gateTitle = proj.pages[0].lines.find(l => l.kind === 'gate' && l.words.length && l.words[0].color);
     assert(gateTitle, 'למילות כותרת השער יש צבע מההגדרה');
@@ -201,7 +203,7 @@ describe('S73 ד — גופן/גודל/צבע למספר העמוד (בקשה מ
     settings['page-num-size-pt'] = 12;
     settings['page-num-font'] = 'David Libre';
     settings['page-num-color'] = '#303030';
-    const r = typeset(TEXT, settings, { noRecommendations: true });
+    const r = legacyTypeset(TEXT, settings, { noRecommendations: true }); // 9c.4: פורט המורשת (קריאה ישירה)
     const proj = projectLegacyDocument(r, settings);
     const withFolio = proj.pages.find(p => p.folio && p.folio.text);
     assert(withFolio, 'יש עמוד עם גיליון');

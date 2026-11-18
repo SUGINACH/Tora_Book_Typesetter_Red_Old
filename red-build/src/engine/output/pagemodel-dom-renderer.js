@@ -49,7 +49,10 @@ function familyOf(key) {
  */
 function renderModelLine(ml, doc, relX, relY) {
   const el = doc.createElement('div');
-  el.className = 'line' + (ml.isLast ? ' line--last' : '');
+  // **9c.4 (חוזה מחלקות של כלי הבדיקה):** line--heading כמו ברנדרר המורשת —
+  // האודיט מסווג לפיו שורות גוף מול כותרות (אחידות גודל-גופן, יישור
+  // כותרות, פיץ'); בלעדיו כל כותרת נספרה כשורת-גוף חריגה.
+  el.className = 'line' + (ml.isLast ? ' line--last' : '') + (ml.kind === 'heading' ? ' line--heading' : '');
   el.setAttribute('dir', 'rtl');
   el.style.position = 'absolute';
   el.style.left = `${px2(ml.x - relX)}px`;
@@ -73,7 +76,9 @@ function renderModelLine(ml, doc, relX, relY) {
     if (!firstWord && typeof doc.createTextNode === 'function') el.appendChild(doc.createTextNode(' '));
     firstWord = false;
     const span = doc.createElement('span');
-    span.className = 'w';
+    // **9c.4 (חוזה מחלקות):** w--fnmarker למילת-הסמן (דגל mk מהמודל) — כמו
+    // ברנדרר המורשת; האודיט משווה מולטיסט סמני-גוף מול פתיחות-הערות.
+    span.className = 'w' + (wd.mk ? ' w--fnmarker' : '');
     span.style.position = 'absolute';
     span.style.left = `${px2(wd.x - ml.x)}px`;
     span.style.top = '0';
@@ -87,6 +92,16 @@ function renderModelLine(ml, doc, relX, relY) {
     el.appendChild(span);
   }
   return el;
+}
+
+/** **9c.4 (תיקון הקרנת טקסט):** שורות ממוקמות-מוחלט אינן זורמות — בלי מפריד
+ * מפורש ביניהן, textContent של מכולה מרובת-שורות (הערת-צד, פס חוצה-טורים,
+ * שורות שער/TOC, הערות-סיום) מתמזג למילה אחת ארוכה — שובר ספירת נפח
+ * (רצפת האודיט), העתקה ונגישות. אותו תיקון שכבר הוחל בין מילים בתוך
+ * שורה (renderModelLine) — כאן בין שורות. המפריד אינו נראה. */
+function appendLineWithSep(container, lineEl, doc, isFirst) {
+  if (!isFirst && typeof doc.createTextNode === 'function') container.appendChild(doc.createTextNode(' '));
+  container.appendChild(lineEl);
 }
 
 // ─── עיטור: דיו מהמודל בלבד (§2.2) ───
@@ -179,14 +194,16 @@ function renderModelPage(mp, settings, doc, opts = {}) {
     wrap.style.top = `${px2(mp.shaar.box.y)}px`;
     wrap.style.width = `${px2(mp.shaar.box.w)}px`;
     wrap.style.height = `${px2(mp.shaar.box.h)}px`;
+    let first = true;
     for (const ln of mp.lines.filter(l => l.area === 'structural')) {
-      wrap.appendChild(renderModelLine(ln, doc, mp.shaar.box.x, mp.shaar.box.y));
+      appendLineWithSep(wrap, renderModelLine(ln, doc, mp.shaar.box.x, mp.shaar.box.y), doc, first); first = false;
     }
     root.appendChild(wrap);
   } else if ((mp.lines || []).some(l => l.area === 'structural')) {
     // שורות מובנות בלי תיבה (TOC/כותרת הערות) — מוקרנות ישירות בקואורדינטות העמוד
+    let first = true;
     for (const ln of mp.lines.filter(l => l.area === 'structural')) {
-      root.appendChild(renderModelLine(ln, doc, 0, 0));
+      appendLineWithSep(root, renderModelLine(ln, doc, 0, 0), doc, first); first = false;
     }
   }
 
@@ -224,8 +241,9 @@ function renderModelPage(mp, settings, doc, opts = {}) {
     band.style.top = `${px2(mp.spanning.y)}px`;
     band.style.width = `${px2(mp.spanning.w)}px`;
     band.style.height = `${px2(mp.spanning.h)}px`;
+    let first = true;
     for (const ln of mp.lines.filter(l => l.area === 'spanning')) {
-      band.appendChild(renderModelLine(ln, doc, mp.spanning.x, mp.spanning.y));
+      appendLineWithSep(band, renderModelLine(ln, doc, mp.spanning.x, mp.spanning.y), doc, first); first = false;
     }
     root.appendChild(band);
   }
@@ -347,7 +365,8 @@ function renderModelPage(mp, settings, doc, opts = {}) {
     // שורות הטקסט של אותה הערה: אותו עמוד-שוליים (x) בטווח התיבה (yTop..yTop+h)
     const own = marginLines.filter(l => l.x != null && sn.x != null && Math.abs(l.x - sn.x) < 0.01
       && l.y != null && sn.yTop != null && l.y >= sn.yTop - 0.01 && l.y <= sn.yTop + (sn.heightPx || 0) + 0.01);
-    for (const ln of own) el.appendChild(renderModelLine(ln, doc, sn.x, sn.yTop));
+    let first = true;
+    for (const ln of own) { appendLineWithSep(el, renderModelLine(ln, doc, sn.x, sn.yTop), doc, first); first = false; }
     if (!own.length && sn.text) {
       // רשומה בלי שורות מוקרנות — דיאגנוסטיק גלוי; הטקסט אינו נעלם (§2.4)
       diags.push({ kind: 'pmr-side-note-without-lines', noteId: sn.noteId || null, anchorId: sn.anchorId || null });
@@ -367,12 +386,13 @@ function renderModelPage(mp, settings, doc, opts = {}) {
         && l.y != null && sn.yTop != null && l.y >= sn.yTop - 0.01 && l.y <= sn.yTop + (sn.heightPx || 0) + 0.01) claimed.add(l.id);
     }
   }
+  let firstOrphan = true;
   for (const ln of marginLines) {
     if (claimed.has(ln.id)) continue;
     diags.push({ kind: 'pmr-margin-line-orphan', lineId: ln.id || null });
     const el = renderModelLine(ln, doc, 0, 0);
     el.classList.add('pmr-orphan-margin');
-    root.appendChild(el);
+    appendLineWithSep(root, el, doc, firstOrphan); firstOrphan = false;
   }
 
   // (8) מרזב הערות — אריזת-תצוגה של כיסוי הרשומות (נגזרת מנתוני המודל בלבד);

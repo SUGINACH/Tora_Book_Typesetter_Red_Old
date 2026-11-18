@@ -298,7 +298,9 @@ function createImudLibrary(engine) {
       new Set(getSettingDefs().map(r => r.id)),
       { availableFonts: fontCatalog.byFamily ? new Set(fontCatalog.byFamily.keys()) : undefined }
     );
-    return { name, settings, unmapped, report };
+    // **9c.4:** ה-raw הגולמי נמסר בנפרד (נתוני אתחול חד־פעמיים — הפעלת
+    // ערכת השערים) ואינו מוצמד להגדרות — adapter קלט, לא מנגנון runtime.
+    return { name, settings, unmapped, report, raw: legacy };
   }
 
   /** ברירות המחדל המקוריות — ייבוא מלא דרך טבלת ה-disposition.
@@ -323,7 +325,9 @@ function createImudLibrary(engine) {
     try { await loadWindowFont(); } catch (e) { /* אין FrankReal-Bold — fallback */ }
     // **S4.26:** רישום גופן הכותרות (DavidLibre-Bold) — מדידה+תצוגה מודגשת.
     try { await loadHeadingFont(); } catch (e) { /* אין DavidLibre-Bold — fallback */ }
-    return { settings, unmapped, report };
+    // **9c.4:** ה-raw הגולמי נמסר בנפרד לאתחול (הפעלת ערכת השערים המקורית
+    // לפי active-theme-select) — נתוני אתחול חד־פעמיים, לא חלק מההגדרות.
+    return { settings, unmapped, report, raw: legacy };
   }
 
   /** **S4.15:** טעינת FrankReal-Bold.ttf תחת המשפחה 'FrankReal' (מדידה+

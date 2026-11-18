@@ -29,13 +29,13 @@
       "file": "app-shell.js",
       "fn": "onExplicitRetypeset",
       "callee": "requestTypeset",
-      "line": 400
+      "line": 402
     },
     {
       "file": "engine-worker-main.js",
       "fn": "onMessage",
       "callee": "typeset",
-      "line": 109
+      "line": 99
     },
     {
       "file": "worker-client.js",

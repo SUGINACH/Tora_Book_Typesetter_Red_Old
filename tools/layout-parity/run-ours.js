@@ -33,12 +33,11 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const RB = path.join(ROOT, 'red-build');
 const AUD = path.join(ROOT, 'audits');
 
-const { typeset } = require(path.join(RB, 'src/engine/core/pipeline'));
 const { getSettingDefs, getDefaultSettings } = require(path.join(RB, 'src/engine/core/settings-registry'));
 const { importImudSettings } = require(path.join(RB, 'src/engine/core/legacy-settings-map'));
 const { registerFont, unregisterFont } = require(path.join(RB, 'src/engine/typography/measure-api'));
 const { exportPdf, exportHtml } = require(path.join(RB, 'src/engine/output/export-api'));
-const { GEO, FLOW_BOTTOM } = require(path.join(RB, 'src/engine/layout/legacy-imud-flow'));
+const { GEO, FLOW_BOTTOM, legacyTypeset } = require(path.join(RB, 'src/engine/layout/legacy-imud-flow')); // 9c.4: הפורט הנאמן בקריאה ישירה
 
 // **S4.11 (--html):** מימוש DOM מינימלי ל-serialize של ייצוא ה-HTML ב-Node (אותו
 // חוזה כמו ה-shim של הבדיקות: createElement + outerHTML כפונקציה). העמודים
@@ -90,7 +89,8 @@ function liveSettings() {
   }
   const regKeys = new Set(getSettingDefs().map(r => r.id));
   const imp = importImudSettings(legacy, regKeys, { availableFonts: families });
-  return imp.settings;
+  // **9c.4:** ה-raw מוצמד לקריאה הישירה של הפורט — אין עוד dispatch ב-typeset.
+  return { ...imp.settings, _imudRaw: legacy };
 }
 
 // ---------- סיווג עמודים — אותם כללים נצפים כמו extract-reference.py ----------
@@ -170,13 +170,13 @@ function main() {
   // המנוע נרשם אותם וגולש את הערות במטריקות הנכונות.
   const marginFontPath = path.join(RB, 'ui/assets/imud/fonts/Hadassah-Friedlaender-Regular.ttf');
   const marginFontBytes = fs.existsSync(marginFontPath) ? fs.readFileSync(marginFontPath) : null;
-  const result = typeset(text, settings, { noRecommendations: true, marginFontBytes, windowFontBytes, prefaceFontBytes, headingFontBytes });
-  console.error(`typeset: ${result.pages.length} pages in ${Date.now() - t0}ms (hash ${String(result.layoutHash).slice(0, 12)}) [profile: ${result.legacyProfile ? 'imud-legacy' : 'dp'}]`);
+  const result = legacyTypeset(text, settings, { noRecommendations: true, marginFontBytes, windowFontBytes, prefaceFontBytes, headingFontBytes }); // 9c.4: פורט המורשת (כלי parity מול הייחוס)
+  console.error(`legacy-port typeset: ${result.pages.length} pages in ${Date.now() - t0}ms (hash ${String(result.layoutHash).slice(0, 12)}) [profile: ${result.legacyProfile ? 'imud-legacy' : 'dp'}]`);
 
   // ---------- דטרמיניזם: הרצה שנייה חייבת לתת hash ועמודים זהים ----------
   if (wantDeterminism) {
     const t1 = Date.now();
-    const again = typeset(text, settings, { noRecommendations: true, marginFontBytes, windowFontBytes, prefaceFontBytes, headingFontBytes });
+    const again = legacyTypeset(text, settings, { noRecommendations: true, marginFontBytes, windowFontBytes, prefaceFontBytes, headingFontBytes });
     const ok = again.layoutHash === result.layoutHash && again.pages.length === result.pages.length;
     console.error(`determinism: run2 ${again.pages.length} pages in ${Date.now() - t1}ms (hash ${String(again.layoutHash).slice(0, 12)}) — ${ok ? 'OK (identical)' : 'MISMATCH'}`);
     if (!ok) { console.error('determinism FAILED — hash or page count differs between runs'); process.exit(3); }
@@ -520,7 +520,7 @@ function main() {
   // ה-parity משווה גיאומטריית עימוד מול הייחוס — לא תיבות דפוס; בלי בליד
   // ה-MediaBox = ה-Trim והחילוץ זהה להיסטוריה.
   const pdfSettings = { ...settings, 'export-bleed-mm': 0, 'pdf-crop-marks': false };
-  const pdf = exportPdf(text, pdfSettings, fontBytes, 'Guttman Rashi', { windowFontBytes, prefaceFontBytes, headingFontBytes, marginFontBytes });
+  const pdf = exportPdf(text, pdfSettings, fontBytes, 'Guttman Rashi', { engine: 'legacy', windowFontBytes, prefaceFontBytes, headingFontBytes, marginFontBytes }); // 9c.4: פורט המורשת המפורש
   if (!pdf.ok) { console.error('exportPdf failed:', pdf.error); process.exit(2); }
   const pdfPath = path.join(outDir, 'ours.pdf');
   fs.writeFileSync(pdfPath, Buffer.from(pdf.bytes));

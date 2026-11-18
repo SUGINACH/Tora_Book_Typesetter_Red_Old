@@ -160,27 +160,26 @@ function boot() {
   // **03.11(ד) — "שום דבר מהגדרות ברירת המחדל אינו קיים" (דיווח משתמש 3):**
   // האפליקציה עולה עם ברירות המחדל הגנריות של RED. ברירות המחדל של הפרויקט
   // המקורי (264 מפתחות: גופני עיצוב, שערים, כותרות עליונות, יישורים) מוטמעות
-  // בנכסים — ועתה מוחלות אוטומטית בעלייה, כך שספר חדש נראה כמו המקור מהשנייה
+  // בנכסים — ומוחלות אוטומטית בעלייה, כך שספר חדש נראה כמו המקור מהשנייה
   // הראשונה (David Libre/Frank Ruhl Libre/Bellefair, שער ראשי+אחורי+משנה,
   // כותרות עליונות בכל עמוד). כשל טעינה (למשל פתיחה מקומית בלי assets) —
   // נשארות ברירות RED, האפליקציה עובדת; ההודעה מתועדת במצב.
-  // **פרוסה 3 (§7 בהוראה — ביקורת מסלול unified לפני שלב 9):** דגל ביקורת
-  // מפורש ?engine=unified — מדלג על יישום ברירות המחדל של IMUD בעלייה ומריץ
-  // את האפליקציה בפרופיל המאוחד (PageModel renderer). זהו מתג ביקורת בלבד:
-  // ברירת המחדל של המשתמש אינה משתנה (עמוד רגיל = legacy, כמו קודם).
-  const auditUnified = /[?&]engine=unified\b/.test(String((typeof location !== 'undefined' && location && location.search) || ''));
-  const bootLegacy = !auditUnified && imud.loadFontCatalog().then(() => imud.loadLegacyDefaults());
-  (auditUnified ? Promise.resolve({ settings: {}, report: { note: 'unified-audit-boot' } }) : bootLegacy).then(async ({ settings: imported, report }) => {
+  // **9c.4 (cutover — מנוע יחיד):** ברירות המקור מיובאות כערכים בלבד
+  // (importImudSettings ממיר להגדרות המאוחדות; אין _layout-profile ואין
+  // _imudRaw בהגדרות) והעימוד תמיד במנוע המאוחד — PageModel מקור האמת.
+  // דגל הביקורת ?engine=unified מהעבר הפך ל-no-op (אותה התנהגות בלי הדגל);
+  // הוא נשאר מזוהה ולא מזיק לקישורים ישנים.
+  const legacyAuditFlag = /[?&]engine=unified\b/.test(String((typeof location !== 'undefined' && location && location.search) || ''));
+  if (legacyAuditFlag) console.info('[9c.4] ?engine=unified אינו נחוץ עוד — המנוע המאוחד הוא ברירת המחדל');
+  imud.loadFontCatalog().then(() => imud.loadLegacyDefaults()).then(async ({ settings: imported, report, raw }) => {
     // **S6.2 (בקשת משתמש — "האם כל העיטורים, שערים... יובאו?"): ערכת הנושא
     // הפעילה של המקור.** ברירת המחדל של המקור היא active-theme-select =
     // "json_theme_40" — כלומר עמודי השערים נולדים עם רקע מעוצב (שער ראשי/
-    // משנה/אחורי של ערכה 40), לא טקסט על רקע ריק. עד כאן ההגדרה מופתה כ-ui-state
-    // והושמטה — עכשיו היא ממומשת: פענוח מספר הערכה, רישום שלושת השערים
-    // בשני הצדדים (UI לתצוגה + Worker לייצוא) ומיזוג ההפניות להגדרות האתחול.
+    // משנה/אחורי של ערכה 40), לא טקסט על רקע ריק. **9c.4:** ה-raw מגיע כעת
+    // כנתוני אתחול נפרדים (loadLegacyDefaults) — לא מתוך ההגדרות.
     // כישלון (ספרייה חסרה) אינו חוסם — השערים נשארים טקסטואליים, מתועד.
     try {
-      const raw = imported && imported._imudRaw ? imported._imudRaw : {};
-      const m = String(raw['active-theme-select'] || '').match(/json_theme_(\d+)/);
+      const m = String((raw && raw['active-theme-select']) || '').match(/json_theme_(\d+)/);
       if (m && typeof imud.ensureThemeSet === 'function') {
         const refs = await imud.ensureThemeSet(Number(m[1]));
         if (refs && Object.keys(refs).length) Object.assign(imported, refs);

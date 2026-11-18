@@ -13,6 +13,8 @@ const { importImudSettings } = require(path.join(RB, 'src/engine/core/legacy-set
 const { getSettingDefs, getDefaultSettings } = require(path.join(RB, 'src/engine/core/settings-registry'));
 const { registerFont } = require(path.join(RB, 'src/engine/typography/measure-api'));
 const { typeset } = require(path.join(RB, 'src/engine/core/pipeline'));
+// **9c.4:** הפורט הנאמן נקרא ישירות — אין עוד dispatch ב-typeset (מנוע יחיד).
+const { legacyTypeset } = require(path.join(RB, 'src/engine/layout/legacy-imud-flow'));
 
 const file = process.argv[2] || path.join(RB, 'tests/fixtures/canonical_corpus.txt');
 const text = fs.readFileSync(file, 'utf8');
@@ -51,12 +53,13 @@ function legacySettings() {
     if (fs.existsSync(p)) for (const f of JSON.parse(fs.readFileSync(p, 'utf8'))) families.add(f.family);
   }
   const imp = importImudSettings(legacy, new Set(getSettingDefs().map(r => r.id)), { availableFonts: families });
-  return { ...getDefaultSettings(), ...imp.settings, 'body-font': 'Guttman Rashi', 'measure-impl': 'font-metrics' };
+  // **9c.4:** ה-raw מוצמד לקריאה הישירה של הפורט (אין עוד dispatch ב-typeset).
+  return { ...getDefaultSettings(), ...imp.settings, _imudRaw: legacy, 'body-font': 'Guttman Rashi', 'measure-impl': 'font-metrics' };
 }
 registerAllFonts();
 
 // מורשת: אזורי הערה עם טקסט מלא
-const rl = typeset(text, legacySettings(), {});
+const rl = legacyTypeset(text, legacySettings(), {}); // 9c.4: קריאה ישירה לפורט הנאמן
 const legNotes = [];
 for (const pg of rl.pages) {
   for (const fa of (pg.footnotes || [])) {

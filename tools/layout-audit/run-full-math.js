@@ -78,8 +78,22 @@ function ab(argv, timeoutMs = 300_000) {
   });
 }
 async function ev(js) {
-  const out = await ab(['eval', js]);
-  try { return JSON.parse(out); } catch (e) { return out; }
+  // **9c.4 (עמידות סביבה):** הדיימון של agent-browser מחזיר לעיתים EAGAIN
+  // ("Resource temporarily unavailable") תחת עומס (הזרקת fixture כבדה +
+  // עימוד ברקע). ניסיון חוזר קצר ומוגבל — סמנטיקת הבדיקה אינה משתנה:
+  // ה-eval חייב להצליח, ורק כשל חוזר נחשב כשל אמיתי.
+  let lastErr = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const out = await ab(['eval', js]);
+      try { return JSON.parse(out); } catch (e) { return out; }
+    } catch (e) {
+      lastErr = e;
+      if (!/Resource temporarily unavailable|os error 11/i.test(String(e.message))) throw e;
+      await sleep(700 + attempt * 900);
+    }
+  }
+  throw lastErr;
 }
 
 // ── שרת מקומי (מצב local) ──
@@ -267,24 +281,7 @@ const gotoView = async () => {
     : `http://127.0.0.1:${PORT}/index.html`;
   if (!URL) await startServer();
 
-  try { await ab(['close']); } catch (e) {}
-  // הדמון של agent-browser עשוי להיות עסוק עוד רגע בסגירת הדפדפן הקודם
-  // (EAGAIN בקריאת התשובה) — ניסיון חוזר עם המתנה פותר זאת.
-  let opened = false;
-  for (let attempt = 1; attempt <= 4 && !opened; attempt++) {
-    try { await ab(['open', targetUrl]); opened = true; }
-    catch (e) {
-      if (attempt === 4) throw e;
-      await sleep(3000);
-    }
-  }
-  await sleep(4000);
-  const t0 = Date.now();
-  for (;;) {
-    if (await ev(`window.__toraApp ? 'APP' : 'NO'`) === 'APP') break;
-    if (Date.now() - t0 > 120_000) throw new Error('האפליקציה לא עלתה ב-120 שניות');
-    await sleep(2000);
-  }
+  await bootFreshBrowser();
   log(`אתר: ${targetUrl} | app: ${await ev(`(document.querySelector('script[src*="app.bundle.js"]') || {}).src || '—'`)}`);
 
   // **S5.2 (פריסה מיושנת — אמת חמורה, מצב חי בלבד):** sha256 של הבאנדלים הפרוסים
@@ -338,6 +335,33 @@ const gotoView = async () => {
       log(`⚠ לא ניתן להשוות ASSET_VERSION (פרוס: ${deployed.assetVersion || '—'}, מקור: ${localVersion || '—'}) — ממשיכים על סמך sha256 בלבד`);
     }
     if (stale) throw new Error('הפריסה החיה מיושנת — הבאנדל הפרוס אינו תואם ל-main (ראה טביעות sha256 למעלה)');
+  }
+
+  /** **9c.4 (זיכרון — דפדפן טרייה בין ההרצות):** ה-DOM של מקרין המודל (מילים
+   * ממוקמות-מוחלט; מאות אלפי אלמנטים ל-very_long) + המודל בזיכרון הראשי +
+   * נתוני האודיט שנאספו — צורכים יחד יותר מהזיכרון הזמין כבר בהרצה אחת;
+   * הרצה שנייה באותו עמוד הובילה ל-OOM (chrome חוסל ב-3.3GB — dmesg).
+   * הרצה-1 נשמרת לדיסק לפני ההרצה-2; ההשוואה הדטרמיניסטית נעשית מול
+   * הדוח שנטען מחדש מהקובץ — סמנטיקת הבדיקה זהה, רק המיכל מתחדש. */
+  async function bootFreshBrowser() {
+    try { await ab(['close']); } catch (e) {}
+    // הדמון של agent-browser עשוי להיות עסוק עוד רגע בסגירת הדפדפן הקודם
+    // (EAGAIN בקריאת התשובה) — ניסיון חוזר עם המתנה פותר זאת.
+    let opened = false;
+    for (let attempt = 1; attempt <= 4 && !opened; attempt++) {
+      try { await ab(['open', targetUrl]); opened = true; }
+      catch (e) {
+        if (attempt === 4) throw e;
+        await sleep(3000);
+      }
+    }
+    await sleep(4000);
+    const t0 = Date.now();
+    for (;;) {
+      if (await ev(`window.__toraApp ? 'APP' : 'NO'`) === 'APP') break;
+      if (Date.now() - t0 > 120_000) throw new Error('האפליקציה לא עלתה ב-120 שניות');
+      await sleep(2000);
+    }
   }
 
   // במצב חי: הזרקת ה-fixture ב-base64 (לשרת החי אין את הקובץ)
@@ -404,6 +428,19 @@ const gotoView = async () => {
   let pages2 = null;
   if (!SKIP_DET) {
     log('דטרמיניזם: מריץ עימוד מחדש...');
+    // **9c.4:** דפדפן טרייה להרצה-2 (מניעת OOM — הדוח של הרצה-1 כבר בדיסק)
+    // + הזרקת ה-fixture מחדש לעמוד החדש.
+    await bootFreshBrowser();
+    if (URL) {
+      const b64 = fs.readFileSync(FIXTURE).toString('base64');
+      const total = Math.ceil(b64.length / B64_CHUNK);
+      await ev(`window.__ab = ''; 'INIT'`);
+      for (let i = 0; i < total; i++) {
+        const r = await ev(`window.__ab += '${b64.substr(i * B64_CHUNK, B64_CHUNK)}'; ${i + 1}`);
+        if (String(r) !== String(i + 1)) throw new Error(`חתיכה ${i + 1}/${total} נכשלה`);
+      }
+      await ev(`window.__fx = new TextDecoder('utf-8').decode(Uint8Array.from(atob(window.__ab), c => c.charCodeAt(0))); window.__ab = ''; 'OK'`);
+    }
     pages2 = await retypesetAndWait('הרצה-2');
     log(`עימוד הרצה-2: ${pages2.toLocaleString()} עמודים`);
     await gotoView();

@@ -129,13 +129,14 @@ describe('S4.5-ד: מיפוי default_settings.json המקורי — 100% dispos
 
 
 // ---------- S4.20: EXT-15/16/17/19 — המנגנונים מיושמים בפרופיל ה-legacy ----------
-describe('S4.20 — EXT-15/16/17/19 בפרופיל ה-legacy (פתיחה אי-זוגי, סימן אוטומטי, גדלים/מפריד, החלפת כותרות)', () => {
-  const { typeset } = require('../../src/engine/core/pipeline');
+describe('S4.20 — EXT-15/16/17/19 בפורט ה-legacy (פתיחה אי-זוגי, סימן אוטומטי, גדלים/מפריד, החלפת כותרות)', () => {
+  // **9c.4:** הפורט הנאמן נקרא ישירות — אין עוד dispatch ב-typeset (מנוע יחיד).
+  const { legacyTypeset } = require('../../src/engine/layout/legacy-imud-flow');
 
   function typesetWith(imudOverrides, text) {
     const imud = { ...LEGACY, ...imudOverrides };
     const { settings } = importImudSettings(imud, RED_KEYS);
-    return typeset(text || 'ספר - מקום בינה\n\nכותרת 2 - סימן א\nפסקה ראשונה [הערה ראשונה] לבדיקה.\nעוד פסקה עם עוד מילים רבות מאוד למילוי עמודים.\n\nכותרת 2 - סימן ב\nפסקה שניה.', settings);
+    return legacyTypeset(text || 'ספר - מקום בינה\n\nכותרת 2 - סימן א\nפסקה ראשונה [הערה ראשונה] לבדיקה.\nעוד פסקה עם עוד מילים רבות מאוד למילוי עמודים.\n\nכותרת 2 - סימן ב\nפסקה שניה.', { ...settings, _imudRaw: imud });
   }
 
   it('EXT-15/16/17/19: הערכים נשמרים ונצרכים (ui-state — דרך _imudRaw של פרופיל ה-legacy)', () => {

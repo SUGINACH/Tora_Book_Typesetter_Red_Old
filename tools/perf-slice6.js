@@ -120,7 +120,7 @@ DOCS['very_long'] = fs.readFileSync(path.join(ROOT, 'audits/very_long_test_text.
     // parity: מילים במודל מול HTML
     let modelWords = 0;
     for (const mp of model.pages) { for (const ln of mp.lines) modelWords += (ln.words || []).length; for (const n of (mp.footnotes || [])) modelWords += (n.words || []).length; }
-    const htmlWords = (String(html).match(/class="w"/g) || []).length;
+    const htmlWords = (String(html).match(/class="w(?:\s[^"]*)?"/g) || []).length;
 
     out.docs[name] = {
       inputKB: r2(Buffer.byteLength(text) / 1024),

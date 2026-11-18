@@ -61,7 +61,9 @@ function createApp(doc, opts = {}) {
   let text = '';
   let result = null;            // תוצאה מסוריאליזת פרוטוקול (D-65)
   let pageModelObj = null;      // **שלב 8 פרוסה 2 (§4.4):** PageModel שהתקבל מה-Worker — מאומת וקפוא מחדש
-  let engineProfile = 'legacy'; // **פרוסה 3 (§2.3):** פרופיל המנוע של התוצאה הנוכחית (legacy/unified)
+  // **9c.4 (cutover):** אין עוד engineProfile — מנוע יחיד. המודל הוא מקור
+  // האמת; חסר-מודל (כשל העברה) = שגיאה מפורשת בתצוגה — לא נפילה לרנדרר
+  // ישן ולא עימוד חוזר.
   let caretMapObj = null;
   let lightDirty = false, heavyDirty = false;
   let typesetGen = 0; // **S5.2 (5):** דור עימוד — מונה תוצאות שהושלמו; חוזה: st.gen (אודיט חי בוחן שינוי)
@@ -443,8 +445,7 @@ function createApp(doc, opts = {}) {
       }
       // **פרוסה 3 (§2.3):** פרופיל המנוע שרץ (מה-Worker דרך ui-result-v1) —
       // נשמר לכל רינדור חוזר (גם keepView) כדי שהתצוגה לא תחליף רנדרר
-      // באמצע סשן.
-      engineProfile = (res && res.legacyProfile) ? 'legacy' : 'unified';
+      // באמצע סשן. **9c.4:** המנוע המאוחד בלבד — אין ענף מורשת.
       typesetGen++; // **S5.2 (5):** +1 על כל עימוד שהושלם (בדיוק במקום ההשמה ל-result) — ביטול/החלפה אינם נספרים
       applyResultToViews();
       status.setEngineState('idle');
@@ -489,7 +490,6 @@ function createApp(doc, opts = {}) {
       editor.setText('');
       result = null;
       pageModelObj = null; // **פרוסה 2:** ניקוי המודל עם המסמך
-      engineProfile = 'legacy'; // **פרוסה 3:** איפוס הפרופיל עם המסמך
       caretMapObj = null;
       preview.setResult({ pages: [], report: { findings: [], counts: {} }, trace: { events: [] }, tokens: [], droppedEvents: 0 }, settings);
       testing.setResult({ pages: [], report: { findings: [], counts: {} }, trace: { events: [] }, tokens: [], droppedEvents: 0 });
@@ -562,7 +562,7 @@ function createApp(doc, opts = {}) {
     const t0 = perf.now();
     // **S5.2 (7):** רינדור־קל שומר זום ויעד גלילה (עדכון צבע רקע לא אמור לקפוץ
     // לראש המסמך); רק מסמך חדש באמת מאפס תצוגה — הנתיב הזה הוא keepView.
-    preview.setResult(result, settings, { keepView: true, pageModel: pageModelObj, profile: engineProfile }); // רינדור בלבד — אותם עמודים, הגדרות חדשות, אותו פרופיל
+    preview.setResult(result, settings, { keepView: true, pageModel: pageModelObj }); // רינדור בלבד — אותם עמודים, הגדרות חדשות (9c.4: מנוע יחיד)
     lastLightRefreshMs = perf.now() - t0;
     lightDirty = false;
     status.setPending({ light: false, heavy: heavyDirty });
@@ -661,31 +661,21 @@ function createApp(doc, opts = {}) {
       status.setNotice('קיימים שינויים שלא הוחלו — הפעילו עימוד (⚡) לפני ייצוא');
       return { ok: false, kind, reason: 'dirty' };
     }
-    const { exportHtml, exportPdf, exportProjectZip } = require('../engine/output/export-api');
+    const { exportProjectZip } = require('../engine/output/export-api');
     try {
       if (kind === 'html') {
         const fontCss = (typeof opts.getExportFontCss === 'function' && opts.getExportFontCss()) || '';
-        // **פרוסה 4 (§3 — HTML מה-PageModel):** בפרופיל המאוחד הייצוא מהמודל
-        // שכבר חושב — אותו מקרין כמו התצוגה החיה; אין typeset נוסף. חסר-מודל
-        // = כשל מפורש (אין נפילה לייצוא מהתוצאה הגולמית — §3). legacy ממשיך
-        // בנתיב הקיים עד שלב 9 (תקופת המעבר, כמו בתצוגה).
-        if (engineProfile === 'unified') {
-          if (!pageModelObj) {
-            status.setNotice('ייצוא HTML בפרופיל המאוחד דורש PageModel — אין נתיב חלופי (הפעילו עימוד מחדש).');
-            return { ok: false, kind, reason: 'no-page-model' };
-          }
-          const { exportHtmlFromModel } = require('../engine/output/export-api');
-          const html = exportHtmlFromModel(pageModelObj, settings, doc, { title: (result.metadata && result.metadata['ספר']) || 'ספר', fontCss });
-          if (opts.onExportFile) opts.onExportFile('html', html, 'book.html');
-          status.setNotice('יוצא HTML עצמאי מה-PageModel (חד־קובץ, offline, אין עימוד שני).');
-          return { ok: true, kind, data: html };
+        // **9c.4 (cutover — פרוסה 4 §3):** הייצוא מה-PageModel בלבד — אותו
+        // מקרין כמו התצוגה החיה; אין typeset נוסף ואין נתיב מורשת. חסר-מודל
+        // = כשל מפורש (אין נפילה לייצוא מהתוצאה הגולמית).
+        if (!pageModelObj) {
+          status.setNotice('ייצוא HTML דורש PageModel — אין נתיב חלופי (הפעילו עימוד מחדש).');
+          return { ok: false, kind, reason: 'no-page-model' };
         }
-        // **9c.2/9c.4-marker:** נתיב מורשת — צריכת result.pages הגולמיים.
-        // יוסר עם הסרת המנוע ב-9c.4; עד אז האתחול בפרופיל המורשת זקוק לו.
-        // אין fallback בנתיב המאוחד — PageModel חסר = שגיאה מפורשת (לעיל).
-        const html = exportHtml(result, settings, doc, { title: (result.metadata && result.metadata['ספר']) || 'ספר', fontCss });
+        const { exportHtmlFromModel } = require('../engine/output/export-api');
+        const html = exportHtmlFromModel(pageModelObj, settings, doc, { title: (result.metadata && result.metadata['ספר']) || 'ספר', fontCss });
         if (opts.onExportFile) opts.onExportFile('html', html, 'book.html');
-        status.setNotice('יוצא HTML עצמאי (חד־קובץ, offline).');
+        status.setNotice('יוצא HTML עצמאי מה-PageModel (חד־קובץ, offline, אין עימוד שני).');
         return { ok: true, kind, data: html };
       }
       if (kind === 'pdf') {
@@ -706,28 +696,18 @@ function createApp(doc, opts = {}) {
           status.setNotice('ייצוא PDF דורש גופן מוטמע — נא לטעון גופן (TTF) בהגדרות המסמך.');
           return { ok: false, reason: 'no-embedded-font' };
         }
-        // **9c.1 (אין עימוד שני):** הנתיב המקומי (Node/בדיקות) מייצא בפרופיל
-        // המאוחד מה-PageModel שכבר חושב — כמו הנתיב החי ב-Worker. חסר-מודל
-        // (או שאין תוצאת עימוד כלל — הפרופיל עודנו ברירת המחדל) = כשל מפורש;
-        // אין נפילה שקטה ל-exportPdf שמעמד מחדש. פרופיל המורשת ממשיך בנתיב
-        // הקיים עד 9c.4 (הסרת המנוע).
-        if (engineProfile === 'unified' || !result) {
-          if (!pageModelObj) {
-            status.setNotice('ייצוא PDF דורש PageModel — אין נתיב חלופי (הפעילו עימוד קודם).');
-            return { ok: false, kind, reason: 'no-page-model' };
-          }
-          const { exportPdfFromModel } = require('../engine/output/export-api');
-          const res = exportPdfFromModel(pageModelObj, settings, opts.embeddedFont);
-          if (!res.ok) { status.setNotice('ייצוא PDF נכשל: ' + res.error); return res; }
-          if (opts.onExportFile) opts.onExportFile('pdf', res.bytes, 'book.pdf');
-          status.setNotice(`יוצא PDF מה-PageModel — ${res.info.pages} עמודים, ${res.info.outline} סימניות, טקסט נבחר.`);
-          return { ok: true, kind, data: res.bytes, info: res.info };
+        // **9c.4 (cutover — 9c.1 אין עימוד שני):** הנתיב המקומי (Node/בדיקות)
+        // מייצא מה-PageModel שכבר חושב — כמו הנתיב החי ב-Worker. חסר-מודל
+        // = כשל מפורש; אין נפילה שקטה ל-exportPdf שמעמד מחדש ואין נתיב מורשת.
+        if (!pageModelObj) {
+          status.setNotice('ייצוא PDF דורש PageModel — אין נתיב חלופי (הפעילו עימוד קודם).');
+          return { ok: false, kind, reason: 'no-page-model' };
         }
-        // **9c.4-marker:** נתיב מורשת — יוסר עם הסרת המנוע ב-9c.4.
-        const res = exportPdf(text, settings, opts.embeddedFont);
+        const { exportPdfFromModel } = require('../engine/output/export-api');
+        const res = exportPdfFromModel(pageModelObj, settings, opts.embeddedFont);
         if (!res.ok) { status.setNotice('ייצוא PDF נכשל: ' + res.error); return res; }
         if (opts.onExportFile) opts.onExportFile('pdf', res.bytes, 'book.pdf');
-        status.setNotice(`יוצא PDF — ${res.info.pages} עמודים, ${res.info.outline} סימניות, טקסט נבחר.`);
+        status.setNotice(`יוצא PDF מה-PageModel — ${res.info.pages} עמודים, ${res.info.outline} סימניות, טקסט נבחר.`);
         return { ok: true, kind, data: res.bytes, info: res.info };
       }
       if (kind === 'zip') {
@@ -753,14 +733,12 @@ function createApp(doc, opts = {}) {
   }
 
 
-  /** **9c.3:** מערך העמודים הקנוני של התוצאה הנוכחית — לפי הפרופיל:
-   * unified ⇒ עמודי ה-PageModel בלבד (מקור האמת לגיאומטריה ולתוכן);
-   * legacy ⇒ result.pages (ענף 9c.4-marker — עד הסרת המנוע). כל צרכן
-   * ה-UI (מחוונים, מפת שבירות, סמן↔עמוד) נגזר מכאן — אין תלות סמויה
-   * ב-result.pages כשהפרופיל המאוחד פעיל. */
+  /** **9c.3/9c.4:** מערך העמודים הקנוני של התוצאה הנוכחית — עמודי ה-PageModel
+   * (מקור האמת לגיאומטריה ולתוכן). כל צרכן ה-UI (מחוונים, מפת שבירות,
+   * סמן↔עמוד) נגזר מכאן. חסר-מודל (כשל העברה) ⇒ רשימה ריקה — התצוגה כבר
+   * מציגה את שגיאת הפרופיל המפורשת; אין נפילה ל-result.pages. */
   function canonicalPages() {
-    if (engineProfile === 'unified' && pageModelObj && Array.isArray(pageModelObj.pages)) return pageModelObj.pages;
-    return result ? result.pages : [];
+    return (pageModelObj && Array.isArray(pageModelObj.pages)) ? pageModelObj.pages : [];
   }
 
   function applyResultToViews() {
@@ -772,8 +750,8 @@ function createApp(doc, opts = {}) {
     // **פרוסה 3 (§2.1–§2.3):** התצוגה מחוברת ל-PageModel בפרופיל המאוחד —
     // profile=unified כשהתוצאה ממנוע ה-DP ומודל קיים; legacy ממשיך ברנדרר
     // הישן (מצב תעבור מפורש עד שלב 9). ברירת המחדל החיה אינה משתנה.
-    preview.setResult(result, settings, { pageModel: pageModelObj, profile: engineProfile });
-    testing.setResult(result, { pageModel: pageModelObj, profile: engineProfile });
+    preview.setResult(result, settings, { pageModel: pageModelObj });
+    testing.setResult(result, { pageModel: pageModelObj });
     testing.setRecommendations(result.recommendations || null); // **S11:** המלצות עם הוכחות
     // מפת שבירות עמודים לעורך (⏎ — תצוגה בלבד, F-01) — מהמקור הקנוני (9c.3)
     const breaks = [];
@@ -879,9 +857,9 @@ function createApp(doc, opts = {}) {
     const ledgerSlice = (result.ledger.issues || []).filter(rec => rec.page === pageIndex || String(rec.target || '').includes(`p${pageIndex}`));
     const traceSlice = (result.trace.events || []).filter(ev => ev.pageIndex === pageIndex);
     const findingsSlice = (result.report.findings || []).filter(f => Number(f.page) === pageIndex);
-    // **9c.3:** בפרופיל המאוחד הגיאומטריה והתוכן של העמוד מה-PageModel — מקור
-    // האמת. עמודי התוצאה הגולמיים אינם נצרכים כאן עוד (המורשת ממשיך כמקודם).
-    if (engineProfile === 'unified' && pageModelObj && Array.isArray(pageModelObj.pages)) {
+    // **9c.3/9c.4:** הגיאומטריה והתוכן של העמוד מה-PageModel — מקור האמת
+    // היחיד. חסר-מודל = הודעת שגיאה מפורשת.
+    if (pageModelObj && Array.isArray(pageModelObj.pages)) {
       const mp = pageModelObj.pages.find(p => p.index === pageIndex);
       if (!mp) return { error: `עמוד ${pageIndex} לא נמצא ב-PageModel` };
       return {
@@ -912,27 +890,8 @@ function createApp(doc, opts = {}) {
         layoutHash: result.layoutHash
       };
     }
-    const pg = result.pages.find(p => p.index === pageIndex);
-    if (!pg) return { error: `עמוד ${pageIndex} לא נמצא` };
-    return {
-      schema: 'page-debug-v1',
-      profile: 'legacy',
-      pageIndex,
-      type: pg.type,
-      template: pg.template,                       // גיאומטריה מלאה: מידות/שוליים/טורים/תיבת תוכן
-      contentBox: pg.template && pg.template.contentBox,
-      columns: (pg.columns || []).map(c => c.map(ln => ({
-        tokenId: ln.tokenId != null ? ln.tokenId : (ln.meta && ln.meta.tokenId),
-        heightPx: ln.heightPx, words: (ln.words || []).length, kind: ln.kind || null
-      }))),
-      footnotes: (pg.footnotes || []).length,
-      header: pg.header ? { slots: pg.header.slots ? Object.keys(pg.header.slots) : ['legacy'] } : null,
-      folioDisplay: pg.folioDisplay || '',
-      findings: findingsSlice,
-      ledger: ledgerSlice,                          // פרוסת ledger לעמוד זה
-      trace: traceSlice,                            // פרוסת מסלול לעמוד זה
-      layoutHash: result.layoutHash
-    };
+    // **9c.4:** אין עוד צורת מורשת — חסר-מודל = שגיאה מפורשת (לא קריאה מ-result.pages).
+    return { error: 'אין PageModel — הדיבאג מהמודל בלבד (הפעילו עימוד מחדש).' };
   }
 
   // ================= מצב התחלתי =================

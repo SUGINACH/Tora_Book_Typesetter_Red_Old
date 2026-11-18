@@ -18,6 +18,8 @@ const path = require('path');
 const { describe, it, assert, assertEq, report } = require('../harness');
 
 const { typeset } = require('../../src/engine/core/pipeline');
+// **9c.4:** הפורט הנאמן נקרא ישירות — אין עוד dispatch ב-typeset (מנוע יחיד).
+const { legacyTypeset } = require('../../src/engine/layout/legacy-imud-flow');
 const { getDefaultSettings } = require('../../src/engine/core/settings-registry');
 
 const REAL_DIR = path.join(__dirname, '..', 'fixtures', 'real');
@@ -142,12 +144,13 @@ describe('D-83 — ספרי־אמת ארוכים: עימוד מלא ללא קר�
     const { getSettingDefs } = require('../../src/engine/core/settings-registry');
     const LEGACY = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'ui', 'assets', 'imud', 'default_settings.json'), 'utf8'));
     const imp = importImudSettings(LEGACY, new Set(getSettingDefs().map(r => r.id)));
-    let r2 = typeset(raw, imp.settings, { noRecommendations: true });
+    imp.settings._imudRaw = LEGACY; // 9c.4: לקריאה הישירה של הפורט
+    let r2 = legacyTypeset(raw, imp.settings, { noRecommendations: true });
     assert(r2.contentPreserved === true, 'שימור תוכן — הקורפוס ההיסטורי, פרופיל המורשת');
-    assert(r2.legacyProfile === true, 'פרופיל המורשת הופעל');
+    assert(r2.legacyProfile === true, 'הפורט הנאמן (קריאה ישירה)');
     const i2 = { hash: r2.layoutHash, pages: r2.pages.length };
     r2 = null;
-    let r2b = typeset(raw, imp.settings, { noRecommendations: true });
+    let r2b = legacyTypeset(raw, imp.settings, { noRecommendations: true });
     assertEq(i2.hash, r2b.layoutHash, 'דטרמיניזם — פרופיל המורשת, הקורפוס ההיסטורי');
     r2b = null;
     console.log(`  [real] orange-historical: words=${words} DP=${i1.pages}pages/${i1.hash.slice(0, 10)} legacy=${i2.pages}pages/${i2.hash.slice(0, 10)} ${dt}ms`);

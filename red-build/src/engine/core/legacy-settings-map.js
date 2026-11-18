@@ -444,17 +444,18 @@ function importImudSettings(legacy, registryKeys, opts = {}) {
   // מיזוג משלים: mode-h1=sub_shaar ⇒ שער משנה דלוק (הסמנטיקה המקורית)
   if (legacy && legacy['mode-h1'] === 'sub_shaar') settings['show-shaar-sub'] = true;
   if (Object.keys(uiState).length) settings['_legacy-ui-state'] = uiState;
-  // **S4.9 (פרופיל העימוד המקורי):** קלט שנראה כמו default_settings.json המלא
-  // של המקור ⇒ ה-JSON הגולמי מוצמד תחת _imudRaw והפרופיל מסומן 'imud'.
-  // המנוע המרכזי (typeset) מפנה אז לפורט הנאמן (legacy-imud-flow) — התנהגות
-  // המקור היא המפרט (בקשת המשתמש 03.11: "בדיקה מתמטית ומוחלטת").
+  // **9c.4 (cutover — adapter נתוני קלט בלבד):** עד כאן צירף הייבוא את ה-JSON
+  // הגולמי תחת _imudRaw וסימן _layout-profile='imud' — מה שהפעיל את מנוע
+  // המורשת ב-typeset. הוסר: הייבוא ממיר ערכים להגדרות המאוחדות ותו לא;
+  // אין דגל פרופיל ואין נתונים גולמיים בהגדרות המוצר. כלי האבחון
+  // (shadow-compare) ובדיקות הפורט קוראים ל-legacyTypeset ישירות עם
+  // ה-raw שבידיהם. מה שנשאר כאן: גזירת דגלי ה-TOC מרשימות המקור —
+  // מיפוי ערכים טהור (S77; D-107), לא מנגנון runtime.
   if (legacy && typeof legacy === 'object'
     && legacy['fn-delim-open'] !== undefined
     && legacy['size-body'] !== undefined
     && legacy['line-height-body'] !== undefined) {
-    settings['_imudRaw'] = legacy;
-    settings['_layout-profile'] = 'imud';
-    // **S77 (בקשה 3 — חיבור הגדרות תוכן-העניינים לנתיב המורשת):** דגלי
+    // **S77 (בקשה 3 — חיבור הגדרות תוכן-העניינים):** דגלי
     // toc-level-N-show נגזרים מרשימות המקור (gtoc-show/dtoc-show; ברירות
     // המחדל [1..6]/[2..6]) — כך ברירת המחדל המיובאת משמרת את הפלט המכויל
     // במדויק, והדגלים החיים שולטים מעתה (הסרה/הוספה של רמות בשני התכנים).

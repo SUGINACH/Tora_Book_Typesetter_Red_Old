@@ -14,6 +14,8 @@ const { importImudSettings } = require(path.join(RB, 'src/engine/core/legacy-set
 const { getSettingDefs, getDefaultSettings } = require(path.join(RB, 'src/engine/core/settings-registry'));
 const { registerFont } = require(path.join(RB, 'src/engine/typography/measure-api'));
 const { typeset } = require(path.join(RB, 'src/engine/core/pipeline'));
+// **9c.4:** הפורט הנאמן נקרא ישירות — אין עוד dispatch ב-typeset (מנוע יחיד).
+const { legacyTypeset } = require(path.join(RB, 'src/engine/layout/legacy-imud-flow'));
 
 const file = process.argv[2] || path.join(RB, 'tests/fixtures/canonical_corpus.txt');
 const text = fs.readFileSync(file, 'utf8');
@@ -58,7 +60,8 @@ function legacySettings() {
     if (fs.existsSync(p)) for (const f of JSON.parse(fs.readFileSync(p, 'utf8'))) families.add(f.family);
   }
   const imp = importImudSettings(legacy, new Set(getSettingDefs().map(r => r.id)), { availableFonts: families });
-  return { ...getDefaultSettings(), ...imp.settings, 'body-font': 'Guttman Rashi', 'measure-impl': 'font-metrics' };
+  // **9c.4:** ה-raw מוצמד לקריאה הישירה של הפורט (אין עוד dispatch ב-typeset).
+  return { ...getDefaultSettings(), ...imp.settings, _imudRaw: legacy, 'body-font': 'Guttman Rashi', 'measure-impl': 'font-metrics' };
 }
 
 registerAllFonts();
@@ -111,7 +114,7 @@ console.log(`  מילים: מקור ${srcWords}, מוצב ${placedWords}`);
 
 // 6) השוואה למורשת — marginNotes
 const legSettings = legacySettings();
-const rl = typeset(text, legSettings, {});
+const rl = legacyTypeset(text, legSettings, {}); // 9c.4: קריאה ישירה לפורט הנאמן
 if (!rl.legacyProfile) { console.error('מורשת לא הופעלה'); process.exit(2); }
 let legMarginNotes = 0, legMarginWords = 0;
 for (const pg of rl.pages) for (const mn of (pg.marginNotes || [])) { legMarginNotes++; legMarginWords += String(mn.lines ? mn.lines.map(l => l.text).join(' ') : mn.text || '').split(/\s+/).filter(Boolean).length; }

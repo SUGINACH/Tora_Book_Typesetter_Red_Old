@@ -112,10 +112,13 @@ describe('S8G-1 מלאי קוד — סיווג פונקציות המודולים
     // צרכניות: מי משתמש בכל אחד
     const exportApi = fs.readFileSync(path.join(REPO, 'src/engine/output/export-api.js'), 'utf8');
     assert(exportApi.includes('exportPdfFromModel'), 'נתיב PDF מהמודל קיים');
-    assert(!exportApi.includes("require('./legacy-projector')") || /legacyProfile/.test(exportApi), 'legacy-projector רק בנתיב המורשת המפורש');
+    // **9c.4 (cutover):** exportPdf/exportHtml הישנים הן פונקציות פורט לבדיקות
+    // וכלים בלבד (קריאה ישירה) — נקודות הכניסה של המוצר (app-shell, Worker)
+    // אינן קוראות להן עוד; ההוכחה ב-s9c-cutover (סריקת מקור + patch-זורק).
+    assert(exportApi.includes('exportPdfFromModel') && exportApi.includes('exportHtmlFromModel'), 'נתיבי המודל קיימים');
   });
 
-  it('export-api: שני נתיבי ייצוא מתועדים — מהמודל (unified) ומהתוצאה (legacy עד שלב 9); אין נתיב שלישי', () => {
+  it('export-api: נתיבי הייצוא — מהמודל (המוצר) ומהתוצאה (פונקציות פורט לבדיקות/כלים); אין נתיב שלישי', () => {
     const src = fs.readFileSync(path.join(REPO, 'src/engine/output/export-api.js'), 'utf8');
     assert(/function exportHtmlFromModel\(/.test(src) && /function exportPdfFromModel\(/.test(src), 'שתי פונקציות הייצוא מהמודל מוגדרות');
     assert(/exportHtmlFromModel/.test(src.slice(src.indexOf("module.exports"))) && /exportPdfFromModel/.test(src.slice(src.indexOf("module.exports"))), "שתיהן מיוצאות ברישום המודול");
@@ -141,7 +144,7 @@ describe('S8G-2 parity תלת-יעדי — אותו מודל, אותן עובד�
     const htmlBody = String(html).replace(/<style>[\s\S]*?<\/style>/g, '');
     const htmlPages = (htmlBody.match(/class="[^"]*pmr-page/g) || []).length;
     const htmlLines = (htmlBody.match(/class="line[ "]/g) || []).length;
-    const htmlWords = (htmlBody.match(/class="w"/g) || []).length;
+    const htmlWords = (htmlBody.match(/class="w(?:\s[^"]*)?"/g) || []).length;
     // PDF
     const pdf = exportPdfFromModel(model, S, fontBytes, 'Frank Ruhl Libre');
     assert(pdf.ok, 'PDF ok');

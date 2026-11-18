@@ -30,7 +30,8 @@ const bytesOf = (fam) => {
 function imudSettings() {
   const available = new Set(CATALOG.map(e => e.family));
   const { settings } = importImudSettings(LEGACY_DEFAULTS, new Set(getSettingDefs().map(r => r.id)), { availableFonts: available });
-  return Object.assign({}, getDefaultSettings(), settings);
+  // **9c.4:** ה-raw מוצמד לקריאה הישירה של הפורט (legacyTypeset) — אין עוד dispatch.
+  return Object.assign({}, getDefaultSettings(), settings, { _imudRaw: LEGACY_DEFAULTS });
 }
 
 // ---------- עזרי מסמך: תרחיש "פסקה עם שתי הערות גדולות" (ניסוח המשתמש) ----------

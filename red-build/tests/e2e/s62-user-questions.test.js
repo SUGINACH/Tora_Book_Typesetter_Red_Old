@@ -29,7 +29,8 @@ const LEGACY_DEFAULTS = JSON.parse(fs.readFileSync(path.join(REPO, 'ui/assets/im
 function imudSettings() {
   const regKeys = new Set(getSettingDefs().map(r => r.id));
   const { settings } = importImudSettings(LEGACY_DEFAULTS, regKeys, {});
-  return settings;
+  // **9c.4:** ה-raw מוצמד לקריאה הישירה של הפורט (legacyTypeset) — אין עוד dispatch.
+  return { ...settings, _imudRaw: LEGACY_DEFAULTS };
 }
 
 /** מדידת איזון לפי מיקומי y בפועל (כמו סריקת הייחוס) — לא לפי ספירת שורות. */
