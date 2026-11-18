@@ -231,7 +231,10 @@ describe('S72.2 DP — יישור תחתיות ככלל עימוד (שיפורי
     // בלבד השתנתה (ב-very_long: 1089→1108, +1.75%), חלוקת השורות של כל
     // הבלוקים זהה ביט-לביט לבסיס (מוכח ב-s5-corpus-comparison: 4536/4536
     // identical, 0 מכל השאר); contentPreserved=true.
-    assert(result.layoutHash.startsWith('4a1773cc'), `hash הקורפוס השתנה: ${result.layoutHash.slice(0, 16)}`);
+    // **9b.3 (דקדוק הכותרות המלא — D-91):** ננעל מחדש 4a1773cc→0e657636 —
+    // 27 שורות נוסח "מספר N"/"(מקור: …)" במסמך הבדיקה סווגו מפסקאות-גוף
+    // לכותרות/ביאורי-צד; הוראות הדקדוק אינן נרנדרות כתוכן; contentPreserved=true.
+    assert(result.layoutHash.startsWith('0e657636'), `hash הקורפוס השתנה: ${result.layoutHash.slice(0, 16)}`);
     const r2 = typeset(corpus, getDefaultSettings(), {});
     assertEq(result.layoutHash, r2.layoutHash, 'דטרמיניזם');
     // הקנוני — נעילת fdff19d8 ממקטע ב׳ (מאומת ב-s13-acceptance)

@@ -252,6 +252,34 @@ describe('S7.1.2/3 Gate — side-notes full contract + H7 conversion', () => {
     // ההערה מוצגת בפועל בשוליים
     assert(r.sideNotes.placed.length >= 1, 'the H7 note IS placed');
   });
+
+  // **9b.3 (§3.3 בהוראה):** מסמך עם מספר H7 — לא רק H7 יחיד ו-placed.length>=1:
+  // זהות מלאה (כל טוקן ← פריט אחד ויחיד), טקסט שמור, עוגן צפוי, אין לפני-עוגן.
+  it('multi-H7 document: every token → exactly one item, text preserved, no findings', () => {
+    const MULTI_H7_DOC = `ספר - רב ביאורים
+
+כותרת 1 - החלק
+כותרת 7 - ביאור ראשון
+כותרת 7 - ביאור שני
+כותרת 7 - ביאור שלישי
+פסקה מארחת אחת לשלושת הביאורים עם עוד מילים למילוי.
+כותרת 7 - ביאור רביעי
+פסקה שנייה מארחת.
+`;
+    const r = typeset(MULTI_H7_DOC, getDefaultSettings());
+    const placed = r.sideNotes.placed;
+    assertEq(placed.length, 4, `ארבעה פריטים (הוצבו ${placed.length})`);
+    const ownCounts = new Map();
+    for (const p of placed) ownCounts.set(String(p.ownToken), (ownCounts.get(String(p.ownToken)) || 0) + 1);
+    for (const [own, c] of ownCounts) assertEq(c, 1, `פריט יחיד לטוקן ${own}`);
+    const texts = placed.map(p => String(p.text).trim());
+    for (const t of ['ביאור ראשון', 'ביאור שני', 'ביאור שלישי', 'ביאור רביעי']) {
+      assert(texts.includes(t), `הטקסט "${t}" שמור בפריט`);
+    }
+    // שלושת הראשונים עוגנו למארחת אחת; הרביעי לשנייה — מהמתכנן (hostByH7)
+    const h7Issues = [...r.ledger.issues.values()].filter(x => String(x.kind).startsWith('h7-') || String(x.kind).startsWith('side-item'));
+    assertEq(h7Issues.length, 0, `אפס ממצאי אימות (נמצאו: ${h7Issues.map(x => x.kind).join(',')})`);
+  });
 });
 
 describe('S7 — P0-3 reading-order lock (regression)', () => {

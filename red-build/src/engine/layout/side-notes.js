@@ -187,20 +187,91 @@ function placeSideNotes(pages, settings, measureFn, hooks = {}) {
 }
 
 /**
- * אימות המרת H7 → הערת צד (S7.1.3): השוואה per-paragraph על בסיס **עוגן הטוקן**,
- * לא חיפוש טקסט — כפילות טקסט בגוף (תיקון המשתמש) אינה false-positive.
- * @param {Array} sourceTokens - טוקני המקור (headings עם level 7 / mode side-note)
+ * אימות המרת H7 → הערת צד (S7.1.3 + **9b.3 §3.3 — הרחבה מלאה**).
+ * בדיקות על בסיס **זהות טוקן** (לא חיפוש טקסט — כפילות טקסט בגוף אינה
+ * false-positive), עם הפרדה קפדנית בין ownToken (הטוקן של ההערה עצמה)
+ * ל-anchorToken (הפסקה המארחת) — שני מזהים בעלי תפקידים שונים:
+ *  1. לכל טוקן H7 — פריט אחד בדיוק (אין חסר, אין כפילות);
+ *  2. טקסט הביאור נשמר במלואו (מילה-במילה מול טוקן המקור);
+ *  3. anchorToken מצביע לפסקה המארחת הצפויה (הפסקה הבאה במקור);
+ *  4. אין פריט חסר-מקור (ללא ownToken של H7/סגנון-צד אמיתי);
+ *  5. אין פריט שהוצב בעמוד לפני עוגנו החזותי (firstPageByToken);
+ *  6. deferred/pending נסגרו בהצבה או בממצא מפורש.
+ * @param {Array} sourceTokens - טוקני המקור
  * @param {Array} pages - עמודי התוצר
- * @param {{placed:Array}} placement - פלט placeSideNotes
+ * @param {{placed:Array, deferred:Array}} placement - פלט placeSideNotes
+ * @param {object} [ctx] - { hostByH7: Map<ownToken,String>, sourceBlocks: Array }
+ *   (אופציונלי — מאפשר אימות anchorToken מול המארחת הצפויה שנקבעה בתכנון)
  */
-function verifyH7Conversion(sourceTokens, pages, placement) {
+function verifyH7Conversion(sourceTokens, pages, placement, ctx = {}) {
   const mismatches = [];
-  const placedAnchors = new Set((placement ? placement.placed : []).map(p => p.ownToken || p.anchorToken)); // ownToken = הטוקן של ההערה עצמה; anchorToken = הפסקה המארחת
+  const placed = placement ? placement.placed : [];
+  const deferred = placement ? placement.deferred : [];
+  const placedByOwn = new Map();
+  for (const p of placed) {
+    const own = p.ownToken != null ? String(p.ownToken) : null;
+    if (own == null) {
+      mismatches.push({ kind: 'side-item-without-source', anchor: p.anchorToken, text: String(p.text || '').slice(0, 40) });
+      continue;
+    }
+    if (!placedByOwn.has(own)) placedByOwn.set(own, []);
+    placedByOwn.get(own).push(p);
+  }
+  // (5) עמוד הופעה ראשון של כל טוקן — לבדיקת "לפני העוגן"
+  const firstPageByToken = new Map();
+  for (const page of pages) {
+    const pageLinesList = [...(page.spanning ? page.spanning.lines : []), ...(page.columns || []).flat()];
+    for (const ln of pageLinesList) {
+      const tok = ln.tokenId != null ? String(ln.tokenId) : (ln.meta && ln.meta.tokenId != null ? String(ln.meta.tokenId) : null);
+      if (tok != null && !firstPageByToken.has(tok)) firstPageByToken.set(tok, page.index);
+    }
+  }
+  const sourceH7 = new Map(); // ownToken -> token
   for (const t of sourceTokens) {
-    if (t.type === 'heading' && (t.level === 7 || t.mode === 'side-note')) {
-      if (!placedAnchors.has(t.id)) {
-        mismatches.push({ token: t.id, text: t.text, kind: 'h7-conversion-missing' });
+    if (t.type === 'heading' && (t.level === 7 || t.mode === 'side-note')) sourceH7.set(String(t.id), t);
+  }
+  // (1)+(2)+(3): כיסוי, יחידות, טקסט, עוגן
+  const normCmp = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+  for (const [own, t] of sourceH7) {
+    const items = placedByOwn.get(own) || [];
+    if (items.length === 0) {
+      mismatches.push({ token: t.id, text: t.text, kind: 'h7-conversion-missing' });
+      continue;
+    }
+    if (items.length > 1) {
+      mismatches.push({ token: t.id, kind: 'h7-conversion-duplicate', count: items.length });
+    }
+    for (const it of items) {
+      if (normCmp(it.text) !== normCmp(t.text)) {
+        mismatches.push({ token: t.id, kind: 'h7-text-not-preserved', expected: normCmp(t.text).slice(0, 40), actual: normCmp(it.text).slice(0, 40) });
       }
+      if (ctx.hostByH7 && ctx.hostByH7.has(own)) {
+        const expectedHost = String(ctx.hostByH7.get(own));
+        if (String(it.anchorToken) !== expectedHost) {
+          mismatches.push({ token: t.id, kind: 'h7-anchor-mismatch', expectedHost, actualAnchor: String(it.anchorToken) });
+        }
+      }
+      // (5) הפריט אחרי עוגנו (או באותו עמוד) — לעולם לא לפניו
+      const anchorPage = firstPageByToken.get(String(it.anchorToken));
+      if (anchorPage != null && it.page < anchorPage) {
+        mismatches.push({ token: t.id, kind: 'h7-placed-before-anchor', itemPage: it.page, anchorPage });
+      }
+    }
+  }
+  // (4) פריטים חסרי מקור H7 (ownToken שאינו טוקן H7 — יכולים להיות סגנונות-צד
+  // לגיטימיים; מדווח רק כשאין מקור כלל ואין isCustomStyle)
+  for (const [own, items] of placedByOwn) {
+    if (sourceH7.has(own)) continue;
+    if (items.some(it => it.isCustomStyle)) continue;
+    mismatches.push({ token: own, kind: 'side-item-without-h7-source', count: items.length });
+  }
+  // (6) דחויים שלא נסגרו בהצבה — זרימה תקינה (עמוד נושא/המשך) רק אם הפריט
+  // בסופו של דבר מוקם; מדווח רק מי שהופיע ב-deferred אך לא ב-placed.
+  const placedOwns = new Set(placedByOwn.keys());
+  for (const d of deferred) {
+    const own = d.ownToken != null ? String(d.ownToken) : (d.tokenId != null ? String(d.tokenId) : null);
+    if (own != null && !placedOwns.has(own)) {
+      mismatches.push({ token: own, kind: 'h7-deferred-never-placed', reason: d.reason, page: d.page });
     }
   }
   void pages;

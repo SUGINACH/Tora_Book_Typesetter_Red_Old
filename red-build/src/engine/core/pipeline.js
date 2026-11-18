@@ -799,11 +799,14 @@ function typeset(rawText, settingsIn, env = {}) {
     eventLog.emit('decorations', 'stage-snapshot-captured', { checkpoint: 'cp4-decorations', pageCount: pages.length });
   }
 
-  // S7.1.3: אימות המרת H7 — מחובר לצינור (בעבר פונקציה יתומה)
-  const h7Mismatches = verifyH7Conversion(tokens, pages, sideNotePlacement);
+  // S7.1.3 + **9b.3 §3.3:** אימות H7 מורחב — זהות ownToken, יחידות פריט,
+  // שימור טקסט, עוגן מארחת צפוי (hostByH7 מהמתכנן), אין הצבה לפני עוגן,
+  // אין פריט חסר-מקור, דחויים נסגרו. מחובר לצינור (בעבר פונקציה יתומה).
+  const h7Mismatches = verifyH7Conversion(tokens, pages, sideNotePlacement, { hostByH7: planned.hostByH7 });
   for (const m of h7Mismatches) {
-    const rec = ledger.create('h7-conversion-missing', m.token, null, { text: m.text }, 'decorations');
-    ledger.transition(rec.issue_id, 'persists', 'decorations', 'H7 token not placed as side note');
+    const rec = ledger.create(m.kind || 'h7-conversion-missing', m.token, null, m, 'decorations');
+    ledger.transition(rec.issue_id, 'persists', 'decorations',
+      `H7 conversion verification: ${m.kind || 'h7-conversion-missing'}${m.expectedHost ? ` (expected host ${m.expectedHost}, anchor ${m.actualAnchor})` : ''}`);
   }
 
   // ---- folio numbering (D-36: פתיחות אינן מציגות גיליון; S9: נוסחת V1 start-idx+initial) ----

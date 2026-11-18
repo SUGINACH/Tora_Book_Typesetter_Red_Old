@@ -320,6 +320,10 @@ function buildDocumentModel(rawText, opts = {}) {
       const blk = mkBlock(lineRec, {
         kind: BLOCK_KINDS.HEADING,
         level: lineRec.level,
+        // **9b.3:** מספר וציטוט-מקור — שדות סמנטיים של הוראת הכותרת (אינם תוכן;
+        // הציטוט נשמר לפרובננס §6.3 ואינו נרנדר — כמו התנהגות הייחוס)
+        ...(lineRec.num != null ? { num: lineRec.num } : {}),
+        ...(lineRec.citation ? { citation: lineRec.citation } : {}),
         payload: { text: null, num: null }
       });
       blk.constraints = { keepWithNext: true, participates: PARTICIPATION.BLOCK, splittable: SPLIT_POLICIES.NEVER };

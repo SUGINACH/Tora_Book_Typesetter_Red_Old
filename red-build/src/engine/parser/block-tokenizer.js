@@ -173,13 +173,23 @@ function tokenizeDetailed(bodyLines, opts = {}) {
 
     let m = line.match(HEADING_RE);
     if (m) {
+      // **9b.3:** קבוצות HEADING_RE — 2=רמה, 3=מספר (חדש), 4=ציטוט (חדש), 5=חלק, 6=טקסט.
+      // מספר וציטוט נשמרים כשדות סמנטיים בטוקן (הוראות דקדוק — אינן נרנדרות;
+      // הציטוט נצרך ע"י הייחוס מהתצוגה ונשמר לפרובננס §6.3).
       const level = m[2] !== undefined ? Number(m[2]) : (m[1] === 'הקדמה' ? 0 : 1);
-      const text = m[4] || m[0];
+      const text = m[6] || m[0];
+      const num = m[3] !== undefined ? Number(m[3]) : null;
+      const citation = m[4] && m[4].trim() ? m[4].trim() : null;
       const titleStart = Math.max(0, line.lastIndexOf(text));
-      tokens.push(mkToken('heading', { level, text, raw: line }));
+      tokens.push(mkToken('heading', { level, text, ...(num != null ? { num } : {}), ...(citation ? { citation } : {}), raw: line }));
       lines.push({
         bodyLineIndex: li, kind: 'heading', level, stage1: s1,
-        spans: { match: { start: 0, end: m[0].length }, title: { start: titleStart, end: line.length } },
+        ...(num != null ? { num } : {}), ...(citation ? { citation } : {}), // 9b.3: שדות סמנטיים למודל
+        spans: {
+          match: { start: 0, end: m[0].length },
+          title: { start: titleStart, end: line.length },
+          ...(num != null || citation ? { instruction: { start: 0, end: titleStart } } : {})
+        },
         tokenId: tokens[tokens.length - 1].id
       });
       continue;

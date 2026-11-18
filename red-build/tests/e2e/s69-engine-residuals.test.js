@@ -344,7 +344,7 @@ describe('S70 (R3-M2/M3) — כיול orphan/widow: רק הפרות אמיתיו
     // מילים זהה ביט-לביט; אפס שינויי חלוקת שורות; הערות 129=129; +2
     // עמודי regular מהריפודים. bodyHash/notesHash הוכחו בדוח ההשוואה.
     // דוח: audits/H3_SPACING_OLD_STYLE_PARITY_2026-11-17.md. הקודם: d2a18112.
-    // **RLM (17.11, שורש מדידה — פרוסה 3):** נעילה מחודשת e68e1f0b→4df8f965 —
+    // **RLM (17.11, שורש מדידה — פרוסה 3):** נעילה מחודשת e68e1f0b→008bbb68 —
     // תווי בקרת bidi (U+200E/U+200F וכו') הם אפס-רוחב לפי יוניקוד ובכל מנוע
     // תצוגה, אך חלק מהגופנים נותנים להם advance ב-hmtx (נמדד 6.4px ל-RLM
     // ב-12pt) — המדידה ספרה אותם והתצוגה לא ⇒ פער דיו ~7px בכל מילה
@@ -352,7 +352,7 @@ describe('S70 (R3-M2/M3) — כיול orphan/widow: רק הפרות אמיתיו
     // 151 שורות מכילות RLM בבסיס — 49 מהן נחלקו מחדש + שורות המשך-זרימה
     // באותן פסקאות; 197 שורות הועברו בין עמודים; אין שינוי מספר עמודים
     // (1110); הערות 129=129; contentPreserved=true. הקודם: e68e1f0b (H3-CSS).
-    assert(r.layoutHash.startsWith('4df8f965'), `layout unchanged (got ${r.layoutHash.slice(0, 8)})`);
+    assert(r.layoutHash.startsWith('008bbb68'), `layout unchanged (got ${r.layoutHash.slice(0, 8)})`);
     const count = (kind) => [...r.ledger.issues.values()].filter(x => x.kind === kind && x.status === 'persists').length;
     assertEq(count('widow-bottom'), 0, 'false widow-bottom flood eliminated (was 1176)');
     assertEq(count('orphan-top'), 0, 'false orphan-top flood eliminated (was 791)');
