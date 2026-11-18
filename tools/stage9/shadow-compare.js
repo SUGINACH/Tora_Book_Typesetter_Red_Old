@@ -597,11 +597,14 @@ function unifiedInventory(r) {
     }
     // המאוחד צורך ערכי מטא בתיבות השער (buildShaarBlocks: settings || meta) —
     // רק ערכים שבאמת מגיעים מהמסמך (כשההגדרה ריקה) נכנסים לתקציב (§6.1 — סמנטיקה מאושרת).
+    // **9b.5:** גם ארבעת מקטעי השער האחורי (D-107) — זכויות/הוצאה/קשר/נוספים.
     const gateMetaBudget = new Map();
     if (!isLegacy) {
       const SHAAR_FIELDS = [
         ['imud-book-title', 'שם הספר'], ['imud-book-subtitle', 'נושא'], ['imud-book-desc', 'נושא מפורט'],
         ['imud-book-sections', 'פרטי מהדורא'], ['imud-book-author', 'שם המחבר'], ['imud-book-year', 'מקום ושנת הוצאה'],
+        ['imud-book-back-copyright', 'שמירת זכויות'], ['imud-book-back-publishing', 'פרטי הוצאה לאור'],
+        ['imud-book-back-contact', 'פרטי קשר'], ['imud-book-back-extra', 'פרטים נוספים'],
       ];
       for (const [setKey, metaKey] of SHAAR_FIELDS) {
         const fromSettings = uniSettings[setKey] != null && String(uniSettings[setKey]).trim() !== '';

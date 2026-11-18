@@ -57,7 +57,6 @@ function buildShaarBlocks(page, settings, metadata) {
   const sections = settings['imud-book-sections'] || meta['פרטי מהדורא'] || '';
   const author = settings['imud-book-author'] || meta['שם המחבר'] || '';
   const year = settings['imud-book-year'] || meta['מקום ושנת הוצאה'] || '';
-  const backRaw = settings['shaar-back-text'] || meta['שמירת זכויות'] || 'כל הזכויות שמורות למחבר.';
 
   const num = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 12; };
   const box = shaarBoxOf(page.type);
@@ -80,14 +79,26 @@ function buildShaarBlocks(page, settings, metadata) {
       B.push({ cls: 'book-subtitle', text: titleSub, sizePt: num(settings['shaar-subtitle-size-pt']), bold: true });
     }
   } else {
-    B.push({ cls: 'book-title-main book-title-main--back', text: bookTitle, sizePt: 36 });
-    const lines = String(backRaw).split('\n').map(l => l.trim()).filter(Boolean);
-    lines.forEach((l, i) => B.push({
-      cls: 'back-shaar-text-line', text: l,
-      sizePt: i === 0 ? 13 : num(settings['shaar-back-text-size-pt']), bold: i === 0
-    }));
-    if (author) B.push({ cls: 'author-block', text: author, sizePt: num(settings['shaar-author-size-pt']) });
-    if (year) B.push({ cls: 'publication-footer', text: year, sizePt: num(settings['shaar-year-size-pt']), bold: true });
+    // **9b.5 (D-107 + F-9a-8):** ארבעת מקטעי השער האחורי — פורט renderBackShaar
+    // של המקור: כותרת «כל הזכויות שמורות» (13.5pt) + זכויות יוצרים (10pt) +
+    // הוצאה/פרסום (11pt) + קשר (10pt) + פרטים נוספים (9.5pt). מקור הערך:
+    // שדה ההגדרה גובר (ייבוא inp-book-back-*; shaar-back-text ההיסטורי לזכויות);
+    // נפילה למטא המסמך. **אין כותרת-ספר/מחבר/שנה בשער האחורי** (כמו במקור
+    // שהופורט — עד כאן הוצגו שם בטעות), ו**אין ערכים מומצאים** — בלי ערך
+    // אין מקטע (§6.2 בהוראת 9b).
+    const copyright = settings['imud-book-back-copyright'] || settings['shaar-back-text'] || meta['שמירת זכויות'] || '';
+    const publisher = settings['imud-book-back-publishing'] || meta['פרטי הוצאה לאור'] || '';
+    const contact = settings['imud-book-back-contact'] || meta['פרטי קשר'] || '';
+    const extra = settings['imud-book-back-extra'] || meta['פרטים נוספים'] || '';
+    const pushSection = (value, sizePt) => {
+      String(value).split('\n').map(l => l.trim()).filter(Boolean)
+        .forEach(l => B.push({ cls: 'back-shaar-text-line', text: l, sizePt }));
+    };
+    if (copyright) B.push({ cls: 'back-shaar-copyright-header', text: 'כל הזכויות שמורות', sizePt: 13.5, bold: true });
+    pushSection(copyright, 10);
+    pushSection(publisher, 11);
+    pushSection(contact, 10);
+    pushSection(extra, 9.5);
   }
   return { mode: box.mode, box, blocks: B.filter(b => b.graphic || String(b.text || '').length) };
 }
@@ -102,6 +113,7 @@ function shaarFontOf(cls, settings) {
     case cls.includes('book-description'): return settings['shaar-desc-font'];
     case cls.includes('book-sections-summary'): return settings['shaar-sections-font'];
     case cls.includes('author-block'): return settings['shaar-author-font'];
+    case cls.includes('back-shaar-copyright-header'):
     case cls.includes('back-shaar-text-line'): return settings['shaar-back-text-font'];
     default: return '';
   }

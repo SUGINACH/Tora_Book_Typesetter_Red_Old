@@ -3,7 +3,7 @@
   "schema": 5,
   "file": "audits/very_long_test_text.txt",
   "unifiedProfile": "imud-cutover",
-  "started": "2026-11-18T01:28:13.933Z",
+  "started": "2026-11-18T02:09:09.413Z",
   "summary": {
     "total": 13,
     "passed": 13,
@@ -81,7 +81,7 @@
       "group": "מודל",
       "desc": "r.pageModel (הקנוני של שלב 8) מייצג את אותו תוכן כמו r.pages במאוחד",
       "ok": true,
-      "detail": "PageModel מייצג את מלוא התוכן (360,286 מילים = האינוונטר)"
+      "detail": "PageModel מייצג את מלוא התוכן (360,285 מילים = האינוונטר)"
     },
     "G9-heading-grammar-parity": {
       "group": "דקדוק",
@@ -113,7 +113,7 @@
     },
     "legacy": {
       "pages": 695,
-      "words": 356447,
+      "words": 356445,
       "notes": 132,
       "fnAreas": 81,
       "continuationFragments": 20,
@@ -125,7 +125,7 @@
     },
     "unified": {
       "pages": 896,
-      "words": 360286,
+      "words": 360285,
       "notes": 132,
       "sideNotes": 2042,
       "sideWords": 25069,

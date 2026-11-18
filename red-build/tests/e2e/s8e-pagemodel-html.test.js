@@ -184,7 +184,9 @@ describe('S8E-2 פרוסה 4 — זהות תוכן וגיאומטריה עם ה-
       }
       const modelW = mp.lines.reduce((s, l) => s + (l.words || []).length, 0);
       assert(wordsInSeg >= Math.floor(modelW * 0.9), `עמוד ${mp.index}: ${wordsInSeg}/${modelW} מילות מודל בפלח ה-HTML`);
-      assert(domW > 0, `עמוד ${mp.index} מרונדר ב-DOM`);
+      // **9b.5:** שער אחורי ללא מקטעים (אין ערכים — אין המצאה) הוא מצב לגיטימי:
+      // ה-DOM מרונדר עם מילים בדיוק כשיש מילים במודל.
+      assert((domW > 0) === (modelW > 0), `עמוד ${mp.index} מרונדר ב-DOM בהתאם למודל (dom=${domW}, model=${modelW})`);
     }
   });
 });

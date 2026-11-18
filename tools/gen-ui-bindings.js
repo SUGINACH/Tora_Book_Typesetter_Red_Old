@@ -99,7 +99,7 @@ const L = {
   'shaar-author-color': 'שער — צבע שם המחבר',
   'shaar-year-font': 'שער — גופן מקום ושנה', 'shaar-year-size-pt': 'שער — גודל מקום ושנה (pt)',
   'shaar-year-color': 'שער — צבע מקום ושנה',
-  'shaar-back-text-font': 'שער אחורי — גופן הטקסט', 'shaar-back-text-size-pt': 'שער אחורי — גודל הטקסט (pt)',
+  'shaar-back-text-font': 'שער אחורי — גופן הטקסט',
   'shaar-back-text-color': 'שער אחורי — צבע הטקסט',
   'imud-book-title': 'שם הספר (שער)', 'imud-book-subtitle': 'כותרת־משנה (שער)',
   'imud-book-desc': 'תיאור (שער — נושא מפורט)', 'imud-book-sections': 'פרטי מהדורא (שער)',

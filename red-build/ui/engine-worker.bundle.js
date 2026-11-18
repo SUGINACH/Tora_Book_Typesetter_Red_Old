@@ -2268,6 +2268,13 @@ const registry = [
   K('imud-divider', 'string', '', P.ORNAMENTS, 'inp-imud-divider', ['decoration/ornament-plan'], 'fx:imud-divider', { note: 'מפריד סעיפים מעוצב (323 עיצובים) — משמש מפרידי שער/כותרות במצב תמונה' }),
   K('imud-book-title', 'string', '', P.THEMES, 'inp-imud-book-title', ['output/dom-renderer'], 'fx:imud-book-title', { note: 'כותרת הספר בשער (עקיפת מטא-נתוני המסמך אם הוגדר)' }),
   K('imud-book-subtitle', 'string', '', P.THEMES, 'inp-imud-book-subtitle', ['output/dom-renderer'], 'fx:imud-book-subtitle', { note: 'כותרת־משנה בשער' }),
+  // **9b.5 (D-107 + F-9a-8):** ארבעת מקטעי השער האחורי — שדות בעלי משמעות עם
+  // שמות הניתנים להתאמה. מקור: שדה הפאנל (ייבוא inp-book-back-*) גובר; נפילה
+  // למטא המסמך. בלי ערך — אין מקטע (אין המצאת ערכים; כמו במקור שהופורט).
+  K('imud-book-back-copyright', 'string', '', P.THEMES, 'inp-book-back-copyright', ['output/shaar-content'], 'fx:imud-book-back-copyright', { note: 'זכויות יוצרים בשער האחורי (D-107; עקיפת מטא-נתוני המסמך אם הוגדר)' }),
+  K('imud-book-back-publishing', 'string', '', P.THEMES, 'inp-book-back-publishing', ['output/shaar-content'], 'fx:imud-book-back-publishing', { note: 'פרטי הוצאה לאור בשער האחורי (D-107)' }),
+  K('imud-book-back-contact', 'string', '', P.THEMES, 'inp-book-back-contact', ['output/shaar-content'], 'fx:imud-book-back-contact', { note: 'פרטי קשר בשער האחורי (D-107)' }),
+  K('imud-book-back-extra', 'string', '', P.THEMES, 'inp-book-back-extra', ['output/shaar-content'], 'fx:imud-book-back-extra', { note: 'פרטים נוספים בשער האחורי (D-107)' }),
   // **03.11(ד) — דיווח משתמש 3 ("אין עמודי שער, אין כותרות עליונות, שום דבר מהגדרות
   // ברירת המחדל אינו קיים"): המקור (IMUD_TORANI default_settings.json) מחזיק
   // show-main-shaar=true / show-sub-shaar=true / show-back-shaar=true כברירת מחדל —
@@ -2298,7 +2305,6 @@ const registry = [
   K('shaar-year-size-pt', 'number', 12, P.THEMES, 'rng-shaar-year-size', ['output/shaar-content', 'output/dom-renderer'], 'fx:shaar-year-size', { min: 8, max: 20, note: 'מקור: s-sh-year=12' }),
   K('shaar-back-text-font', 'font', 'אסיסטנט קל מאוד', P.THEMES, 'sel-shaar-back-text-font', ['output/shaar-content', 'output/dom-renderer', 'layout/legacy-imud-flow'], 'fx:shaar-back-text-font', { note: 'S74 (בעיה 5): כל שורות השער האחורי ב-Assistant ExtraLight — ברירת המחדל של הגרסה הישנה בפועל (נמדד בייחוס עמ׳ 2: חמש השורות Assistant-ExtraLight 13.5/10/11/10/9.5pt). עד S74 ירשו את גוף המסמך' }),
   K('shaar-back-text-color', 'color', '#000000', P.THEMES, 'inp-shaar-back-text-color', ['layout/legacy-imud-flow', 'output/geometry-projector', 'output/dom-renderer'], 'fx:shaar-back-text-color', { note: 'S73: צבע טקסט השער האחורי — שחור כברירת מחדל' }),
-  K('shaar-back-text-size-pt', 'number', 10.5, P.THEMES, 'rng-shaar-back-text-size', ['output/shaar-content', 'output/dom-renderer'], 'fx:shaar-back-text-size', { min: 8, max: 16, note: 'מקור: שורות ההמשך 10.5pt (השורה הראשונה 13pt מודגשת)' }),
   // נתוני הספר לשערים — ממופים מ-inp-book-* של המקור; בלי ערך — נופלים למטא-נתוני המסמך
   K('imud-book-desc', 'string', '', P.THEMES, 'inp-imud-book-desc', ['output/dom-renderer'], 'fx:imud-book-desc', { note: 'תיאור בשער הראשי (מקור: inp-book-desc ← «נושא מפורט»)' }),
   K('imud-book-sections', 'string', '', P.THEMES, 'inp-imud-book-sections', ['output/dom-renderer'], 'fx:imud-book-sections', { note: 'פרטי מהדורא בשער הראשי (מקור: inp-book-sections ← «פרטי מהדורא»)' }),
@@ -21139,7 +21145,10 @@ function stampTocLayout(page, settings, measure) {
 function stampShaarLayout(page, settings, measure) {
   if (!/^shaar-/.test(page.type)) return false;
   const model = buildShaarBlocks(page, settings, page._metadata);
-  if (!model || !model.blocks.length) return false;
+  // **9b.5:** שער אחורי ללא מקטעים (אין ערכים — אין המצאה) הוא מצב לגיטימי
+  // ומוחלט: החותמת נרשמת גם עם רשימת בלוקים ריקה — כך המקרינים יודעים שזו
+  // ההחלטה הסופית ולא נפילת מדידה (materialize-fallback-shaar-stamp).
+  if (!model) return false;
   const b = model.box;
   const tpl = page.template;
   const boxX = b.left, boxW = Math.max(40, tpl.width - b.left - b.right);
@@ -21151,7 +21160,7 @@ function stampShaarLayout(page, settings, measure) {
     if (cls.includes('book-description')) return colorOfSetting(settings['shaar-desc-color']);
     if (cls.includes('book-sections-summary')) return colorOfSetting(settings['shaar-sections-color']);
     if (cls.includes('author-block')) return colorOfSetting(settings['shaar-author-color']);
-    if (cls.includes('back-shaar-text-line')) return colorOfSetting(settings['shaar-back-text-color']);
+    if (cls.includes('back-shaar-text-line') || cls.includes('back-shaar-copyright-header')) return colorOfSetting(settings['shaar-back-text-color']);
     return null;
   };
   // גובה כל בלוק: שבירת שורות לרוחב התיבה במדידת הגופן שלו + גובה שורה לפי הגודל.
@@ -21356,7 +21365,6 @@ function buildShaarBlocks(page, settings, metadata) {
   const sections = settings['imud-book-sections'] || meta['פרטי מהדורא'] || '';
   const author = settings['imud-book-author'] || meta['שם המחבר'] || '';
   const year = settings['imud-book-year'] || meta['מקום ושנת הוצאה'] || '';
-  const backRaw = settings['shaar-back-text'] || meta['שמירת זכויות'] || 'כל הזכויות שמורות למחבר.';
 
   const num = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 12; };
   const box = shaarBoxOf(page.type);
@@ -21379,14 +21387,26 @@ function buildShaarBlocks(page, settings, metadata) {
       B.push({ cls: 'book-subtitle', text: titleSub, sizePt: num(settings['shaar-subtitle-size-pt']), bold: true });
     }
   } else {
-    B.push({ cls: 'book-title-main book-title-main--back', text: bookTitle, sizePt: 36 });
-    const lines = String(backRaw).split('\n').map(l => l.trim()).filter(Boolean);
-    lines.forEach((l, i) => B.push({
-      cls: 'back-shaar-text-line', text: l,
-      sizePt: i === 0 ? 13 : num(settings['shaar-back-text-size-pt']), bold: i === 0
-    }));
-    if (author) B.push({ cls: 'author-block', text: author, sizePt: num(settings['shaar-author-size-pt']) });
-    if (year) B.push({ cls: 'publication-footer', text: year, sizePt: num(settings['shaar-year-size-pt']), bold: true });
+    // **9b.5 (D-107 + F-9a-8):** ארבעת מקטעי השער האחורי — פורט renderBackShaar
+    // של המקור: כותרת «כל הזכויות שמורות» (13.5pt) + זכויות יוצרים (10pt) +
+    // הוצאה/פרסום (11pt) + קשר (10pt) + פרטים נוספים (9.5pt). מקור הערך:
+    // שדה ההגדרה גובר (ייבוא inp-book-back-*; shaar-back-text ההיסטורי לזכויות);
+    // נפילה למטא המסמך. **אין כותרת-ספר/מחבר/שנה בשער האחורי** (כמו במקור
+    // שהופורט — עד כאן הוצגו שם בטעות), ו**אין ערכים מומצאים** — בלי ערך
+    // אין מקטע (§6.2 בהוראת 9b).
+    const copyright = settings['imud-book-back-copyright'] || settings['shaar-back-text'] || meta['שמירת זכויות'] || '';
+    const publisher = settings['imud-book-back-publishing'] || meta['פרטי הוצאה לאור'] || '';
+    const contact = settings['imud-book-back-contact'] || meta['פרטי קשר'] || '';
+    const extra = settings['imud-book-back-extra'] || meta['פרטים נוספים'] || '';
+    const pushSection = (value, sizePt) => {
+      String(value).split('\n').map(l => l.trim()).filter(Boolean)
+        .forEach(l => B.push({ cls: 'back-shaar-text-line', text: l, sizePt }));
+    };
+    if (copyright) B.push({ cls: 'back-shaar-copyright-header', text: 'כל הזכויות שמורות', sizePt: 13.5, bold: true });
+    pushSection(copyright, 10);
+    pushSection(publisher, 11);
+    pushSection(contact, 10);
+    pushSection(extra, 9.5);
   }
   return { mode: box.mode, box, blocks: B.filter(b => b.graphic || String(b.text || '').length) };
 }
@@ -21401,6 +21421,7 @@ function shaarFontOf(cls, settings) {
     case cls.includes('book-description'): return settings['shaar-desc-font'];
     case cls.includes('book-sections-summary'): return settings['shaar-sections-font'];
     case cls.includes('author-block'): return settings['shaar-author-font'];
+    case cls.includes('back-shaar-copyright-header'):
     case cls.includes('back-shaar-text-line'): return settings['shaar-back-text-font'];
     default: return '';
   }
@@ -22483,7 +22504,7 @@ function projectPage(page, settings, apiOrOpts) {
         if (cls.includes('book-description')) return colorOfSetting(settings['shaar-desc-color']);
         if (cls.includes('book-sections-summary')) return colorOfSetting(settings['shaar-sections-color']);
         if (cls.includes('author-block')) return colorOfSetting(settings['shaar-author-color']);
-        if (cls.includes('back-shaar-text-line')) return colorOfSetting(settings['shaar-back-text-color']);
+        if (cls.includes('back-shaar-text-line') || cls.includes('back-shaar-copyright-header')) return colorOfSetting(settings['shaar-back-text-color']);
         return null;
       };
       const shaarMeasureOf = (fam) => {
@@ -26072,7 +26093,7 @@ function shaarColorOfCls(cls, settings) {
   if (cls.includes('book-description')) return nonBlack(settings['shaar-desc-color']);
   if (cls.includes('book-sections-summary')) return nonBlack(settings['shaar-sections-color']);
   if (cls.includes('author-block')) return nonBlack(settings['shaar-author-color']);
-  if (cls.includes('back-shaar-text-line')) return nonBlack(settings['shaar-back-text-color']);
+  if (cls.includes('back-shaar-text-line') || cls.includes('back-shaar-copyright-header')) return nonBlack(settings['shaar-back-text-color']);
   return null;
 }
 

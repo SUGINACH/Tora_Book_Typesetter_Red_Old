@@ -100,7 +100,10 @@ function stampTocLayout(page, settings, measure) {
 function stampShaarLayout(page, settings, measure) {
   if (!/^shaar-/.test(page.type)) return false;
   const model = buildShaarBlocks(page, settings, page._metadata);
-  if (!model || !model.blocks.length) return false;
+  // **9b.5:** שער אחורי ללא מקטעים (אין ערכים — אין המצאה) הוא מצב לגיטימי
+  // ומוחלט: החותמת נרשמת גם עם רשימת בלוקים ריקה — כך המקרינים יודעים שזו
+  // ההחלטה הסופית ולא נפילת מדידה (materialize-fallback-shaar-stamp).
+  if (!model) return false;
   const b = model.box;
   const tpl = page.template;
   const boxX = b.left, boxW = Math.max(40, tpl.width - b.left - b.right);
@@ -112,7 +115,7 @@ function stampShaarLayout(page, settings, measure) {
     if (cls.includes('book-description')) return colorOfSetting(settings['shaar-desc-color']);
     if (cls.includes('book-sections-summary')) return colorOfSetting(settings['shaar-sections-color']);
     if (cls.includes('author-block')) return colorOfSetting(settings['shaar-author-color']);
-    if (cls.includes('back-shaar-text-line')) return colorOfSetting(settings['shaar-back-text-color']);
+    if (cls.includes('back-shaar-text-line') || cls.includes('back-shaar-copyright-header')) return colorOfSetting(settings['shaar-back-text-color']);
     return null;
   };
   // גובה כל בלוק: שבירת שורות לרוחב התיבה במדידת הגופן שלו + גובה שורה לפי הגודל.
