@@ -141,7 +141,7 @@ describe('שלב 3 — Worker E2E אמיתי: הובלת נכסים בזרימת
     const req = client.requestTypeset({ text: SMALL_DOC, settings, assets: ar });
     assert(req.jobId, 'מזהה עבודה הוקצה');
     const result = await req.promise;
-    assert(result && result.pages && result.pages.length > 0, 'עימוד הושלם עם נכסים בהודעה');
+    assert(result && result.pageModel && result.pageModel.model && result.pageModel.model.pages.length > 0, 'עימוד הושלם עם מודל בהודעה (9c.5: pages הגולמי הוסר; המודל במעטפת התעבורה)');
     assertEq(result.contentPreserved, true, 'שימור תוכן');
     // הוכחת הגעה לצינור החי: הנכסים הגיעו לתוך typeset והדבר מתועד בעקבות
     // (שער הצריכה המלא — שלב 4; כאן מוכח שהקלטה אינה שקטה)
@@ -165,7 +165,7 @@ describe('שלב 3 — Worker E2E אמיתי: הובלת נכסים בזרימת
     const prebuilt = ar.serializeForTransport();
     const req = client.requestTypeset({ text: 'כותרת 1 - חלק\nשורה אחת.\n', settings: getDefaultSettings(), assets: prebuilt });
     const result = await req.promise;
-    assert(result && result.pages.length > 0, 'transport מוכן עובר עד תוצאה');
+    assert(result && result.pageModel.model.pages.length > 0, 'transport מוכן עובר עד תוצאה');
     // דחייה: אובייקט שגוי
     const bad = client.requestTypeset({ text: 'x', settings: {}, assets: { bogus: true } });
     let msg = '';
@@ -189,7 +189,7 @@ describe('שלב 3 — Worker E2E אמיתי: הובלת נכסים בזרימת
     await transport.terminate(); // respawn בפוסט הבא
     const req = client.requestTypeset({ text: 'כותרת 1 - חלק\nפסקה אחרי respawn.\n', settings: getDefaultSettings() });
     const result = await req.promise;
-    assert(result && result.pages.length > 0, 'בקשה אחרי respawn עובדת (הניגון החוזר בוצע)');
+    assert(result && result.pageModel.model.pages.length > 0, 'בקשה אחרי respawn עובדת (הניגון החוזר בוצע)');
     const probeP = waitFor(transport._raw(), (m) => m.ok === true && m.aliases);
     transport._raw().postMessage({ type: 's3-probe-font', jobId: 'pf-2', probeAliases: ['David Libre'] });
     const probe = await probeP;

@@ -2,6 +2,8 @@
 
 > **Commit:** `95e829d44e88f436c9397d82473cd9e2f4a698aa`. כל ההפניות ל־`red-build/src/` אלא אם צוין אחרת. מסמך נלווה ל־`ENGINE_CURRENT_STATE.md`.
 
+> **⚠️ עדכון 19.11 (אחרי שלב 9c — cutover):** התרשים שלהלן מתאר את המצב **ההיסטורי של שלב 1** (מורשת כברירת מחדל חיה). אחרי PRs #50–#60 המצב הפעיל: **מנוע runtime אחד** (DP מאוחד) — אין dispatch; `typeset()` ב-Worker מפיק PageModel (מקור האמת היחיד לגיאומטריה ולתוכן); DOM (`pagemodel-dom-renderer`), HTML (`exportHtmlFromModel`) ו-PDF (`exportPdfFromModel`) מקרינים טהורים מהמודל ללא עימוד/מדידה חוזרים. המורשת (`legacy-imud-flow.js`, `legacy-projector.js`, `legacy-settings-map.js`) נותרה **פורט עצמאי מפורש** לכלי אבחון/צלב-ייחוס בלבד — קריאה ישירה (`legacyTypeset` / `exportPdf` עם `engine:'legacy'`), לא דרך המוצר. הפרוטוקול ל-UI נושא PageModel + tokens + דיאגנוסטיקה בלבד (בלי עמודים גולמיים כפולים). עדכון המפה המלא — ראה `audits/STAGE9_CUTOVER_MAP.md` §9c.
+
 ---
 
 ## 1. תרשים הצינור הפעיל (כפי שאומת בקוד)

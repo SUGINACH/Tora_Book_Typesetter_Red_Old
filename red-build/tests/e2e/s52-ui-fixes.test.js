@@ -414,8 +414,10 @@ describe('S5.2 (6/7/12) — תצוגה: גלילה אופקית, keepView, גי�
     const pv = buildPreviewTab(doc, {});
     pv.setResult(ser, settings, { pageModel: result.pageModel });
     assert(pv.isVirtual(), 'מסמך >60 עמודים — מצב וירטואלי');
-    const n = ser.pages.length;
-    const w = ser.pages[0].template.width; // 794
+    // **9c.5:** עמודי התוצאה הגולמיים הוסרו מהפרוטוקול — המקור הוא ה-PageModel
+    const modelPages = result.pageModel.pages;
+    const n = modelPages.length;
+    const w = modelPages[0].geometry.width; // 794
     const gap = 24;
     // מעבר למצב אופקי (הכפתור מחליף)
     fire(pv.root.querySelectorAll('.btn--toggle')[0], 'click');
@@ -465,8 +467,10 @@ describe('S5.2 (6/7/12) — תצוגה: גלילה אופקית, keepView, גי�
     pv.setResult(ser, settings, { pageModel: result.pageModel });
     // מציאת עמוד שגיליונו שונה ממספרו הפיזי (בספר אמת עם שער/תוכן לא-נספרים)
     let probe = null;
-    for (let i = 0; i < ser.pages.length; i++) {
-      const f = ser.pages[i].folioDisplay;
+    // **9c.5:** הגיליונות מה-PageModel (הפרוטוקול כבר לא נושא עמודים גולמיים)
+    const modelPages = result.pageModel.pages;
+    for (let i = 0; i < modelPages.length; i++) {
+      const f = modelPages[i].folioDisplay;
       const num = f ? parseHebrewNumber(f) : null;
       if (num != null && num !== i + 1) { probe = { i, num, f }; break; }
     }

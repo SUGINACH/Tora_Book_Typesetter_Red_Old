@@ -56,21 +56,24 @@ function serializeTypesetResult(result) {
     // לפרופיל בפרוטוקול (הענפים שקראו אותו נמחקו עם המנוע). סמן הפרופיל
     // נותר פנימי לפורט העצמאי — לכלים ובדיקות צלב-ייחוס בלבד.
     layoutHash: result.layoutHash,
-    plannedLayoutHash: result.plannedLayoutHash,
     contentHashIn: result.contentHashIn,
     contentPreserved: result.contentPreserved,
     geometryNeutralVerified: result.geometryNeutralVerified,
     deterministic: report.deterministic,
     metadata: result.metadata,
     settings: result.settings,
-    pages: result.pages,                 // עצמים פשוטים (columns/lines/template) — ניתנים להעברה
+    // **9c.5 (הסרת תוצאות כפולות):** עד כאן עברו בפרוטוקול גם עמודי התוכנית
+    // הגולמיים (result.pages), מודל ה-TOC, numberingAudit, customStyles
+    // ו-plannedLayoutHash — העתקים כבדים של גיאומטריה/החלטות שכבר מצויים
+    // בPageModel המועבר. אחרי ה-cutover אפס צרכני UI לכולם (התצוגה,
+    // המחוונים, מפת השבירות והסמן — כולם מהמודל; המבחן שלילי של 9c.3 מוכיח
+    // שאין נפילה ל-result.pages). הוסרו — החוזה ממשיך לשאת את המודל,
+    // מזהות-מקור (tokens למפת הסמן), דיאגנוסטיקה (report/trace/ledger)
+    // והמלצות בלבד.
     report,                              // findings + counts + retreat (plain)
     trace: result.events.toTraceV2(),    // events: [{seq,stage,label,pageIndex,ts,payload}]
     ledger: result.ledger.toSchemaV2(),  // issues: [...] (lifecycle מלא)
     ledgerSummary: result.ledger.summary(),
-    toc: result.toc,
-    tocInsert: result.tocInsert,
-    numberingAudit: result.numberingAudit,
     tokens: result.tokens.map(t => ({ id: t.id, type: t.type, level: t.level || null, raw: t.raw || '' })),
     droppedEvents: result.events.droppedEvents,
     // **שלב 8 פרוסה 2 (§4.3-4.4):** PageModel עובר בפועל לצרכן ה-UI — עטוף

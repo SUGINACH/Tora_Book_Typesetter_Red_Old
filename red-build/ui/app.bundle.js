@@ -20172,8 +20172,9 @@ function buildTestingTab(doc, opts) {
     // **9c.3:** המקור הקנוני לפי הפרופיל — עמודי ה-PageModel במאוחד
     // (type/index בכל עמוד מודל), עמודי התוצאה במורשת. אין תלות ב-result.pages
     // כשהפרופיל המאוחד פעיל.
-    const unifiedPages = (options && options.profile === 'unified' && options.pageModel && Array.isArray(options.pageModel.pages)) ? options.pageModel.pages : null;
-    const pages = unifiedPages || serializedResult.pages || [];
+    // **9c.5:** עמודי הלוח — מה-PageModel בלבד (מקור האמת היחיד אחרי ה-cutover).
+    // אין עוד נפילה ל-serializedResult.pages — השדה הוסר מהפרוטוקול.
+    const pages = (options && options.pageModel && Array.isArray(options.pageModel.pages)) ? options.pageModel.pages : [];
     const byType = {};
     let inScope = 0, structural = 0;
     const structuralReasons = [];
@@ -23985,20 +23986,19 @@ function tokenLinesOfPage(pg) {
   return [...((pg.spanning && pg.spanning.lines) || []), ...(pg.columns || []).flat()]; // מורשת
 }
 
-function buildCaretMap(rawText, tokensOrResult, pagesArg) {
+function buildCaretMap(rawText, tokens, pagesArg) {
   const { bodyLines } = lexDocument(rawText);
-  // **9c.3:** שני אופני קריאה: (a) buildCaretMap(text, tokens, pages) —
-  // העמודים הם המערך הקנוני שהועבר (מודל או מורשת); (b) buildCaretMap(text,
-  // result) — תאימות לאחור (עמודי תוצאה). הטוקנים הם מידע זהות מקור
+  // **9c.5:** צורת קריאה אחת: buildCaretMap(text, tokens, pages) — העמודים
+  // הם המערך הקנוני שהועבר (PageModel מאז 9c.3; ענף עמודי-התוצאה הגולמיים
+  // הוסר עם השדה pages בפרוטוקול). הטוקנים הם מידע זהות מקור
   // (DocumentModel) — לא גיאומטריה.
-  const tokens = Array.isArray(tokensOrResult) ? tokensOrResult : tokensOrResult.tokens;
-  const pages = Array.isArray(tokensOrResult) ? (pagesArg || []) : tokensOrResult.pages;
+  const pageList = Array.isArray(pagesArg) ? pagesArg : [];
 
   // tokenId → אינדקס עמוד ראשון שמכיל אותו (כולל פס חוצה־טורים — FWD-1).
   // **9c.3:** המקור לפי הפרופיל — עמודי המודל (sourceTokenId) או עמודי התוצאה.
   const pageByToken = new Map();
   const tokensByPage = new Map();
-  for (const pg of pages) {
+  for (const pg of pageList) {
     const lines = tokenLinesOfPage(pg);
     const set = new Set();
     for (const ln of lines) {
@@ -24038,17 +24038,17 @@ function buildCaretMap(rawText, tokensOrResult, pagesArg) {
       const p = pageByToken.get(tokens[k].id);
       if (p != null) return p;
     }
-    return pages.length ? pages[0].index : null;
+    return pageList.length ? pageList[0].index : null;
   }
 
   /** מיקום תו במקור ← אינדקס עמוד (כיוון א׳ של הסנכרון) */
   function caretToPage(charIndex) {
-    if (!pages.length) return null;
+    if (!pageList.length) return null;
     const line = lineOfChar(Math.max(0, Math.min(charIndex, rawText.length)));
     const bodyLine = line - bodyStartLine;
-    if (bodyLine < 0) return pages[0].index; // פתיח המסמך — העמוד הראשון
+    if (bodyLine < 0) return pageList[0].index; // פתיח המסמך — העמוד הראשון
     const ti = lastTokenThrough[Math.min(bodyLine, bodyLines.length - 1)];
-    if (ti < 0) return pages[0].index;
+    if (ti < 0) return pageList[0].index;
     return pageOfTokenIdx(ti);
   }
 
@@ -24072,7 +24072,7 @@ function buildCaretMap(rawText, tokensOrResult, pagesArg) {
     return starts[Math.min(rawLine, starts.length - 1)];
   }
 
-  return { caretToPage, pageToCaret, pageByToken, tokensByPage, pageCount: pages.length };
+  return { caretToPage, pageToCaret, pageByToken, tokensByPage, pageCount: pageList.length };
 }
 
 module.exports = { buildCaretMap };

@@ -4049,3 +4049,43 @@ scan-control 0 הפרות · באנדלים נבנו מחדש (app `365f9ece`, w
 - **אימות מקומי על המצב המשולב:** npm test EXIT=0 · determinism OK · cross-check PASS (כל הנעילות) · full-math-audit מקומי: PASS 0 בעיות + דטרמיניזם (699/699).
 - **פריסה:** gh-pages 5cd2cd9 · deploy-pages ✓ · pages build ✓ · **gh-pages-audit חי: PASS — 0 בעיות + דטרמיניזם מלא** (רצפת נפח: 699 עמ' / גוף 353,690 ≥ 345,999 תוכן צפוי).
 - CI של #35 לפני מיזוג: כל הבדיקות ירוקות כולל `local` (full-math) — לראשונה בריצת CI על PR עם שינוי מנוע.
+
+## שלב 9c — הסרת נתיבי המורשת מהמוצר; PageModel מקור-האמת היחיד (18–19.11.2026)
+
+**בסיס:** main `142946f` (PRs #50–#52). **ענפים:** `stage9c/*`, `fix/*`, `chore/asset-version-*`.
+
+פרוסות (כל אחת PR נפרד עם הוכחות + פריסת Pages + cache-buster):
+
+1. **9c.1 (PR #50):** ייצוא PDF מה-PageModel בלבד — `exportPdfFromModel`; אפס
+   עימוד חוזר בייצוא. 2. **9c.2 (PR #55):** ייצוא HTML מהמודל — `exportHtmlFromModel`
+   עם אותו renderer; בדיקות שליליות (patch-זורק על typeset/projectDocument/parser).
+   3. **9c.3 (PRs #56, #58):** DOM unified כמקרין PageModel — preview/caret-map/
+   debug/getState מהמודל; קישורי TOC מהמודל בתצוגה החיה (נתפס בבדיקת דפדפן
+   חיה — legacy היה מציג, unified לא). 4. **9c.4 (PR #60):** ה-cutover — הסרת
+   dispatch המורשת מה-pipeline; unified תמידי; המורשת נותרת פורט מפורש לכלים
+   (`legacyTypeset` ישירות; `exportPdf` עם `engine:'legacy'`).
+
+**תיקוני שורש שנחשפו באודיטים החיים הראשונים על הנתיב המאוחד:**
+
+- very_long: 26 עמודים עם טקסט-על-טקסט (גוף מתחת למרזב ההערות) — ארבעה פגמים
+  תוקנו בשורש + השלמות הקרנה. נעילה: `2f8d492e` (1216→1241 עמודים; שימור תוכן
+  מלא: 86,825=86,825 שורות; מילים זהות בכל האזורים; 132=132 הערות; 0 חפיפות).
+  דוח: `audits/S9C_FOOTNOTE_GUTTER_2026-11-18.md`.
+- **רגרסיית HEADER_POSITION (b324782):** נתפסה ב-layout-audit CI על PR #60 —
+  כותרת עליונה ב-257px בעמוד פתיחת-סימן (ענף sign-open). שורש: `headerGeometry`
+  גזרה את מיקום הכותרת מ-`contentBox.top−18` בעוד התוכן הורד בכוונה (h2TopOffset)
+  — הכותרת ירדה עם התוכן. תוקן: הפחתת h2TopOffset במקור היחיד (furniture-geometry);
+  DOM ו-PDF מוקרנים משם יחד. **בנוסף בוטל ריכוך הסף ב-full-math-audit**
+  ("מודע-תבנית" שהסתיר את הרגרסיה) — הסף הקבוע 107.2 הוחזר; שני האודיטים
+  חוזרים לאותו חוזה (P-7).
+
+**9c.5 — הסרת תוצאות כפולות:** הפרוטוקול (`ui-result-v1`) מעביר PageModel +
+tokens (זהות מקור למפת הסמן) + דיאגנוסטיקה + המלצות בלבד; הוסרו `pages`,
+`toc`, `tocInsert`, `numberingAudit`, `plannedLayoutHash` (העתקים כבדים של
+גיאומטריה שכבר במודל). `buildCaretMap` — צורת קריאה אחת. `legacy-*` נותרו
+(צרכנים פעילים: פורט המורשת, cross-check, 8+ בדיקות). callgraph: 0 הפרות.
+
+**נעילות:** canonical `fdff19d8` (ללא שינוי); מורשת `legacy-28f52` (ללא שינוי);
+very_long DP `2f8d492e`. **אמת נתונים:** npm test 84 סוויטות EXIT=0 · דטרמיניזם ·
+cross-check · C1–C12: 12/12 · layout-audit 9/9 + 793/793 · full-math-audit 0 בעיות
++ דטרמיניזם IDENTICAL · CI ירוק במלואו על b324782.

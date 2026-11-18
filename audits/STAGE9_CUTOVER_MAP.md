@@ -38,12 +38,15 @@
 - Full-Math: **הושלם** ב-PR #36 (רצפת מילות-תוכן + משמר זהויות).
 - יתרת הפערים תיקבע לפי דוח 9a (כל פער תוכן = חסימת המשך).
 
-### 9c — הסרת מנוע המורשת (יחידות קטנות, כל אחת עם הוכחות)
-1. **D4-legacy:** הסרת `exportPdf` מנתיב החי (Worker); legacy ללא מודל = שגיאה מפורשת. ‏(תנאי: PDF-legacy parity מדוח 9a.)
-2. **D3-legacy:** הסרת `exportHtml` מנתיב החי. ‏(תנאי: HTML-legacy parity.)
-3. **D2-legacy:** הסרת `renderLegacyPage` + `page.legacy` מהתצוגה. ‏(תנאי: DOM parity + אישור שאין צרכן נסתר.)
-4. **D1:** הסרת dispatch ל-`legacyTypeset` + העברת ברירת המחדל למנוע המאוחד — **רק לאחר סגירת כל שערי §6.2/§6.3 ושימור הגדרות המשתמש המאושרות** (ערכת 40, עיצובי שער, גופנים וסגנונות, בחירות משתמש גוברות).
-5. מחיקת `legacy-imud-flow.js`, `legacy-projector.js`, `legacy-settings-map.js` + נתיבים מתים מ-§5 להלן, לאחר שאפס צרכנים פעילים מוכח ב-callgraph (`tools/scan-control-triggers.js`).
+### 9c — הסרת מנוע המורשת (יחידות קטנות, כל אחת עם הוכחות) — **בוצע (18–19.11, PRs #50–#60)**
+1. **D4-legacy:** ✅ 9c.1 (PR #50) — ייצוא PDF מה-PageModel בלבד; legacy ללא מודל = שגיאה מפורשת.
+2. **D3-legacy:** ✅ 9c.2 (PR #55) — ייצוא HTML מה-PageModel בלבד (`exportHtmlFromModel`), בלי `typeset`/`projectDocument`/parser בנתיב.
+3. **D2-legacy:** ✅ 9c.3 (PRs #56, #58) — DOM unified כמקרין PageModel: `preview-tab`, `caret-map`, `buildDebugJson`/`getState`/`canonicalPages` מהמודל; קישורי TOC מהמודל בתצוגה החיה.
+4. **D1:** ✅ 9c.4 (PR #60) — הסרת dispatch ל-`legacyTypeset` מה-pipeline; אתחול unified תמידי; ה-Worker/DOM/HTML/PDF מקרינים טהורים. המורשת נותרה **פורט עצמאי מפורש** לכלי אבחון/צלב-ייחוס (`legacyTypeset` ישירות; `exportPdf` עם `engine:'legacy'`) — לא דרך המוצר. הגדרות המשתמש נשמרו (ערכת 40, שערים, גופנים — הפרוטוקול מעביר settings כמו שהיו).
+   - במהלך 9c.4 נתפסה ותוקנה בשורש רגרסיית HEADER_POSITION בעמודי פתיחת-סימן (b324782): `headerGeometry` מפחית `h2TopOffset` — הכותרת הרצה נשארת בראש העמוד; סף האודיט הקבוע (107.2) הוחזר ב-full-math-audit (הריכוך "מודע-תבנית" שהסתיר את הרגרסיה בוטל).
+5. **9c.5 — הסרת תוצאות כפולות מהפרוטוקול:** הפרוטוקול (`ui-result-v1`) מעביר PageModel + מזהה-מקור (tokens) + דיאגנוסטיקה + המלצות בלבד. הוסרו: `pages` (עמודי התוכנית הגולמיים), `toc`, `tocInsert`, `numberingAudit`, `plannedLayoutHash`. `buildCaretMap` — צורת קריאה אחת (text, tokens, modelPages). `legacy-imud-flow.js`/`legacy-projector.js`/`legacy-settings-map.js` **נותרו** — צרכנים פעילים מוכחים: פורט המורשת (pipeline), `exportPdf` engine:legacy, cross-check/run-ours, 8+ קבצי בדיקה. callgraph (`tools/scan-control-triggers.js`) — 0 הפרות; 3 נתיבי מנוע מותרים (onExplicitRetypeset, engine-worker-main.onMessage, worker-client).
+
+**נעילות אחרי 9c:** canonical `fdff19d8` (ללא שינוי מ-9b); very_long DP `2f8d492e` (1216→1241 עמודים — תיקוני שורש מתועדים בגוף PR #60; שימור תוכן מלא: 86,825=86,825 שורות, מילים זהות בכל האזורים); מורשת `legacy-28f52` (ללא שינוי).
 
 ### 9d — סגירת מסמכים
 - `ENGINE_RUNTIME_PATHS.md` — עדכון תרשים הצינור (נתיב ה-PDF כבר אינו מריץ typeset שני בפרופיל המאוחד; סעיף 43 מיושן).
@@ -61,10 +64,10 @@
 | שדות מתים (`blk.dh`, `block.firstWord`) | pipeline/dropword | הסרה עם יחידת D1 |
 | קישור מורשת `tok#ordinal` | legacy-imud-flow:1446 | יורד עם D1 |
 
-## 5. שערי קבלה לסיום שלב 9 (מההוראה §6.3)
+## 5. שערי קבלה לסיום שלב 9 (מההוראה §6.3) — **נבדקו ועברו (19.11)**
 
-- [ ] מנוע עימוד פעיל אחד; מקור תוכן אחד; מודל שורות אחד; Planner אחד; PageModel אחד.
-- [ ] מקרינים טהורים (אפס מדידה/עימוד ב-DOM/HTML/PDF) — נשען על הוכחות פרוסה 6.
-- [ ] rollback ברמת commit, לא מנוע שני פעיל.
-- [ ] ברירות המחדל והגדרות המשתמש המאושרות נשמרות (ערכת 40, שערים, גופנים, יישור תחתיות ללא מתיחה גורפת בסוף פרק קצר — DECISIONS.md).
-- [ ] `npm test` + determinism + cross-check + corpus-invariants + layout-audit + full-math-audit ירוקים בכל יחידת הסרה.
+- [x] מנוע עימוד פעיל אחד; מקור תוכן אחד; מודל שורות אחד; Planner אחד; PageModel אחד. *(9c.4 — dispatch הוסר; המורשת פורט מפורש לכלים בלבד.)*
+- [x] מקרינים טהורים (אפס מדידה/עימוד ב-DOM/HTML/PDF). *(בדיקות שליליות: patch-זורק על typeset/projectDocument בכל מקרין — s9c-cutover/s9c-html-export/s9c-pdf-export.)*
+- [x] rollback ברמת commit, לא מנוע שני פעיל. *(אין dispatch; git revert של PR #60 מחזיר את המצב הקודם.)*
+- [x] ברירות המחדל והגדרות המשתמש המאושרות נשמרות. *(settings עוברים כמו שהיו; canonical `fdff19d8` ללא שינוי; ערכת IMUD נטענת כרגיל.)*
+- [x] `npm test` (84 סוויטות) + determinism + cross-check + corpus-invariants (C1–C12: 12/12) + layout-audit (9/9 + 793/793) + full-math-audit (0 בעיות + דטרמיניזם) ירוקים. *(CI של b324782 — כל הבדיקות ירוקות.)*
