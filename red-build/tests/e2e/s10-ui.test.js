@@ -488,10 +488,11 @@ describe('S10.2 שער 4 — קפיצות וסנכרונים כולל עוגני
     for (let i = 0; i <= bodyLine; i++) { if (bodyLines[i].trim() !== '') { tokenIdx = nonEmpty; nonEmpty++; } }
     // מציאת העמוד שמכיל את הטוקן (מהתוצאה שהאפליקציה קיבלה — דרך buildCaretMap עצמאי)
     const direct = typeset(text, getDefaultSettings());
-    const cm = buildCaretMap(text, serializeTypesetResult(direct));
+    const ser = serializeTypesetResult(direct);
+    const cm = buildCaretMap(text, ser.tokens, direct.pageModel.pages); // 9c.5: הצורה הקנונית — מודל + טוקנים
     const expected = cm.caretToPage(paraOffset + 5);
     assertEq(targetPage, expected, 'העמוד המסומן חייב להתאים למיפוי העצמאי');
-    assert(expected != null && expected >= 0 && expected < direct.pages.length);
+    assert(expected != null && expected >= 0 && expected < direct.pageModel.pages.length);
     // הטוקן עם הערת השוליים מעוגן בעמוד הגוף שלו (לא בעמוד ההערות)
     const tokOnPage = cm.tokensByPage.get(targetPage) || [];
     assert(tokOnPage.length > 0, 'לעמוד היעד יש טוקנים');
@@ -832,7 +833,7 @@ describe('D-65 — פרוטוקול Worker: single-flight, ביטול, וליד�
     const json = JSON.parse(JSON.stringify(s));
     assertEq(json.schema, 'ui-result-v1');
     assertEq(json.layoutHash, r.layoutHash);
-    assert(Array.isArray(json.pages) && json.pages.length > 0);
+    assert(json.pageModel && json.pageModel.model && Array.isArray(json.pageModel.model.pages) && json.pageModel.model.pages.length > 0, 'המודל עובר במעטפת (9c.5: pages הגולמי הוסר)');
     assert(json.report && json.report.schema === 'diagnostics-v2');
     assert(json.trace && Array.isArray(json.trace.events));
     assert(json.ledger && Array.isArray(json.ledger.issues));
@@ -981,18 +982,18 @@ describe('D-84 — רינדור מחלונות (virtualization) לספרים א�
 
   it('מסמך 88 עמודים: מצב וירטואלי — placeholders לכולם, חלון חי קטן', () => {
     const result = typeset(REAL, getDefaultSettings());
-    assert(result.pages.length > 60, `נדרש >60 עמודים להפעלת וירטואליזציה (קיבלנו ${result.pages.length})`);
+    assert(result.pageModel.pages.length > 60, `נדרש >60 עמודים להפעלת וירטואליזציה (קיבלנו ${result.pageModel.pages.length})`);
     const doc = makeDoc();
     const pv = buildPreviewTab(doc, {});
     pv.setResult(serializeTypesetResult(result), getDefaultSettings(), { pageModel: result.pageModel });
     assertEq(pv.isVirtual(), true, 'מעל הסף ⇒ מצב וירטואלי');
-    assertEq(pv.getPageCount(), result.pages.length, 'ספירת העמודים שלמה');
+    assertEq(pv.getPageCount(), result.pageModel.pages.length, 'ספירת העמודים שלמה');
     const allPages = pv.root.querySelectorAll('.preview-page');
-    assertEq(allPages.length, result.pages.length, 'placeholders + חיים = כל העמודים');
+    assertEq(allPages.length, result.pageModel.pages.length, 'placeholders + חיים = כל העמודים');
     const rendered = pv.getRenderedCount();
     assert(rendered > 0 && rendered <= 20, `חלון חי קטן (קיבלנו ${rendered})`);
     const phs = pv.root.querySelectorAll('.preview-page--placeholder');
-    assertEq(phs.length, result.pages.length - rendered, 'placeholders = כולם פחות החלון החי');
+    assertEq(phs.length, result.pageModel.pages.length - rendered, 'placeholders = כולם פחות החלון החי');
     // מבנה גיאומטרי: ל-placeholder יש רוחב/גובה מהמודל (מקור יחיד — 9c.3)
     const g0 = result.pageModel.pages[0].geometry;
     assert(phs.every(p => p.style && p.style.height === `${g0.height}px`), 'גובה placeholder = גובה המודל');

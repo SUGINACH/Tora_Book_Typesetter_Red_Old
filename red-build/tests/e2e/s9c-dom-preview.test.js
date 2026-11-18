@@ -190,27 +190,59 @@ describe('s9c-dom-preview — התצוגה מה-PageModel בלבד (9c.3)', () =
     }
   });
 
-  it('בדיקה שלילית (§4.4): מפת הסמן מהמודל ≡ מפת הסמן מעמודי התוצאה (שקילות המקורות)', () => {
+  it('בדיקה שלילית (§4.4): מפת הסמן מהמודל ≡ מיקומי הטוקנים במודל (הוכחה ישירה)', () => {
     const S = getDefaultSettings();
     const r = typeset(DOC, S, {});
     assert(!!r.pageModel, 'PageModel קיים');
     const serialized = serializeTypesetResult(r);
+    // **9c.5:** ענף עמודי-התוצאה הגולמיים הוסר מהפרוטוקול ומ-buildCaretMap —
+    // המקור היחיד הוא המודל. ההוכחה: (א) כל טוקן עם שורות במודל ממופה
+    // לעמוד הראשון שבו הוא מופיע; (ב) ה-caret של שורת המקור שיצרה את הטוקן
+    // (חוזה block-tokenizer: שורת גוף לא-ריקה ⇒ טוקן אחד) מגיע לאותו עמוד;
+    // (ג) סבב page→caret→page יציב לעמודים שפותחים טוקן חדש.
     const fromModel = buildCaretMap(DOC, serialized.tokens, r.pageModel.pages);
-    const fromResult = buildCaretMap(DOC, serialized); // תאימות לאחור — עמודי תוצאה
-    // אותם טוקנים באותם עמודים
-    assertEq(fromModel.pageCount, fromResult.pageCount, 'אותו מספר עמודים');
-    for (const [tok, page] of fromResult.pageByToken) {
-      assertEq(fromModel.pageByToken.get(tok), page, `טוקן ${tok} באותו עמוד בשני המקורות`);
+    assertEq(fromModel.pageCount, r.pageModel.pages.length, 'המפה מכסה את כל עמודי המודל');
+    const modelTokenPages = new Map();
+    for (const mp of r.pageModel.pages) {
+      for (const ln of (mp.lines || [])) {
+        const tok = ln.sourceTokenId != null ? ln.sourceTokenId : null;
+        if (tok != null && !modelTokenPages.has(tok)) modelTokenPages.set(tok, mp.index);
+      }
     }
-    for (const [page, toks] of fromResult.tokensByPage) {
-      assertEq(JSON.stringify(fromModel.tokensByPage.get(page)), JSON.stringify(toks), `אותם טוקנים בעמוד ${page}`);
+    for (const [tok, page] of modelTokenPages) {
+      assertEq(fromModel.pageByToken.get(tok), page, `טוקן ${tok} באותו עמוד כמו במודל`);
     }
-    // סנכרון דו-כיווני זהה בכל נקודות המבחן
-    for (let c = 0; c < DOC.length; c += Math.max(1, Math.floor(DOC.length / 12))) {
-      assertEq(fromModel.caretToPage(c), fromResult.caretToPage(c), `caretToPage(${c}) זהה`);
+    // (ב) חוזה הטוקנים: שורת הגוף הלא-ריקה ה-k-ית יצרה את הטוקן ה-k-י —
+    // ה-caret בראשית אותה שורה חייב להגיע לעמוד הראשון של הטוקן במודל.
+    const { lexDocument } = require('../../src/engine/parser/dfa-lexer');
+    const { bodyLines } = lexDocument(DOC);
+    const starts = [0];
+    for (let i = 0; i < DOC.length; i++) if (DOC[i] === '\n') starts.push(i + 1);
+    const bodyStartLine = starts.length - bodyLines.length;
+    let ti = 0;
+    for (let i = 0; i < bodyLines.length; i++) {
+      if (bodyLines[i].trim() === '') continue;
+      const tok = serialized.tokens[ti];
+      const expectedPage = modelTokenPages.get(tok.id);
+      if (expectedPage != null) { // טוקן שהושמט (editorial) — אין לו עמוד במודל
+        const caret = starts[bodyStartLine + i];
+        assertEq(fromModel.caretToPage(caret), expectedPage, `caret של השורה שיצרה את טוקן ${tok.id} מגיע לעמוד המודל`);
+      }
+      ti++;
     }
-    for (let p = 0; p < fromResult.pageCount; p++) {
-      assertEq(fromModel.pageToCaret(p), fromResult.pageToCaret(p), `pageToCaret(${p}) זהה`);
+    assertEq(ti, serialized.tokens.length, 'חוזה block-tokenizer: כל שורת גוף לא-ריקה ⇒ טוקן אחד בדיוק');
+    // (ג) סבב יציב: לעמוד שהטוקן המוקדם ביותר שלו נפתח בו — pageToCaret
+    // מחזיר caret בתוך שורת אותו טוקן, ו-caretToPage מחזיר את אותו עמוד.
+    const tokIdx = new Map(serialized.tokens.map((t, k) => [t.id, k]));
+    for (const [pg, toks] of fromModel.tokensByPage) {
+      if (!toks.length) continue;
+      let minIdx = Infinity;
+      for (const t of toks) { const k = tokIdx.get(t); if (k != null && k < minIdx) minIdx = k; }
+      const earliest = serialized.tokens[minIdx];
+      if (modelTokenPages.get(earliest.id) !== pg) continue; // הטוקן נפתח בעמוד קודם (פס חוצה-עמודים) — הסבב מוגדר משם
+      const c = fromModel.pageToCaret(pg);
+      assert(c != null, `pageToCaret(${pg}) מוגדר לעמוד שפותח טוקן`);
+      assertEq(fromModel.caretToPage(c), pg, `סבב page→caret→page יציב לעמוד ${pg}`);
     }
   });
 

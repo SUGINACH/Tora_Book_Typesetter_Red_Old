@@ -205,8 +205,9 @@ function buildTestingTab(doc, opts) {
     // **9c.3:** המקור הקנוני לפי הפרופיל — עמודי ה-PageModel במאוחד
     // (type/index בכל עמוד מודל), עמודי התוצאה במורשת. אין תלות ב-result.pages
     // כשהפרופיל המאוחד פעיל.
-    const unifiedPages = (options && options.profile === 'unified' && options.pageModel && Array.isArray(options.pageModel.pages)) ? options.pageModel.pages : null;
-    const pages = unifiedPages || serializedResult.pages || [];
+    // **9c.5:** עמודי הלוח — מה-PageModel בלבד (מקור האמת היחיד אחרי ה-cutover).
+    // אין עוד נפילה ל-serializedResult.pages — השדה הוסר מהפרוטוקול.
+    const pages = (options && options.pageModel && Array.isArray(options.pageModel.pages)) ? options.pageModel.pages : [];
     const byType = {};
     let inScope = 0, structural = 0;
     const structuralReasons = [];
