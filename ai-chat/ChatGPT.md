@@ -12218,5 +12218,2013 @@ PDF חייב להיות מקרין של אותו PageModel.
 לא מיזגתי ולא פרסתי עדיין — איני רוצה להציג תיקון כגמור לפני שהבדיקות מסתיימות. השלב הבא הוא השלמת הבדיקות, מיזוג, עדכון `gh-pages`, בדיקת האתר החי ואימות ייצוא PDF.
 
 
+## Prompt:
+17.11.2026, 5:01:41
+
+[$github]\(app\://connector_76869538009648d5b282a4bb21c3d157) אנחנו באמצע עבודה על התוכנה, הנה שיחות קודמות [https\://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/blob/main/ai-chat/ChatGPT.md]\(https\://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/blob/main/ai-chat/ChatGPT.md) קדימה חייבים להגיע לנקודת סיום! המשך במרץ עד להגעה למנוע מושלם ומזוקק עם יכולת הוספת פריטי עימוד קלה וחלקה!!! וזכור!! פישוט ואיחוד פעולת מנוע העימוד (ללא טלאים) היא מהחשובות שבמטרתנו!!! ושים לב להגביל את אורך זמן ההודעה בכדי שלא נתקע, ואל תמתין לתוצאות של בדיקות הרצות בגיטהאב יותר מ5 דקות!!!\
+כרגע העברנו את כל העבודה לסוכן AI כפי שתוכל להבחין בזאת בסקירתך את השיחה, והוא עדיין באמצע השלמת השלב כפי שהכתבת לו בפרומט המפורט. בהודעה הבאה הצג את מצב הריפו ומצב העבודה, ואת אישורך ליכולת זרימה מוחלטת כהמשך לשיחה הקודמת.
+
+## Response:
+17.11.2026, 5:01:47 · gpt-6-t-mini
+
+אעבור תחילה על יומן השיחה שהעברת כדי לשחזר במדויק את שלב העבודה, ההנחיות לסוכן והקריטריונים להמשך. לאחר מכן אבדוק את מצב ריפו `Work_2` עצמו — ענף פעיל, שינויים, commits ובדיקות — ואבחין בין עבודה שהושלמה לבין עבודה שעדיין מתבצעת. מגבלת ההמתנה לבדיקות GitHub תהיה חמש דקות לכל היותר.
+
+השיחה הקודמת נקראה, וכבר אפשר לקבוע שהעבודה הועברה במפורש מתוכנית שדרוג כללית לביצוע ממוקד וזהיר מול מצב הקוד בפועל. אני ממשיך כעת לבדוק את נקודת העצירה המדויקת של הסוכן — בעיקר את הוראות המשימה האחרונות, יומן הסוכנים, ה־commits האחרונים ומצב ה־Actions — כדי שלא אאשר בטעות שלב שכבר השתנה או שעדיין חסר בו תנאי מהותי.
+
+בדיקת GitHub העלתה מצב קונקרטי: שלב 8 אכן מתקדם ב־PR פעיל, ולא נשאר רק בגדר הוראות לסוכן. פרוסה 1 כבר מוזגה; פרוסה 2 פתוחה על ענף `stage8c/pagemodel-contract`\. עם זאת, יש שתי נקודות שדורשות בדיקה לפני שאאשר שהזרימה נקייה: בדיקת `full-math-audit` עדיין נכשלת, וב־`main` הופיע commit חריג בשם “Update print statement from 'Hello' to 'Goodbye'”. אני בודק כעת אם אלה baseline מוכר ושינוי בדיקה תמים, או משהו שצריך לעצור ולתקן.
+
+> **Fetched repository metadata, history, workflows, contents, and conversation file**
+>
+> 
+>
+> **Assessing repository state**
+>
+> I’m reviewing the active stage8c work, PR #34’s diff and checks, the older PR #32, and the recent main-branch change from “Hello” to “Goodbye.” I’ll distinguish intentional updates from possible accidental edits and clarify merge readiness.
+>
+> **Assessed repository state**
+>
+> 
+>
+> **Inspected GitHub repository files, conversations, history, workflows, and pull requests**
+>
+> 
+>
+> **Verifying branch status**
+>
+> I’m checking the active stage8c changes, the older H3-fix proposal, current checks, and the recent “Hello” to “Goodbye” edit. I’m separating intentional work from accidental changes before recommending approval or merging.
+>
+> **Verified branch status**
+>
+> 
+>
+> **Confirming repository readiness**
+>
+> I’m treating the stage8c proposal as the active implementation path. Its branch is one commit ahead and one behind main, while the older H3 fix remains separate and unresolved. I’m checking whether current failures are baseline issues or actual regressions before approving continuation.
+>
+> **Confirmed repository readiness**
+>
+> 
+>
+> **Assessing flow readiness**
+>
+> I’m seeing a viable path forward: stage8c remains the active implementation, while the older H3 fix stays separate. Current checks are incomplete, and the math audit still reflects a known baseline gap, so my approval is conditional rather than final.
+>
+> **Assessed flow readiness**
+>
+> 
+>
+> **Confirming workflow readiness**
+>
+> I’m giving the stage8c workflow a green light to continue without pauses. PR #34 is the active path; checks remain incomplete, and the known math-audit gap still blocks merge approval. PR #32 stays separate for later H3 review. The transcript-only main change is harmless.
+>
+> **Confirmed workflow readiness**
+>
+> 
+>
+> **Audited PRs, branches, CI checks, workflows, diffs, comments, and artifacts**
+>
+> 
+>
+> **Confirming workflow readiness**
+>
+> I’m giving the stage8c workflow a full green light to continue without pauses. PR #34 is active, but incomplete checks and the known math-audit gap still block merging; PR #32 remains separate for H3 review.
+>
+> **Confirmed workflow readiness**
+>
+> 
+>
+> **Inspected and audited failed GitHub Actions workflow jobs**
+>
+> 
+>
+> Worked for 6m 3s
+
+עברתי על השיחה הקודמת במלואה, על מצב המאגר ב-GitHub, על הענפים, ה־PRs, ה־commits האחרונים, יומן העבודה, מסמכי התוכנית ומצב הבדיקות.
+
+**המסקנה המרכזית: הפרויקט התקדם משמעותית. אנחנו נמצאים בשלב 8 מתוך תוכנית האיחוד, לאחר השלמת שלבים 1-7 ומיזוג התוצרים שלהם ל־`main`\. יש בסיס טוב להמשיך ברצף עד להשלמת המנוע המאוחד.**
+
+להלן תמונת המצב המדויקת.
+
+# 1\. מצב המאגר
+
+**Tora\_Book\_Typesetter\_Red\_Work\_2** (מאגר פעיל)
+
+ענף ראשי: main
+
+# 7/10
+
+שלבים שהושלמו
+
+# 8
+
+שלב בפיתוח
+
+# 34
+
+PR פעיל עיקרי
 
 ---
+
+**הגרסה הנוכחית**
+
+main: `da8111326f30`
+
+הקוד האחרון ששינה את המנוע: `82d0f24b7dc2`\. ה־commit שלאחריו עדכן את ארכיון השיחה בלבד, ולא קוד תוכנה.
+
+נבדק: 17 בנובמבר 2026
+
+### שלבים שהושלמו
+
+| שלב | נושא | מצב |
+|--------|--------|--------|
+| 1 | אודיט מצב המנוע, חוזים וכפילויות | (מוזג) |
+| 2 | DocumentModel ו־Inline Item Model | (מוזג) |
+| 3 | נכסים, גופנים ומדידה אחידה | (מוזג) |
+| 4 | מנוע שורות מאוחד והחלפת מסלול הייצור | (מוזג) |
+| 5 | Planner מאוחד ו־PagePlan | (מוזג) |
+| 6 | חוזי פריטים, הערות ועיטורים | (מוזג) |
+| 7 | PageModel קנוני וסופי | (מוזג) |
+| 8 | מקרינים וייצוא מתוך PageModel | (בתהליך) |
+| 9 | הסרת מנועי מורשת וכפילויות | ממתין לשלב 8 |
+| 10 | אימות סופי וסגירת הפרויקט | ממתין לשלב 9 |
+
+התקדמות זו אינה רק תיעוד: בדקתי את ה־PRs שמוזגו ואת היסטוריית ה־commits.
+
+# 2\. איפה בדיוק עומדת העבודה הנוכחית?
+
+העבודה מתנהלת כעת באמצעות PR מרכזי\:
+
+[PR \#34 — השלמת PageModel, תמונות והעברת Worker](https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/pull/34?utm_source=chatgpt.com)
+
+(פתוח - בבדיקות)
+
+ענף: `stage8c/pagemodel-contract`
+
+הפרוסה הזאת חשובה במיוחד משום שהיא מחברת בין מודל העימוד הסופי לבין הצרכן בפועל.
+
+לפי הקוד והדיווח ב־PR, הושלמו בה\:
+
+1. הרחבת PageModel כך שיכלול ריהוט עמוד, כותרות עליונות, גיליונות, קישורים, bookmarks ואבחונים.
+2. העברת תמונות לפריטים ממדרגה ראשונה במנוע, כולל תמונות inline, block ו־float.
+3. תיקון כשל מיפוי הערות הסיום: 105 הפרות ירדו לאפס.
+4. יצירת חוזה `pagemodel-transport-v1`\.
+5. אימות שלמות המודל לאחר העברתו ב־Worker והקפאתו מחדש.
+6. חיבור המודל לממשק באמצעות `app.pageModel()`\.
+
+אלה צעדים ארכיטקטוניים משמעותיים, ולא תוספות ממשק בלבד.
+
+# 3\. מצב הבדיקות האמיתי
+
+בדקתי את הריצות עצמן, ולא הסתפקתי בדיווח של הסוכן.
+
+**PR \#34 - תוצאות GitHub Actions**
+
+Layout audit (עבר)
+
+Corpus invariants (עבר)
+
+בדיקות Node 20 (עבר)
+
+בדיקות Node 22 (עבר)
+
+בדיקות Node 18 (עדיין רצות)
+
+Full math audit (נכשל)
+
+---
+
+לפי תיאור ה־CI, חבילת הבדיקות כוללת 1,146 בדיקות. בדוח ה־PR מופיעה גם ספירת 71 קובצי סוויטה, לעומת 67 בתיאור ה־Job. יש ליישב את ההבדל בדיווח הסופי.
+
+לגבי `full-math-audit`\: קיים כשל בסיס היסטורי מתועד, עם רצפה של 355,967 לעומת תוצאה קודמת של 353,687. הכשל הנוכחי עדיין אינו ירוק, ולכן אסור להעלים אותו או להכריז שכל הבדיקות עברו.
+
+חשוב להבדיל בין הכשל ההיסטורי הזה לבין רגרסיה חדשה. צריך לשמר את האבחנה, לוודא את זהות הכשל ולהמשיך לטפל בו בנפרד.
+
+# 4\. שני נושאים נוספים שאסור לאבד
+
+### א. תיקון הרווחים בכותרת 3
+
+[PR \#32 — תיקון שורש לרווחי H3](https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/pull/32?utm_source=chatgpt.com)
+
+התיקון שהכנתי בשיחה הקודמת עדיין לא מוזג.
+
+הוא אמור לשחזר את ערכי העיצוב המקוריים\:
+
+- line-height של 1.22.
+- ריפוד עליון 8px.
+- ריפוד תחתון 4px.
+- margin-bottom של 4px.
+
+אבל כרגע ה־CI שלו אינו נקי: בדיקות Node 22 נכשלו, ושתי ריצות מטריצת Node האחרות בוטלו. ה־layout audit וה־corpus invariants עברו.
+
+לכן אסור לסמן את תיקון H3 כסגור. צריך לחזור אליו, לזהות ולתקן את כשל הבדיקה, ולשלב אותו במסלול החדש בלי לאבד את תיקון השורש.
+
+### ב. פריסה חיה
+
+הפריסה האחרונה ל־GitHub Pages הצליחה\:
+
+`gh-pages: 9b72ff736347`
+
+אבל היא קדמה ל־PR \#34. בדיקת ה־live audit שבאה אחריה נכשלה בשלב ה־full math audit.
+
+כלומר, עדיין אין הוכחה שהגרסה החדשה של PageModel הוטמעה ונבדקה באתר החי.
+
+זהו שער שחייב להיסגר בהמשך.
+
+# 5\. המשך הדרך עד להשלמת המנוע
+
+הסדר הנכון מבחינתי\:
+
+1. **השלמת פרוסה 2**
+   
+   סגירת PageModel, תמונות והעברת Worker. השלמת בדיקות והכרעת PR \#34.
+2. **פרוסה 3 - DOM renderer**
+   
+   מעבר להצגה המבוססת על PageModel בלבד. אין מדידה, שבירת שורות, חישוב מיקומים או החלטות עימוד ב־renderer.
+3. **פרוסה 4 - HTML export**
+   
+   הפקת HTML מתוך אותו מודל, ללא הפעלת מנוע עימוד נוסף.
+4. **פרוסה 5 - PDF export**
+   
+   מעבר ל־PDF המבוסס על אותו PageModel, תוך שמירה מלאה על טיפוגרפיה, גופנים, תמונות והערות.
+5. **פרוסה 6 - parity ופישוט**
+   
+   השוואת התוצאות, הסרת חישובים כפולים והוכחת זהות הגאומטריה בין כל המקרינים.
+6. **שלב 9 - הסרת מסלולי המורשת**
+   
+   רק אחרי שהוכח שכל התוכן עובר במסלול המאוחד, להסיר את הנתיבים המקבילים, המתאמים והכפילויות.
+7. **שלב 10 - בדיקות סגירה**
+   
+   בדיקת כל סוגי פריטי העימוד, ביצועים, יציבות, דטרמיניזם, ייצוא ופריסה חיה.
+
+# 6\. אישור להמשך זרימה מלאה
+
+(מאשר המשך רציף)
+
+**כן. אני מאשר במפורש להמשיך בזרימה מלאה ורציפה, כהמשך ישיר לעבודה הקודמת.**
+
+אין צורך לעצור ולבקש ממך אישור אחרי כל פרוסה, כל PR או כל תיקון פנימי. יש להתקדם באופן עצמאי בהתאם לתוכנית הקנונית, לשיקול דעת הנדסי ולדרישות שהגדרת.
+
+עם זאת, יש כמה כללי עבודה שאינם נתונים לפשרה\:
+
+1. **איחוד ופישוט לפני הוספת שכבות.** לא לפתור בעיות באמצעות עוד מנגנון מקביל, אלא לתקן את מקור הסמכות.
+2. **הוכחת שימור תוכן.** אין להקריב מילים, הערות, זהויות, תמונות או סדר קריאה בשביל שיפור גאומטרי.
+3. **אין מיזוג מוקדם.** PR ייכנס ל־main רק לאחר שערי הקבלה הרלוונטיים.
+4. **אין המתנה ממושכת ל־GitHub Actions.** לא יותר מחמש דקות לריצה ממתינה. ממשיכים בעבודה עצמאית שאינה תלויה בתוצאה, אך לעולם לא מסמנים בדיקה שטרם הסתיימה כעוברת.
+5. **בדיקת Pages לאחר שינויים.** אין להסתפק בבנייה מקומית כאשר נדרש אימות התוצאה החיה.
+6. **תיעוד מדויק.** כל שלב יירשם עם ממצאים, שורש, תיקון, בדיקות, ראיות ומה שנותר.
+7. **תיקון H3 נשמר כחוב עבודה מחייב.** אין לאבד אותו במעבר למקרינים החדשים.
+8. אין לפתוח מחדש את P6/P7, בהתאם להחלטות הקודמות שלך.
+
+## היעד הסופי
+
+אני רוצה להדגיש את הדבר המרכזי שמנחה את ההמשך\:
+
+**אנחנו לא מנסים להגיע לתוכנה שיש בה כמה מנועי עימוד טובים שמסתדרים ביניהם. אנחנו מנסים להגיע למנוע עימוד אחד.**
+
+## ארכיטקטורת היעד
+
+**DocumentModel אחד**
+
+מקור תוכן וזהויות יחיד
+
+**Measurement + LineModel**
+
+מדידה אחת ושבירת שורות אחת
+
+**Planner + PagePlan**
+
+החלטות עימוד ממקור סמכות יחיד
+
+**PageModel אחד**
+
+(מקור אמת סופי)
+
+**DOM**
+
+תצוגה
+
+**HTML**
+
+ייצוא
+
+**PDF**
+
+הפקה
+
+המקרינים אינם מקבלים החלטות עימוד.
+
+זהו הכיוון שעליו צריך לשמור עד הסוף, כולל יכולת להוסיף סוגי פריטי עימוד חדשים בקלות, באמצעות חוזה ורישום מסודרים, בלי לפרוץ בכל פעם לליבת המנוע.
+
+**מבחינתי יש אור ירוק להמשך העבודה הרציף. נקודת העצירה הנוכחית היא פרוסה 2 של שלב 8, וההמשך הוא השלמתה, מעבר למקרינים, ולאחר מכן ניקוי אמיתי של נתיבי המורשת.**
+
+המטרה היא לא לסיים את כתיבת התוכנית. המטרה היא לסיים את התוכנה.
+
+## Prompt:
+17.11.2026, 5:31:54
+
+סוכן הAI הודיע שהוא השלים את השלב. 
+התנהג אתה כמנהל הפרויקט! 
+בדוק את שלימות הביצוע,
+מזג PR הראויים למיזוג!
+והכן פרומט המפרט את כל הנצרך לסוכן הAI עם השלמות ותיקונים לשלבים הקודמים והפניה לשלב הבא עם פירוט השלב ליתר דיוק שאוכל להדביק והוא יתחיל!!!
+אין צורך להדגיש הוראות להעביר לסוכן, כי אני מעביר לו רק את הפרומטים שאתה נותן לי, ובמידת הצורך הכנס את ההוראות לפרומט. 
+אנחנו חייבים להתקדם לקראת סיום!!! 
+אי אפשר להתעכב כל הזמן!! 
+עשה כל הנדרש בכדי שנתקדם!!! 
+במידת הצורך הכן פרומט לסוכן הAI, ותוך כדי עבור מיד לביצוע הנדרש להתקדמות. בשלבים בהם יהיה ניתן לבחון את השינויים (או את אימות אי השינויים) מנקודת מבט המשתמש, הוסף הוראה לבניית פייג'ס לאחר כל שינוי, למרות שלא אתן דיווח רק לאחר שיושלמו כל השלבים.
+
+## Response:
+17.11.2026, 5:32:05 · gpt-6-t-mini
+
+אקח את תפקיד מנהל הפרויקט: אבדוק את מצב `main` ואת כל ה־PRs שנוגעים לשלבים 8 והשלמות קודמות, אאמת את טענת הסוכן מול הקוד וה־CI, אמזג רק PRs שעומדים בשערי הקבלה, ואעדכן את מצב הפרויקט בהתאם. במקביל אכין פרומט ביצוע מפורט לסוכן לשאריות ולשלב הבא; לאחר מכן אמשיך בעצמי בבדיקות ובפעולות בטוחות שאפשר להשלים כעת.
+
+אימות נוסף משנה את התמונה לטובה לגבי פרוסה 2: PR \#34 כבר מוזג ל־`main`, ולאחריו נפרסה גרסה חדשה של Pages עם חבילת ה־PageModel וה־Worker. שלושת מסלולי ה־CI של Node 18/20/22 הסתיימו בהצלחה, וכן ה־layout audit וה־corpus invariants. אבל זה **אינו** אומר ששלב 8 הושלם: ה־UI עדיין מציג את `result.pages`, וייצוא HTML/PDF עדיין מפעילים מסלולי הקרנה/עימוד ישנים. כעת אני בודק את הכשל הספציפי של PR \#32 ואת גבולות הצריכה המדויקים לפני ניסוח משימת ההמשך.
+
+> **Checking repository progress**
+>
+> I’m reviewing the latest pull requests, branch changes, and CI status to verify what the agent actually completed. I’m also checking for unmerged work or regressions before summarizing the next steps.
+>
+> **Checked repository progress**
+>
+> 
+>
+> **Reviewing repository status**
+>
+> I’m checking the newly merged work, remaining pull requests, CI failures, and live-site behavior. I’m separating expected baseline failures from genuine regressions before deciding what should be fixed or merged next.
+>
+> **Reviewed repository status**
+>
+> 
+>
+> **Tracing test regressions**
+>
+> I’m comparing the failed layout hashes with the current main branch to determine whether the heading-spacing change causes a real geometry regression or simply reflects stale baselines.
+>
+> **Tracing test regressions**
+>
+> I’m comparing failed layout hashes against the current main branch to distinguish a genuine heading-spacing regression from stale baselines, then I’ll decide whether the pull request needs repair or remains unmergeable.
+>
+> **Traced test regressions**
+>
+> 
+>
+> **Audited PR34, Stage 8 rendering, CI failures, and deployment readiness**
+>
+> 
+>
+> **Reviewing merge readiness**
+>
+> I’m treating the merged Stage 8 slice as complete, while the remaining heading-spacing pull request still needs rework because its layout snapshots changed unexpectedly. I’ll request a rebase and targeted regression proof before recommending merge.
+>
+> **Reviewed merge readiness**
+>
+> 
+>
+> **Planning next steps**
+>
+> I’m treating the merged slice as complete, but the heading-spacing change still needs rework: its snapshots changed without sufficient proof that pagination and content flow remain valid. I’ll request rebase, focused regression tests, and agent-led repair.
+>
+> **Planned next steps**
+>
+> 
+>
+> **Planning repository progress**
+>
+> I’m treating the merged slice as complete, while the heading-spacing change still needs rework. I’ll request a current rebase, focused regression tests, and verification that pagination and content flow remain correct.
+>
+> **Planned repository progress**
+>
+> 
+>
+> **Reviewing merge readiness**
+>
+> I’m treating the merged slice as complete, while the heading-spacing change still needs rework. I’ll request a current rebase, focused regression tests, and verification that pagination and content flow remain correct.
+>
+> **Planning repository progress**
+>
+> I’m treating the merged slice as complete, while the heading-spacing change still needs rework. I’ll request a current rebase, focused regression tests, and verification that pagination and content flow remain correct.
+>
+> **Reviewed merge readiness and planned repository progress**
+>
+> 
+>
+> **Guiding next work**
+>
+> I’m treating the merged slice as complete, while the heading-spacing change needs rework. I’ll request a rebase, targeted regression tests, and proof that pagination and content flow remain correct before approval.
+>
+> **Guided next work**
+>
+> 
+>
+> **Audited H3 regressions, reviewed PRs, and advanced Stage 8 DOM migration**
+>
+> 
+>
+> Worked for 11m 50s
+
+# דו"ח מנהל הפרויקט - מצב ביצוע והחלטות
+
+(שלב 8, פרוסה 2 - מוזגה) (שלב 8 - עדיין לא הושלם)
+
+בדקתי את המאגר עצמו, ולא רק את הודעת הסוכן. התקדמות משמעותית בוצעה, אבל הסוכן לא השלים את שלב 8 במלואו.
+
+## 1\. מצב המיזוגים
+
+ה־PR החשוב ביותר אכן מוזג\:
+
+[PR \#34 — השלמת PageModel והעברת Worker](https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/pull/34?utm_source=chatgpt.com)
+
+הוא השלים את הפרוסה השנייה של שלב 8, לרבות\:
+
+- השלמת נתוני PageModel.
+- תמונות כפריטים ממדרגה ראשונה.
+- תיקון 105 הפרות מיפוי בהערות הסיום.
+- חוזה העברה ואימות של PageModel דרך Worker.
+- חשיפת המודל באפליקציה.
+
+גם פרוסה 1 ופרוסת הביקורת שלה כבר מוזגו ב־PR \#31 ו־PR \#33.
+
+**אימות לאחר המיזוג**
+
+Node 18 - 1,146 בדיקות (עבר)
+
+Node 20 - 1,146 בדיקות (עבר)
+
+Node 22 - 1,146 בדיקות (עבר)
+
+Determinism ו־cross-check (עברו)
+
+Layout audit (עבר)
+
+Corpus invariants (עבר)
+
+Full math audit (נכשל - baseline מוכר)
+
+ריצת CI של main: [GitHub Actions \#44009417418](https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/actions/runs/44009417418?utm_source=chatgpt.com)\.
+
+**פריסה\:** GitHub Pages נבנה ונפרס לאחר המיזוג, עם גרסת נכסים `2026-11-17-s8c`\. בדיקת טריות הבאנדלים עברה.
+
+עם זאת, יש ממצא חשוב: האתר החי עדיין מפעיל כברירת מחדל את פרופיל IMUD הישן. לכן PageModel אינו מחובר לתצוגת ברירת המחדל עדיין. המעבר לכך שייך לשלב 9, לאחר הוכחת התאמה.
+
+## 2\. מה עדיין אינו מושלם?
+
+מצאתי ארבעה חובות שאסור להשאיר מאחור.
+
+**א. שלב 8 עדיין פתוח.**
+
+בדקתי את הקוד בפועל\:
+
+- `app-shell.js` עדיין מעביר ל־preview את `result`\.
+- `preview-tab.js` עדיין מרנדר מתוך `result.pages`\.
+- `dom-renderer.js` עדיין מקבל מבנה עמוד ישן.
+- HTML export עדיין עובר על `result.pages`\.
+- PDF export עדיין מפעיל `typeset()` ומקרין מחדש באמצעות `projectDocument`\.
+
+כלומר, PageModel כבר נבנה ומועבר ב־Worker, אבל עדיין אינו מקור האמת היחיד של כל הפלטים. זה בדיוק מה שעלינו להשלים.
+
+**ב. תיקון כותרת 3 עדיין לא מוזג.**
+
+[PR \#32 — תיקון הרווחים בכותרת 3](https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/pull/32?utm_source=chatgpt.com)
+
+בדיקת הכותרת הממוקדת עברה, אבל שתי בדיקות ב־`s72-column-bottoms` נכשלו בגלל שינויי hashes שלא סווגו כראוי. בנוסף, הענף מבוסס על commit ישן ואינו מעודכן מול main.
+
+הוספתי הערת ביקורת מפורטת ב־PR. **אין למזג אותו במצבו הנוכחי.**
+
+התיקון הגאומטרי עצמו נחוץ: line-height של 1.22, ריפוד עליון 8px פעם אחת, ריפוד תחתון 4px ו־margin-bottom של 4px. צריך לשמר אותו ולתקן את בדיקות הרגרסיה, לא לוותר עליו.
+
+**ג. כשל שימור התוכן עדיין קיים במסלול החי.**
+
+ב־Full math audit האחרון התקבלו 353,687 מילים מרונדרות, לעומת רצפה של 355,967.
+
+זה אינו כשל חדש של PR \#34, אבל גם אינו תקין מבחינתנו. אין להנמיך את סף הבדיקה או להמשיך לכנות את התוצאה הצלחה. צריך לזהות את המילים ומקטעי המקור שאובדים, להשוות למנוע המאוחד ולהשלים את המעבר בשלב 9.
+
+[github.com](https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/actions/runs/44009417560?utm_source=chatgpt.com)\.
+
+**ד. יש תיעוד החלטות שצריך לאחד.**
+
+PR \#14 מכיל החלטות משתמש מ־D-107 שטרם מצאתי ב־`DECISIONS.md` הנוכחי. אין למזג את ה־PR הישן בשלמותו, אבל צריך לוודא שההחלטות המאושרות שבו נשמרות במסמך הסמכות.
+
+## 3\. אילו PRs למזג?
+
+| PR | החלטה |
+|--------|--------|
+| \#34 | (כבר מוזג) |
+| \#31, \#33 | (כבר מוזגו) |
+| \#32 | (לא למזג - תיקונים נדרשים) |
+| \#16 | לא למזג; רכיבי שורש רלוונטיים כבר הוטמעו בפרוסות 5-6 |
+| \#17 | לא למזג; מסומן במפורש DO NOT MERGE |
+| \#14 | לא למזג בשלמותו; לחלץ רק החלטות משתמש שעדיין חסרות |
+
+נכון לעכשיו אין PR פתוח נוסף שהוכח כראוי למיזוג. לא אבצע מיזוג מסוכן רק כדי להגדיל את מספר ה־PRs הסגורים.
+
+---
+
+# 4\. פרומט ההמשך לסוכן - ביצוע ולא תכנון נוסף
+
+השלב הבא הוא השלמת כל שלב 8, ולאחר מכן מעבר ישיר לשלב 9. צירפתי גם את חובות התיקון שמצאתי, כדי שלא נאבד עבודה קודמת.
+
+**document: **
+
+# הוראת ביצוע - המשך איחוד מנוע RED, השלמת שלב 8 והתקדמות לשלב 9
+
+מאגר העבודה:
+https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2
+
+## 0. מצב בסיס מחייב
+
+התחל מבדיקת ה-HEAD העדכני של `main`. בבדיקה האחרונה הוא היה:
+
+`c4437ac8d25928e66d7bf794b011ee64ba014709`
+
+PR #31, #33 ו-#34 מוזגו. פרוסה 2 של שלב 8 הושלמה ואושרה בבדיקות Node 18/20/22, אך שלב 8 כולו עדיין פתוח.
+
+אסור לחזור ולבנות מחדש מנגנונים שכבר הוטמעו ב-PRs האלה.
+
+התוכנית הקנונית היא:
+`spec/00_CURRENT_ENGINE_COMPLETION_PLAN.md`
+
+מסמך מצב שלב 8:
+`audits/STAGE8_RENDER_PROJECTIONS.md`
+
+המשך לפי שני המסמכים האלה, עם התיקונים וההרחבות להלן.
+
+## 1. תיקון חובות קודמים - לפני או במקביל לשלב הבא
+
+### 1.1 כותרת 3 - PR #32
+
+https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/pull/32
+
+התיקון הקיים נכון בכיוון הגאומטרי, אך אינו כשיר למיזוג כרגע.
+
+יש לבצע:
+1. להעביר את התיקון על בסיס `main` העדכני, בלי לדרוס שינויים משלבי 8a-8c.
+2. לשמר את חוזה העיצוב המקורי:
+   - `line-height: 1.22`
+   - `padding-top: 8px`, פעם אחת.
+   - `padding-bottom: 4px`, פעם אחת.
+   - `margin-bottom: 4px`, פעם אחת.
+3. כותרת חד-שורתית: גובה כולל של כ-38px.
+4. כותרת רב-שורתית: pitch של כ-21.96px עבור 13.5pt, ללא חזרה על הריפוד בין השורות.
+5. לוודא שה-preflight, תכנון המקום, ה-DOM וה-PDF משתמשים באותה גאומטריה.
+
+**תיקון בדיקות חובה:**
+
+בענף הקודם נכשלו שתי בדיקות `s72-column-bottoms`:
+
+- התקבל `legacy-5f0dcd389b0fdde3` במקום `legacy-a0946f99c7c197bd`.
+- התקבל `legacy-4c278453addbf86d` במקום `legacy-d81aa5ef4f2dffe8`.
+
+אין לעדכן hashes באופן מכני. יש להפיק דוח השוואה מלא בין baseline לתיקון, ולסווג כל שינוי לפי עמוד, טור, פריט, שורה, sourceRange ומזהה מקור.
+
+יש להבחין בין השינוי הגאומטרי המכוון בכותרת לבין כל שינוי בלתי צפוי בחלוקת טקסט, סדר קריאה או מיקום פריטים.
+
+לבדוק שימור מלא של מילים, הערות, עוגנים, דטרמיניזם ותוצאות הקורפוס.
+
+יש לבדוק גם שהשינוי לא יישאר פתרון של IMUD בלבד: במסלול המאוחד יש להטמיע את אותו חוזה לפני המעבר הסופי בשלב 9.
+
+### 1.2 כשל Full Math - לא להשאיר כבעיה נורמלית
+
+ב-main נותר הכשל:
+
+`353,687 < 355,967`
+
+מתוך 363,232 מילים במסמך הבדיקה הראשי.
+
+אין להקטין את סף הבדיקה, לשנות את המסמך או להסתיר מילים.
+
+יש:
+- לאתר את המילים ומקטעי המקור שאובדים במסלול החי.
+- להשוות בין legacy לבין מסלול DP המאוחד.
+- לבדוק אם מדובר בהשמטה במסלול IMUD הישן או בפגם במודל המאוחד.
+- להוכיח כיסוי מלא לפי זהויות וטווחי מקור, ולא רק בספירת טקסט.
+- להעביר תיקוני שורש למקום הסמכות הנכון.
+- לעדכן את ISSUE_REGISTRY ואת דוחות האודיט.
+
+אין להשהות עבודה עצמאית בשלב 8 בגלל הבדיקה הזאת, אבל אין להכריז על השלמת הפרויקט לפני שסוגיית אובדן התוכן הוכרעה.
+
+### 1.3 הכרעות משתמש ותיעוד
+
+בדוק את PR #14 ואת החלטות D-107.
+
+אין למזג את PR #14 בשלמותו: הוא ישן וכולל תיעוד שאינו מסונכרן למאגר הנוכחי.
+
+יש לחלץ רק החלטות משתמש מאושרות שעדיין אינן מופיעות במסמכי הסמכות, בפרט:
+- D-107 והקדימות שלו ביחס להחלטות קודמות.
+- ערכת עיצוב 40 ועיצובי השער המקוריים נשארים פעילים אוטומטית.
+- שמירת בחירות הגופנים והסגנונות המקוריים.
+- ברירות המחדל המאושרות והקדימות של בחירות המשתמש.
+- מדיניות יישור תחתיות הטורים והחרגת מתיחה גורפת בסוף פרק קצר.
+
+אין לבצע שינויי ברירת מחדל רק כדי להתאים למסמך ישן. כל שינוי חייב להתבסס על הכרעה קיימת.
+
+עדכן את `DECISIONS.md` ואת מסמכי הסמכות. בדוק גם את `AGENTS_TRACKING.md`, שתמונת המצב שלו מתוארכת ל-11.11, וסמן את המידע ההיסטורי שאינו מתאר עוד את מצב העבודה.
+
+### 1.4 אין לפתוח מחדש
+
+- אין לבצע עבודה על P6/P7.
+- אין לשנות את ברירות המחדל של המשתמש ללא הוראה מפורשת.
+- אין למזג את PR #16 או #17 בשלמותם.
+- אין ליצור מחדש מנגנונים שכבר הוכנסו בשלבים 5-8.
+
+## 2. שלב 8 - פרוסה 3: DOM renderer מתוך PageModel בלבד
+
+זוהי המשימה הבאה לביצוע מיידי.
+
+### 2.1 המצב הקיים והפער
+
+כיום:
+- `app-shell.js` עדיין קורא ל-`preview.setResult(result, settings)`.
+- `preview-tab.js` מרנדר באמצעות `renderPage(page, settings, doc)`.
+- ה-renderer עדיין מקבל את אובייקט העמוד הישן.
+- PageModel מגיע ל-UI באמצעות `app.pageModel()`, אך עדיין אינו מקור הגאומטריה של התצוגה.
+
+המשימה היא לחבר בפועל את תצוגת הממשק ל-PageModel.
+
+### 2.2 חוזה ה-renderer החדש
+
+יש ליצור או להסב את מנגנון ה-DOM כך שיקבל עמוד מתוך `PageModel` ויצייר אותו בלבד.
+
+אסור לו לקבל `DocumentModel`, `PagePlan`, `LineModel` או `result.pages` לצורך חישוב התצוגה.
+
+אסור לו:
+- למדוד גופנים או מילים.
+- לחשב רוחבי מילים.
+- לשבור שורות.
+- לבצע wrapping או reflow.
+- להחליט על מיקום או סדר פריטים.
+- לחשב מחדש חלוקת הערות.
+- לחשב גאומטריית עיטורים.
+- לחשב מידות תמונות או להחליט על fit.
+- להשלים מידע חסר באמצעות fallback שקט.
+
+כל x/y/w/h, baseline, מידות, סדר שכבות, מפתח גופן, צבע, asset identity ועוגן חייבים להגיע מהמודל.
+
+אם חסר מידע חיוני במודל, יש לתקן את בונה PageModel ואת ה-validation, ולא להכניס חישוב מקביל ל-renderer.
+
+מותר לבצע פעולות טעינה ופענוח של משאבים לציור, אך לא לקבל החלטות עימוד או גאומטריה.
+
+### 2.3 התנהגות בתקופת המעבר
+
+ברירת המחדל החיה עדיין מפעילה IMUD legacy עד שלב 9.
+
+לכן יש לשמר בינתיים את ה-renderer הישן במצב תאימות מפורש, אך להפריד בבירור בין:
+- פרופיל legacy - renderer ישן, עד שלב 9.
+- פרופיל unified - PageModel renderer בלבד.
+
+אין להסתמך על היעדר PageModel כ-fallback שקט. במסלול unified, היעדר PageModel הוא שגיאה מפורשת.
+
+אין לשנות כעת את ברירת המחדל של המשתמש רק כדי להציג את המנוע החדש.
+
+### 2.4 כיסוי פריטי העימוד
+
+יש להציג באמצעות PageModel את כל סוגי התוכן הרלוונטיים:
+
+- טקסט רגיל וטקסט מעורב בגופנים.
+- כל רמות הכותרות, לרבות כותרות H3 רב-שורתיות.
+- תמונות inline, block, ממורכזות ו-float.
+- הערות שוליים, צד וסיום והמשכים.
+- עיטורים וכל סוגי הדיו.
+- כותרות עליונות, גיליונות ומספור.
+- שערים, תוכן עניינים וגיליונות מיוחדים.
+- spanning ופריטים החוצים טורים.
+- info-box ופריטי registry מותאמים.
+- קישורים, bookmarks ונתוני נגישות.
+
+פריט לא נתמך לא ייעלם. יש להפיק diagnostic ברור.
+
+### 2.5 שימור חוויית המשתמש
+
+יש לשמר:
+- Virtualization של מסמכים ארוכים.
+- גלילה אופקית ואנכית.
+- זום והתאמה לרוחב.
+- קפיצה לעמוד.
+- סנכרון סמן העורך.
+- הדגשת ממצאי אודיט.
+- הורדת JSON של עמוד.
+- כלי ייצוא.
+
+את מידות ה-placeholders יש לקחת מ-PageModel.
+
+### 2.6 בדיקות קבלה
+
+יש להוסיף בדיקות שמוכיחות בפועל:
+
+1. DOM מציג את כל עמודי המודל ואת כל סוגי הפריטים.
+2. קואורדינטות DOM תואמות ל-PageModel בסבילות מספרית מוגדרת.
+3. font identity, baseline, images, anchors, notes ו-reading order נשמרים.
+4. אין מדידה או חישוב גאומטרי ברנדרר - יש להוכיח זאת גם באמצעות instrumentation או בדיקות שלילה.
+5. פריט או asset חסר מייצר diagnostic גלוי.
+6. אין פריט שנעלם או מופיע פעמיים.
+7. ה-virtualization תקינה גם במסמך `very_long_test_text.txt`.
+8. מסמכים קצרים וארוכים עוברים בדיקת דפדפן אמיתי.
+9. בדיקת legacy מוודאת שלא נוצרה רגרסיה במסלול ברירת המחדל בתקופת המעבר.
+
+## 3. שלב 8 - פרוסה 4: HTML export מתוך PageModel
+
+לאחר השלמת DOM, המשך מיד לייצוא HTML.
+
+- HTML יקבל PageModel בלבד.
+- אין להפעיל `typeset` מחדש.
+- אין Parser או Planner נוסף.
+- אין לשבור שורות או למדוד מילים.
+- אין לחשב מיקומים מחדש.
+- אין חלוקת הערות חדשה.
+- כל הגופנים והנכסים יהיו מוטמעים או ארוזים בחוזה מוגדר.
+- הקובץ יפעל ללא רשת.
+- תוכן חסר יפיק כשל מפורש ולא fallback שקט.
+
+יש להוכיח זהות בין DOM לבין HTML מבחינת התוכן והגאומטריה.
+
+יש לבדוק מסמך קצר, מסמך ארוך, `very_long_test_text.txt`, תמונות, הערות, עיטורים, שערים ו-TOC.
+
+## 4. שלב 8 - פרוסה 5: PDF export מתוך PageModel
+
+זהו שינוי מהותי במיוחד.
+
+כיום `exportPdf` מפעיל `typeset()` מחדש ומשתמש ב-`projectDocument`.
+
+יש להסיר את העימוד השני מתוך מסלול ה-PDF.
+
+ה-PDF חייב לצרוך את אותו PageModel בדיוק שבו משתמש ה-DOM.
+
+אסור:
+- להפעיל Parser או Planner מחדש.
+- למדוד מילים מחדש.
+- לחשב מיקומי מילים מחדש.
+- לשבור שורות מחדש.
+- להזיז הערות או עיטורים.
+- להחליט על placement.
+- ליצור גאומטריה עצמאית.
+
+יש לשמר:
+- RTL וסדר קריאה.
+- font identity ו-glyph identity.
+- embedding ו-subsetting של גופנים.
+- ToUnicode.
+- תמונות ויחסי ממדים.
+- הערות והמשכים.
+- עיטורים, שערים, TOC, bookmarks וקישורים.
+- clipping, baseline וגבולות עמוד.
+
+ה-PDF writer יעסוק בהפקה ובאריזה בלבד.
+
+בדיקות הקבלה:
+- text extraction.
+- ToUnicode.
+- font embedding.
+- bookmarks וקישורים.
+- rasterization והשוואת גאומטריה מול PageModel ו-DOM.
+- הזרקת שגיאות של font/image/fragment חסרים.
+- הוכחת שאין עימוד שני.
+
+## 5. שלב 8 - פרוסה 6: אודיט סופי, parity ופישוט
+
+יש לבצע מלאי קוד מלא עבור:
+- `dom-renderer.js`
+- `geometry-projector.js`
+- `legacy-projector.js`
+- `pdf-writer.js`
+- `export-api.js`
+- כל מודולי HTML/PDF נוספים.
+
+לכל פונקציה לזהות:
+- האם היא מדידה.
+- האם היא מקבלת החלטות עימוד.
+- האם היא מבצעת materialization.
+- האם היא ציור בלבד.
+- האם היא פעולת packaging.
+- האם יש לה consumer פעיל נוסף.
+
+יש להוכיח:
+1. PageModel הוא מקור הגאומטריה היחיד.
+2. DOM/HTML/PDF אינם מבצעים מדידה או עימוד.
+3. אין עימוד נוסף בייצוא.
+4. אין חישוב גאומטרי כפול ללא הצדקה.
+5. כל סוג פריט נשמר בכל היעדים.
+6. התוצאה דטרמיניסטית.
+7. אין פגיעה בביצועים או בזיכרון שאינה מוצדקת.
+
+מדוד לפני ואחרי:
+- זמן typeset.
+- בניית PageModel.
+- העברת Worker.
+- DOM.
+- HTML.
+- PDF.
+- גודל המודל.
+- זיכרון.
+- פעולות materialization ומדידה.
+
+אין להציג שיפור ביצועים שנובע מהשמטת תוכן.
+
+## 6. שלב 9 - Cutover והסרת נתיבי המורשת
+
+עם סגירת שלב 8, יש לעבור מיד לשלב 9.
+
+זהו שלב קריטי ולא פעולת ניקוי קוסמטית.
+
+### 6.1 מיפוי
+
+מפה את כל נתיבי runtime הישנים:
+- `legacyTypeset`.
+- `breakLines` ומנגנוני השבירה המקבילים.
+- ה-projectors הישנים.
+- מתאמים שמייצרים מודלים חלופיים.
+- מסלולי export שמפעילים עימוד.
+- צרכני `result.pages` וכל מבנה ביניים כפול.
+
+### 6.2 Shadow comparison
+
+השווה בין legacy לבין המנוע המאוחד על:
+- `very_long_test_text.txt` - מסמך הבדיקה הראשי.
+- ספרים אמיתיים.
+- מסמכי הערות ארוכים.
+- מסמכים עם תמונות.
+- שערים, TOC, עיטורים וריהוט.
+- כותרות רב-שורתיות.
+- מסמכים תקינים בעלי היררכיית כותרות מלאה.
+
+השוואת תוכן וזהויות חייבת לכלול:
+- מילים ומקטעי מקור.
+- noteId/anchorId.
+- המשכי הערות.
+- font identity.
+- asset identity.
+- source ranges.
+- reading order.
+- מיקום בעמוד ובטור.
+
+אין להתפשר על שימור תוכן.
+
+### 6.3 העברת תיקונים והסרה
+
+יש להעביר כל תיקון שורש נחוץ למנוע המאוחד, לרבות חוזה כותרת 3 המקורי, ורק לאחר מכן להסיר מסלולים מקבילים.
+
+אין להסיר legacy לפני הוכחת parity של כל סוגי התוכן.
+
+לאחר השלמת המעבר:
+- מנוע עימוד פעיל אחד.
+- מקור תוכן אחד.
+- מודל שורות אחד.
+- Planner אחד.
+- PageModel אחד.
+- מקרינים טהורים.
+- rollback ברמת commit, לא באמצעות השארת מנוע שני פעיל.
+
+יש לקבוע את שינוי ברירת המחדל למנוע המאוחד רק לאחר סגירת כל שערי parity ושימור התוכן, תוך שמירת ברירות המחדל והגדרות המשתמש המאושרות.
+
+## 7. כללי CI ו-GitHub Pages
+
+- אין להמתין לבדיקת GitHub Actions יותר מחמש דקות. לאחר מכן ממשיכים במשימות עצמאיות וחוזרים לתוצאה.
+- אין לסמן בדיקה ממתינה כאילו עברה.
+- אין להחליש thresholds או להסתיר baseline מוכר.
+- להריץ בדיקות Node 18/20/22.
+- להריץ `npm test`, `test:determinism`, `cross-check`, `corpus-invariants`, `layout-audit`, `full-math-audit` וכל בדיקת projection רלוונטית.
+- לתעד בדיוק את הכשלים ההיסטוריים בנפרד מרגרסיות חדשות.
+- לאחר כל יחידת שינוי בעלת השפעה חזותית, וגם לאחר שינוי שאמור להיות ניטרלי חזותית, לבנות מחדש ולפרוס GitHub Pages לאחר מיזוג היחידה ל-main.
+- להוסיף cache-buster ייחודי חדש.
+- לבדוק שהאתר החי טוען את הבאנדלים החדשים.
+- לבדוק מסמך מייצג, תצוגה וייצוא PDF בכל מקום שבו הדבר רלוונטי.
+- כאשר בודקים את מסלול unified לפני שלב 9, להפעיל אותו מפורשות לצורך האודיט, בלי לשנות את ברירת המחדל של המשתמש.
+
+## 8. חלוקת PRs ותיעוד
+
+יש להגיש PRs נפרדים וברורים:
+1. תיקון H3 מעודכן.
+2. שלב 8 פרוסה 3 - DOM.
+3. שלב 8 פרוסה 4 - HTML.
+4. שלב 8 פרוסה 5 - PDF.
+5. שלב 8 פרוסה 6 - parity ופישוט.
+6. שלב 9 - cutover והסרת legacy, ביחידות שניתן לבקר.
+
+אין לאחד כמה יחידות גדולות ל-PR אחד.
+
+בכל PR חובה:
+- פער ושורש.
+- פתרון ארכיטקטוני.
+- קבצים וממשקים ששונו.
+- הוכחת שימור תוכן וזהויות.
+- בדיקות ו-artifacts.
+- hashes לפני/אחרי והסבר לשינויים.
+- תוצאות Pages.
+- מצב כל שערי הקבלה.
+- רשימת העבודה שנותרה.
+
+עדכן בכל שלב:
+- `WORKLOG.md`
+- `ISSUE_REGISTRY.md`
+- `LAYOUT_DEPENDENCY_MAP.md`
+- `ENGINE_RUNTIME_PATHS.md`
+- `ENGINE_DUPLICATION_REGISTER.md`
+- `audits/STAGE8_RENDER_PROJECTIONS.md`
+- `spec/00_CURRENT_ENGINE_COMPLETION_PLAN.md`
+- `DECISIONS.md` לפי הצורך.
+
+עדכן את פנקס ההתקדמות לפי הראיות העדכניות. אין להשאיר שלבים שהושלמו מסומנים כפתוחים, ואין לסמן שלבים שלא הוכחו כגמורים.
+
+## 9. יעד שאינו נתון לפשרה
+
+המטרה אינה להוסיף עוד שכבות למערכת.
+
+המטרה היא לסיים מנוע יחיד, מזוקק, דטרמיניסטי ושקוף, שבו:
+
+- פריט חדש מתווסף באמצעות חוזה ורישום.
+- אין צורך לשנות מספר מודולים בכל הוספת סוג פריט.
+- אין מדידה כפולה.
+- אין שבירת שורות כפולה.
+- אין החלטות עימוד במקרינים.
+- אין עימוד שני בייצוא.
+- אין fallback שקט.
+- אין מנוע מורשת פעיל לצד המנוע החדש לאחר סגירת שלב 9.
+
+התחל מיד בתיקוני חובות שלב 8 ובמימוש פרוסה 3. אל תעצור בכתיבת דוח או תוכנית. המשך למימוש, בדיקות, PRs ותיעוד עד לסגירת שערי שלב 8, ולאחר מכן התקדם ישירות לשלב 9.
+
+אין צורך להמתין לאישור ביניים עבור תיקוני שורש שאינם משנים החלטות משתמש או ברירות מחדל מאושרות.
+
+## 5\. נקודת הניהול הבאה
+
+הפרומט מורה לסוכן להתחיל בפרוסה 3, תוך טיפול בחובות הקודמים, ולהמשיך ברצף לפרוסות הבאות.
+
+ההחלטה שלי כמנהל הפרויקט היא **לא לאשר עדיין את שלב 8 ולא לבצע cutover מוקדם**\. צריך קודם להשלים את שלושת המקרינים ממקור אמת אחד. במקביל אסור להזניח את תיקון H3 ואת אובדן התוכן במסלול החי.
+
+היעד הבא לביקורת שלנו יהיה PR של DOM renderer מתוך PageModel בלבד. שם נוכל לבדוק לראשונה שהמודל שהשקענו בבנייתו באמת משמש להצגת הספר, ולא רק מועבר ב־Worker.
+
+**מכאן מתקדמים למימוש, לא לעוד סבב תכנון.**
+
+## Prompt:
+17.11.2026, 10:49:14
+
+הסוכן עדיין לא סיים את ביצוע המטלות, אבל בנתיים רציתי אם אפשר שתחליף אתה בעצמך את שם התוכנה המופיע בחלק הימני עליון ("ספר תורה - מערך עימוד (RED)") עם שם התוכנה והאייקון שבחרתי, מצורף להודעה קוד הSVG של הלוגו עם שם התוכנה (התאם אותו לגובה השורה העליונה), וכן קוד הלוגו לבד (לשימוש כלוגו האתר (המופיע בכרטיסיית הדפדפן וכו')). הנה הלוגל עם שם התוכנה:
+<svg xmlns="http://w3.org" viewBox="0 0 1330 510" width="1330" height="510">
+  <defs>
+    <!-- מרקם נייר עדין מאוד לרקע הבהיר -->
+    <filter id="light-paper" x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="3" seed="5" result="noise"/>
+      <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.02 0" in="noise" result="coloredNoise"/>
+      <feComposite operator="in" in2="SourceGraphic"/>
+    </filter>
+    <!-- גרדיאנט רקע לבן-שמנת רך -->
+    <radialGradient id="clean-bg" cx="50%" cy="50%" r="65%">
+      <stop offset="0%" stop-color="#FCFBF9"/>
+      <stop offset="100%" stop-color="#F5F3EE"/>
+    </radialGradient>
+  </defs>
+
+  <!-- רקע -->
+  <rect width="1330" height="510" fill="url(#clean-bg)"/>
+  <rect width="1330" height="510" fill="#E5E1D8" filter="url(#light-paper)" opacity="0.5"/>
+
+  <!-- קבוצת הלוגו המרוכזת -->
+  <!-- מסגרת חיצונית מרובעת מעוגלת עם רקע בהיר נקי -->
+  <rect x="36" y="36" width="440" height="440" rx="76" fill="#FAF9F6" stroke="#191815" stroke-width="22"/>
+
+  <!-- שורה 1: פס אופקי עליון מלא (כחול נייבי) -->
+  <rect x="84" y="84" width="344" height="22" rx="2" />
+
+  <!-- שורה 2: שלושה מקטעים אופקיים (זהב) -->
+  <rect x="84" y="120" width="106" height="20" rx="2" fill="#C5A467"/>
+  <rect x="206" y="120" width="100" height="20" rx="2" fill="#C5A467"/>
+  <rect x="322" y="120" width="106" height="20" rx="2" fill="#C5A467"/>
+  <!-- שורה 3: חמשת הטורים המרכזיים -->
+  <!-- טור 1 (שמאלי חיצוני): צורת סימן קריאה בכחול נייבי -->
+  <g>
+    <rect x="84" y="156" width="42" height="148" rx="2"/>
+    <rect x="84" y="320" width="42" height="36" rx="2"/>
+  </g>
+
+  <!-- טור 2 (שמאלי פנימי): עמוד זהב מלא -->
+  <g fill="#F6F1E0">
+    <rect x="140" y="156" width="50" height="36" rx="2"/>
+    <rect x="140" y="208" width="50" height="148" rx="2"/>
+  </g>
+  <g fill="#E8DFC5">
+    <rect x="140" y="156" width="50" height="36" rx="2"/>
+    <rect x="140" y="208" width="50" height="148" rx="2"/>
+  </g>
+
+  <g>
+      <rect x="140" y="156" width="50" height="6" rx="1"/>
+      <rect x="140" y="171" width="50" height="6" rx="1"/>
+      <rect x="140" y="186" width="50" height="6" rx="1"/>
+      <rect x="140" y="206" width="50" height="6" rx="1"/>
+      <rect x="140" y="218" width="50" height="6" rx="1"/>
+      <rect x="140" y="230" width="50" height="6" rx="1"/>
+      <rect x="140" y="242" width="50" height="6" rx="1"/>
+      <rect x="140" y="254" width="50" height="6" rx="1"/>
+      <rect x="140" y="266" width="50" height="6" rx="1"/>
+      <rect x="140" y="278" width="50" height="6" rx="1"/>
+      <rect x="140" y="290" width="50" height="6" rx="1"/>
+      <rect x="140" y="302" width="50" height="6" rx="1"/>
+      <rect x="140" y="314" width="50" height="6" rx="1"/>
+      <rect x="140" y="326" width="50" height="6" rx="1"/>
+      <rect x="140" y="338" width="50" height="6" rx="1"/>
+      <rect x="140" y="350" width="50" height="6" rx="1"/>
+  </g>
+  <!-- טור 3 (מרכזי): האות I בכחול נייבי -->
+  <g>
+    <!-- סריף עליון -->
+    <rect x="206" y="156" width="100" height="32" rx="2"/>
+    <!-- גוף האות -->
+    <rect x="237" y="188" width="38" height="136"/>
+    <!-- סריף תחתון -->
+    <rect x="206" y="324" width="100" height="32" rx="2"/>
+  </g>
+
+  <!-- טור 4 (ימני פנימי): עמוד זהב מלא -->
+  <g fill="#F6F1E0">
+    <rect x="322" y="156" width="50" height="148" rx="2"/>
+    <rect x="322" y="320" width="50" height="36" rx="2"/>
+  </g>
+  <g fill="#E8DFC5">
+    <rect x="322" y="156" width="50" height="148" rx="2"/>
+    <rect x="322" y="320" width="50" height="36" rx="2"/>
+  </g>
+  
+  <!-- טור 5 (ימני חיצוני): צורת סימן קריאה בכחול נייבי -->
+  <g>
+    <rect x="386" y="156" width="42" height="36" rx="2"/>
+    <rect x="386" y="208" width="42" height="148" rx="2"/>
+  </g>
+  <g>
+      <rect x="322" y="156" width="50" height="6" rx="1"/>
+      <rect x="322" y="168" width="50" height="6" rx="1"/>
+      <rect x="322" y="180" width="50" height="6" rx="1"/>
+      <rect x="322" y="192" width="50" height="6" rx="1"/>
+      <rect x="322" y="204" width="50" height="6" rx="1"/>
+      <rect x="322" y="216" width="50" height="6" rx="1"/>
+      <rect x="322" y="228" width="50" height="6" rx="1"/>
+      <rect x="322" y="240" width="50" height="6" rx="1"/>
+      <rect x="322" y="252" width="50" height="6" rx="1"/>
+      <rect x="322" y="264" width="50" height="6" rx="1"/>
+      <rect x="322" y="276" width="50" height="6" rx="1"/>
+      <rect x="322" y="288" width="50" height="6" rx="1"/>
+      <rect x="322" y="300" width="50" height="6" rx="1"/>
+      <rect x="322" y="320" width="50" height="6" rx="1"/>
+      <rect x="322" y="335" width="50" height="6" rx="1"/>
+      <rect x="322" y="350" width="50" height="6" rx="1"/>
+  </g>
+
+  <!-- שורה 4: שלושה מקטעים אופקיים תחתונים (זהב) -->
+  <rect x="84" y="372" width="106" height="20" rx="2" fill="#C5A467"/>
+  <rect x="206" y="372" width="100" height="20" rx="2" fill="#C5A467"/>
+  <rect x="322" y="372" width="106" height="20" rx="2" fill="#C5A467"/>
+
+  <!-- שורה 5: פס אופקי תחתון מלא (כחול נייבי) -->
+  <rect x="84" y="406" width="344" height="22" rx="2" />
+
+<!-- טקסט המותג Imudify בכחול נייבי -->
+    <text x="500" y="340" 
+          font-family="'Futura', 'Century Gothic', 'Montserrat', 'Segoe UI', Arial, sans-serif" 
+          font-size="230" 
+          font-weight="700" 
+          letter-spacing="-2">Imudify</text>
+  </g>
+</svg>
+והנה קוד הלוגו לבד:
+<svg xmlns="http://w3.org" viewBox="0 0 512 512" width="512" height="512">
+  <!-- מסגרת חיצונית מרובעת מעוגלת עם רקע בהיר נקי -->
+  <rect x="36" y="36" width="440" height="440" rx="76" fill="#FAF9F6" stroke="#191815" stroke-width="22"/>
+
+  <!-- שורה 1: פס אופקי עליון מלא (כחול נייבי) -->
+  <rect x="84" y="84" width="344" height="22" rx="2" />
+
+  <!-- שורה 2: שלושה מקטעים אופקיים (זהב) -->
+  <rect x="84" y="120" width="106" height="20" rx="2" fill="#C5A467"/>
+  <rect x="206" y="120" width="100" height="20" rx="2" fill="#C5A467"/>
+  <rect x="322" y="120" width="106" height="20" rx="2" fill="#C5A467"/>
+  <!-- שורה 3: חמשת הטורים המרכזיים -->
+  <!-- טור 1 (שמאלי חיצוני): צורת סימן קריאה בכחול נייבי -->
+  <g>
+    <rect x="84" y="156" width="42" height="148" rx="2"/>
+    <rect x="84" y="320" width="42" height="36" rx="2"/>
+  </g>
+
+  <!-- טור 2 (שמאלי פנימי): עמוד זהב מלא -->
+  <g fill="#F6F1E0">
+    <rect x="140" y="156" width="50" height="36" rx="2"/>
+    <rect x="140" y="208" width="50" height="148" rx="2"/>
+  </g>
+  <g fill="#E8DFC5">
+    <rect x="140" y="156" width="50" height="36" rx="2"/>
+    <rect x="140" y="208" width="50" height="148" rx="2"/>
+  </g>
+
+  <g>
+      <rect x="140" y="156" width="50" height="6" rx="1"/>
+      <rect x="140" y="171" width="50" height="6" rx="1"/>
+      <rect x="140" y="186" width="50" height="6" rx="1"/>
+      <rect x="140" y="206" width="50" height="6" rx="1"/>
+      <rect x="140" y="218" width="50" height="6" rx="1"/>
+      <rect x="140" y="230" width="50" height="6" rx="1"/>
+      <rect x="140" y="242" width="50" height="6" rx="1"/>
+      <rect x="140" y="254" width="50" height="6" rx="1"/>
+      <rect x="140" y="266" width="50" height="6" rx="1"/>
+      <rect x="140" y="278" width="50" height="6" rx="1"/>
+      <rect x="140" y="290" width="50" height="6" rx="1"/>
+      <rect x="140" y="302" width="50" height="6" rx="1"/>
+      <rect x="140" y="314" width="50" height="6" rx="1"/>
+      <rect x="140" y="326" width="50" height="6" rx="1"/>
+      <rect x="140" y="338" width="50" height="6" rx="1"/>
+      <rect x="140" y="350" width="50" height="6" rx="1"/>
+  </g>
+  <!-- טור 3 (מרכזי): האות I בכחול נייבי -->
+  <g>
+    <!-- סריף עליון -->
+    <rect x="206" y="156" width="100" height="32" rx="2"/>
+    <!-- גוף האות -->
+    <rect x="237" y="188" width="38" height="136"/>
+    <!-- סריף תחתון -->
+    <rect x="206" y="324" width="100" height="32" rx="2"/>
+  </g>
+
+  <!-- טור 4 (ימני פנימי): עמוד זהב מלא -->
+  <g fill="#F6F1E0">
+    <rect x="322" y="156" width="50" height="148" rx="2"/>
+    <rect x="322" y="320" width="50" height="36" rx="2"/>
+  </g>
+  <g fill="#E8DFC5">
+    <rect x="322" y="156" width="50" height="148" rx="2"/>
+    <rect x="322" y="320" width="50" height="36" rx="2"/>
+  </g>
+  
+  <!-- טור 5 (ימני חיצוני): צורת סימן קריאה בכחול נייבי -->
+  <g>
+    <rect x="386" y="156" width="42" height="36" rx="2"/>
+    <rect x="386" y="208" width="42" height="148" rx="2"/>
+  </g>
+  <g>
+      <rect x="322" y="156" width="50" height="6" rx="1"/>
+      <rect x="322" y="168" width="50" height="6" rx="1"/>
+      <rect x="322" y="180" width="50" height="6" rx="1"/>
+      <rect x="322" y="192" width="50" height="6" rx="1"/>
+      <rect x="322" y="204" width="50" height="6" rx="1"/>
+      <rect x="322" y="216" width="50" height="6" rx="1"/>
+      <rect x="322" y="228" width="50" height="6" rx="1"/>
+      <rect x="322" y="240" width="50" height="6" rx="1"/>
+      <rect x="322" y="252" width="50" height="6" rx="1"/>
+      <rect x="322" y="264" width="50" height="6" rx="1"/>
+      <rect x="322" y="276" width="50" height="6" rx="1"/>
+      <rect x="322" y="288" width="50" height="6" rx="1"/>
+      <rect x="322" y="300" width="50" height="6" rx="1"/>
+      <rect x="322" y="320" width="50" height="6" rx="1"/>
+      <rect x="322" y="335" width="50" height="6" rx="1"/>
+      <rect x="322" y="350" width="50" height="6" rx="1"/>
+  </g>
+
+  <!-- שורה 4: שלושה מקטעים אופקיים תחתונים (זהב) -->
+  <rect x="84" y="372" width="106" height="20" rx="2" fill="#C5A467"/>
+  <rect x="206" y="372" width="100" height="20" rx="2" fill="#C5A467"/>
+  <rect x="322" y="372" width="106" height="20" rx="2" fill="#C5A467"/>
+
+  <!-- שורה 5: פס אופקי תחתון מלא (כחול נייבי) -->
+  <rect x="84" y="406" width="344" height="22" rx="2" />
+</svg>
+
+## Response:
+17.11.2026, 10:49:30 · gpt-6-t-mini
+
+אבדוק את מבנה הכותרת וה־HTML של האתר לפני שינוי, כדי להטמיע את המיתוג במקום הנכון ולא לשנות רכיבי ממשק אחרים. אתקן גם את פרטי ה־SVG שמסרת: מרחב השמות שלו אינו תקין, וחלק מהצורות הכחולות חסרות ערך `fill` מפורש. אבצע זאת בענף נפרד, אבנה את הבאנדלים/האתר ואאמת שהלוגו מופיע גם בכותרת וגם כאייקון דפדפן.
+
+מצאתי דרך לשמור על שינוי נקי גם בחבילת הדפדפן: עדכנתי את מקור הכותרת ואת `app.bundle.js` שנוצר ממנו, בלי לגעת במנוע העימוד או ב־Worker. כעת אני מוסיף את שני קובצי ה־SVG התקינים, מחבר אותם ל־CSS ול־favicon, ואז אבדוק גם את מסלול הפריסה החיה.
+
+המיתוג מוכן בענף נפרד: הכותרת הפנימית והשם בלשונית הדפדפן עודכנו ל־Imudify, הלוגו המלא מותאם ל־99×38 פיקסלים, ונוצר סמל SVG ייעודי ל־favicon. בדיקות מבניות ראשונות עברו: שני קובצי ה־SVG תקינים מבחינת תגיות ומרחב שמות. פתחתי PR \#38; כעת אני מוודא שהבאנדל תואם למקור ושאין התנגשות עם עבודת הסוכן.
+
+> **Reviewing the branding update**
+>
+> I’m checking the repository structure and current branding assets before editing. I’ll verify the SVG markup, replace the existing title and logo consistently, and preserve the app’s current layout and behavior.
+>
+> **Reviewed the branding update**
+>
+> 
+>
+> **Inspected and updated Imudify branding, assets, and build configuration**
+>
+> 
+>
+> **Testing GitHub Repository Network Access**
+>
+>
+> **Implementing the branding change**
+>
+> I’m inspecting the existing files and generated bundle so I can update the title and logo consistently. I’ll correct the SVG markup, adjust the header branding, and avoid disturbing unrelated application behavior.
+>
+> **Implemented the branding change**
+>
+> 
+>
+> **Tested GitHub repository network access**
+>
+> 
+>
+> **Reviewing the branding update**
+>
+> I’m inspecting the existing files and generated bundle so I can update the title and logo consistently. I’ll correct the SVG markup, adjust the header branding, and avoid disturbing unrelated application behavior.
+>
+> **Finalizing the logo**
+>
+> I’m keeping the branding update lightweight: a corrected SVG asset, a favicon, updated page metadata, and CSS that replaces the existing header text without changing application logic. I’m also ensuring the published site receives matching assets.
+>
+> **Finalized the branded logo update**
+>
+> 
+>
+> **Completing the branding**
+>
+> I’m applying the corrected Imudify logo, favicon, page title, and header styling across both source and published files. I’ll keep the existing application behavior unchanged and verify the SVG assets remain valid.
+>
+> **Completed the branding**
+>
+> 
+>
+> **Updating the brand**
+>
+> I’m applying the corrected Imudify logo, favicon, page title, and header styling across source and published files. I’m preserving the application behavior while ensuring the SVG assets are valid and the visible branding is consistent.
+>
+> **Updated the brand**
+>
+> 
+>
+> **Updated Imudify branding assets, headers, and application bundles**
+>
+> 
+>
+> **Updated Imudify branding assets, validated changes, and created PR**
+>
+> 
+>
+> **Verified PR mergeability, CI status, bundle sources, branding, and deployment assets**
+>
+> 
+>
+> **Investigated CI failures and prepared a GitHub Pages update**
+>
+> 
+>
+> **Sizing the header**
+>
+> I’m keeping the logo aligned with the existing top-row height rather than enlarging the header. I’ll use a compact full-brand SVG, preserve readable contrast, and let the favicon carry the larger standalone mark.
+>
+> **Sized the header**
+>
+> 
+>
+> **Updated source and bundle versions, inspected GitHub Pages assets, and verified CI statuses**
+>
+> 
+>
+> **Reviewed workflow runs, jobs, and CI status before merging branding changes**
+>
+> 
+>
+> **Checked CI status and merged PR #38 with squash commit**
+>
+> 
+>
+> **Updated GitHub Pages files and verified deployment status**
+>
+> 
+>
+> **Searching the web**
+>
+> 
+>
+> **Verified GitHub Pages deployment assets, workflow status, and audit jobs**
+>
+> 
+>
+> **Inspected and verified latest CI, audit, and workflow job statuses**
+>
+> 
+>
+> Worked for 25m 58s
+
+(המיתוג מוזג ונפרס בהצלחה)
+
+בוצע\! החלפתי את המיתוג של התוכנה ל־**Imudify**\.
+
+## המיתוג החדש
+image_group{"query":["Imudify logo navy gold stylized typography book icon logo"],"aspect_ratio":"2.6:1","layout":"carousel","num_per_query":1}
+
+**מה השתנה\:**
+
+- הכותרת בפינה הימנית העליונה הוחלפה בלוגו המלא, בגובה 38px.
+- שם האתר בלשונית הדפדפן: `Imudify - תוכנת עימוד תורנית`\.
+- נוצר favicon ייעודי מהסמל בלבד.
+- תוקן קוד ה־SVG, לרבות מרחב השמות וערכי צבע הנייבי.
+- עודכנו גרסאות המטמון של ה־CSS, הבאנדל וה־Worker.
+
+## מצב ההטמעה
+
+| רכיב | מצב |
+|--------|--------|
+| מקור האפליקציה | (מוזג ל־main) |
+| app.bundle.js | (עודכן) |
+| SVG מלא וסמל | (הועלו) |
+| GitHub Pages | (נפרס בהצלחה) |
+| Layout audit | (עבר) |
+| Corpus invariants | (עבר) |
+| Full math audit | (עבר בריצה האחרונה) |
+| CI מלא | (מטריצת Node 20 עדיין בבדיקה) |
+| אודיט חי לאחר פריסה | (עדיין רץ) |
+
+**קישורים\:**
+
+[suginach.github.io](https://suginach.github.io/Tora_Book_Typesetter_Red_Work_2/?v=2026-11-17-brand1&utm_source=chatgpt.com)
+
+[github.com](https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/pull/38?utm_source=chatgpt.com)
+
+[github.com](https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/actions/runs/44053398865?utm_source=chatgpt.com)
+
+לא שיניתי שום התנהגות במנוע העימוד, בהגדרות המשתמש או בזרימת המסמכים. השינוי מבודד למיתוג ולנכסי האתר.
+
+העבודה על המנוע יכולה להימשך במקביל, בלי שהמיתוג יפריע למשימות הסוכן.
+
+## Prompt:
+17.11.2026, 22:49:37
+
+סוכן הAI הודיע שהוא השלים את השלב. 
+התנהג אתה כמנהל הפרויקט! 
+בדוק את שלימות הביצוע, נכונות דרך הביצוע, ובמיוחד בשלב זה בו נתקל הסוכן בבעיות שצצו ורגרסיות, נעשו הרבה החלטות ע"י הסוכן, בדוק היטיב את נכונות הבנת מקור הבעיה, ועריכה פשוטה אחידה ואלגנטית לפתירתה.
+ודא ביצוע בדיקות מתאימות והצלחתם.
+מזג PR הראויים למיזוג!
+והכן פרומט המפרט את כל הנצרך לסוכן הAI עם השלמות ותיקונים לשלבים הקודמים והפניה לשלב הבא עם פירוט השלב ליתר דיוק הביצוע כפי שאתה היית מבצע, ועם רמת ההקפדה והזהירות שלך, שאוכל להדביק והוא יתחיל!!!
+אין צורך להדגיש הוראות להעביר לסוכן, כי אני מעביר לו רק את הפרומטים שאתה נותן לי, ובמידת הצורך הכנס את ההוראות לפרומט. 
+אנחנו חייבים להתקדם לקראת סיום!!! 
+אי אפשר להתעכב כל הזמן!! 
+עשה כל הנדרש בכדי שנתקדם!!! 
+במידת הצורך הכן פרומט לסוכן הAI, ותוך כדי עבור מיד לביצוע הנדרש להתקדמות. 
+בשלבים בהם יהיה ניתן לבחון את השינויים (או את אימות אי השינויים) מנקודת מבט המשתמש, הוסף הוראה לבניית פייג'ס לאחר כל שינוי, למרות שלא אתן דיווח רק לאחר שיושלמו כל השלבים.
+
+## Response:
+17.11.2026, 22:49:47 · gpt-6-t-mini
+
+אבדוק תחילה את מצב ה־repository וה־PRים מאז נקודת הביקורת האחרונה, ואז אעבור על השינויים עצמם מול מטרות השלב, היסטוריית התקלות והבדיקות. אמזג רק PR שעומד בבדיקת איכות; במקביל אנסח לסוכן משימת המשך מדויקת, ואמשיך בעצמי בכל תיקון או אימות שניתן לבצע ישירות.
+
+מצאתי כבר נקודת אזהרה חשובה: המאגר מכיל PRים פתוחים ישנים עם שינויים ארכיטקטוניים מהותיים, ובהם PR \#16 על איחוד מקורות־אמת ותיקוני עוגני הערות, ו־PR \#17 שמסומן במפורש „אין למזג לפני סקירה מלאה”. לא אניח שהם חלק מהשלב שהסוכן סיים, ולא אמזג אותם רק על סמך תיאור הסוכן; אני מפריד כעת בין העבודה החדשה לבין חוב פתוח קודם ובוחן את שניהם מול מצב `main` והבדיקות.
+
+בבדיקת כלי ההשוואה עצמו עלו גם נקודות שדורשות תיקון לפני שנשתמש בו כשער CI: הוא מזהה נכון פערי תוכן גדולים, אבל חלק ממדדי הזהות שלו אינם בני־השוואה ישירה (למשל ספירת אזורי הערות במורשת מול מזהי הערות ייחודיים במאוחד), ויש לפחות סיווג שווא אחד שהוא עצמו מתעד — עודפי „סימן” ב־TOC. בנוסף, הוא משווה תוכן מצטבר ולא תמיד מוכיח התאמה לפי מזהה הערה ועוגן. לכן אין להסתפק ב„הריצה נכשלה”; צריך להקשיח את כלי הבדיקה כך שכל כשל יהיה ממצא מדויק ולא תוצר של מדידה שגויה.
+
+> **Searched open pull requests and recent workflow activity**
+>
+> 
+>
+> **Reviewing repository changes**
+>
+> I’m determining which recent commits and pull requests represent the completed stage, then checking their changes and validation status. I’m also comparing the latest main branch history with the associated audit and documentation updates.
+>
+> **Reviewed repository changes**
+>
+> 
+>
+> **Auditing comparison logic**
+>
+> I’m checking whether the latest change introduced the literal newline issue or merely preserved it. I’m also reviewing the comparison script’s multiset logic and report headings for mislabeled checks or methodological inconsistencies.
+>
+> **Audited comparison logic**
+>
+> 
+>
+> **Assessing audit findings**
+>
+> I’m distinguishing genuine parity failures from parser artifacts, especially headings, source references, and duplicated table-of-contents text. I’m also checking whether the audit’s allowed-difference rules align with the actual document structure.
+>
+> **Refining audit conclusions**
+>
+> I’m verifying which reported mismatches are real versus measurement artifacts. The main concerns are grouped footnote counts, missing note identity checks, and global text comparisons that may overlook ordering or associations.
+>
+> **Assessed findings and refined audit conclusions**
+>
+> 
+>
+> **Audited pull requests, CI checks, commits, and Stage 9 artifacts**
+>
+> 
+>
+> **Planning next checks**
+>
+> I’m verifying whether the remaining discrepancies reflect real rendering loss or mismatched counters, especially side notes and grouped footnotes. I’m also checking stale pull requests before deciding whether they should be merged or closed.
+>
+> **Planned next checks**
+>
+> 
+>
+> **Validating audit metrics**
+>
+> I’m finding that the report’s gate totals and footnote counts don’t match the implementation. Page-level footnote areas are being compared with note-level identities, so I’m treating that result as invalid until the metric is redesigned.
+>
+> **Validated audit metrics**
+>
+> 
+>
+> **Investigated side-note parsing, rendering pipelines, property mapping, and CI statuses**
+>
+> 
+>
+> **Fixing the deployment page**
+>
+> I’m confirming whether the literal newline characters can move subsequent metadata outside the document head. If so, I’ll clean the markup and add a focused regression check before reviewing broader audit metrics.
+>
+> **Fixed the deployment page**
+>
+> 
+>
+> **Reviewed heading handling, numbering, tests, fixes, and workflow status**
+>
+> 
+>
+> **Fixed HTML head escaping, updated tests, and reviewed PR43 CI readiness**
+>
+> 
+>
+> **Inspected and updated TOC filtering, defaults, staging mappings, and pull requests**
+>
+> 
+>
+> **Correcting audit conclusions**
+>
+> I’m identifying several measurement flaws: mismatched footnote units, reversed comparison labels, incomplete gate totals, and word counts mislabeled as note counts. I’m separating these tooling defects from genuine rendering discrepancies before recommending fixes.
+>
+> **Reframing audit scope**
+>
+> I’m treating the current report as diagnostic, not conclusive. Its unified inventory omits several layout surfaces, and its TOC and note metrics are inconsistent, so alleged missing headings or notes require corrected accounting first.
+>
+> **Corrected audit conclusions and reframed audit scope**
+>
+> 
+>
+> **Correcting audit workflow**
+>
+> I’m treating the current audit as diagnostic rather than conclusive: its inventory omits layout surfaces, compares incompatible note counts, reverses one difference label, and reports inconsistent gate totals.
+>
+> **Corrected audit workflow**
+>
+> 
+>
+> **Audited PR16 integration, gate definitions, side-note placement, and Stage 9 validation fixes**
+>
+> 
+>
+> Worked for 21m 34s
+
+## ממצא מנהלי ראשון: שלב 9a הושלם, אבל המעבר למנוע יחיד עדיין חסום
+
+מצאתי את PR \#41, **„שלב 9 פרוסה 9a: מיפוי נתיבי מורשת + השוואת צללים”**\. הוא מוזג ל־`main` ב־commit `97bc300`\.
+
+ההבחנה החשובה: הסוכן לא טען שהושלם המעבר למנוע יחיד, ובצדק. הפרוסה הזאת נועדה למפות את נתיבי המורשת ולהשוות בין המנועים לפני הסרה. בפועל, ההשוואה חשפה פערים מהותיים ב־`very_long`\:
+
+- **ביאורי צד\:** 1,147 מילים במנוע המאוחד לעומת 2,041 במורשת - חסרות כ־44%.
+- **הערות גוף\:** 129 אזורים במאוחד לעומת 81 במורשת, עם פער ניכר בתוכן.
+- **תוכן העניינים\:** חסרות במאוחד קבוצות כותרות.
+- **„מקור: …” ושער אחורי\:** התנהגות שונה בין המנועים.
+- **מטא־נתונים וכותרות H3\:** אינם מוצגים באופן מקביל.
+
+לכן, **אסור להסיר כרגע את נתיב המורשת, לשנות את ברירת המחדל למנוע המאוחד או להכריז על השלמת שלב 9**\. גם מסמך המיפוי שהסוכן הוסיף קובע במפורש ש־9c חסום עד לפתרון הפערים ב־9b. זהו שער בטיחות נכון, ולא עיכוב מיותר.
+
+## ממצאי הביקורת: כלי ההשוואה אינו מדויק דיו כדי לשמש שער קבלה
+
+עברתי על הקוד של `tools/stage9/shadow-compare.js`, ולא רק על הדוח. יש בו כמה פגמים מתודולוגיים שמשנים את משמעות התוצאות\:
+
+1. **השוואת מספרי ההערות אינה תקפה\:** `fnAreas` במורשת סופר מכל הערה את *אזור ההערות בעמוד*, ואילו במנוע המאוחד נספרים `noteId` ייחודיים, ובמקור נספרים זוגות סוגריים באמצעות Regex. אלה שלושה גדלים שונים. לכן ההשוואה 81 מול 129 מול 132 אינה מוכיחה שיש 48 הערות חסרות או עודפות.
+2. **בדיקת הטקסט אינה בודקת זהות\:** היא משווה אוסף מילים (`multiset`\) ולא את תוכן כל הערה לפי מזהה, עוגן וסדר. בנוסף, הודעת השגיאה שמציגה מה חסר בכל מנוע מחשבת בטעות את אותו כיוון פעמיים.
+3. **חילוץ המנוע המאוחד אינו מלא\:** `unifiedInventory` סורק את `r.pages`, אבל משמיט בין היתר משטחים מבניים כגון `spanning`, `gateLines` ו־`bands`; הוא קורא רק את `r.toc.general` ולא בודק את התוכן המפורט. לכן חלק מממצאי „המילים שאבדו” ו„הכותרות שלא רונדרו” עלולים לנבוע מחילוץ חסר ולא מאובדן אמיתי.
+4. **מספר השערים בדוח אינו תואם לקוד\:** הקוד מייצר תשע הצלחות ושני כישלונות בקורפוס הקנוני - 11 תוצאות, לא 10 מתוך 12 כפי שנכתב בדוח.
+
+מכאן שהפערים שנמדדו הם אות אזהרה רציני, אבל **ההשערה שהסיבה היא היעדר תמיכה בהערות עוקבות־עוגן עדיין לא הוכחה**\. יתרה מכך, תיקון הצמדת הערות הגוף לעוגנים כבר קיים ב־`main` במסגרת שלב 6 (`reconcileNotesAfterPlacement`\). אין להעתיק מחדש את תיקון PR \#16 או להוסיף מעקף נוסף לפני שמאתרים את נקודת האובדן המדויקת.
+
+יש גם נקודת בדיקה ממוקדת ל־H7: `applyHeadingModes` אכן מופעל לפני `planPages`, ולכן אין כאן דגל `asSideNote` שנשכח. לעומת זאת, `placeSideNotes` מציב הערה בראש העמוד כאשר אינו מוצא בו את שורת העוגן, במקום להוכיח שהעוגן אכן נמצא באותו עמוד. זהו נתיב שצריך לבדוק מול מסמכי אמת, עם מזהי הטוקנים המקוריים.
+
+## מצב המיזוגים וההחלטות
+
+**PR \#41 - שלב 9a: מיפוי והשוואת צללים** (מוזג)
+
+[github.com](https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/pull/41?utm_source=chatgpt.com) · כל בדיקות ה־CI של השלב עברו. זהו מיזוג ראוי: מיפוי נתיבי המורשת והצפת פערי התוכן נחוצים לפני כל הסרה.
+
+---
+
+**PR \#42 - סנכרון גרסאות הנכסים** (מוזג)
+
+[github.com](https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/pull/42?utm_source=chatgpt.com) · בדיקות ה־CI עברו.
+
+---
+
+**PR \#43 - תיקון מבנה ה־HTML** (ממתין ל־CI)
+
+[github.com](https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/pull/43?utm_source=chatgpt.com) · תיקנתי בעצמי בעיה שמקורה במיתוג: ב־`index.html` נשמרו רצפי `\n` מילוליים במקום מעברי שורה אמיתיים בתוך `head`\. הוספתי בדיקות רגרסיה ב־`s10-ui`\.
+
+`layout-audit`, ‏`full-math-audit` ו־`corpus-invariants` עברו. בדיקות Node 18/20/22 עדיין רצות ב־[github.com](https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/actions/runs/44175622674?utm_source=chatgpt.com)\. לא מיזגתי לפני סיום הבדיקות, ולכן התיקון עדיין לא פורסם ל־Pages.
+
+**PR \#14, \#16 ו־\#17 אינם מועמדים למיזוג ישיר.** PR \#16 ו־\#17 מפגרים ב־52 קומיטים אחרי `main`; עיקר תיקוני האילוצים, `maxFit`, איחוד נתיבי ההערות והצמדת הערות לעוגנים כבר שולבו בעבודת שלבים 5-6. הדבר מתועד ב־[github.com](https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/blob/main/audits/STAGE5_UNIFIED_PLANNER.md?utm_source=chatgpt.com) וב־[github.com](https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/blob/main/audits/STAGE6_PAGE_ITEMS.md?utm_source=chatgpt.com)\. PR \#17 אף נושא הוראה מפורשת שלא למזג לפני סקירה. מיזוגם עכשיו עלול להחזיר קוד ישן או ליצור כפילויות. PR \#14 הוא ענף תיעוד ישן ומפוצל; החלטות המשתמש הרלוונטיות כבר חולצו למסמכי ההחלטות.
+
+גם הענף `stage9/cutover` אינו מכיל עבודה חדשה ביחס ל־`main`; הוא מפגר בשני קומיטים. יש לעבוד מענף חדש שמבוסס על `main`, לא להמשיך ממנו.
+
+## מה צריך לתקן בשלב הבא
+
+יש כאן שלוש רמות של עבודה, בסדר מחייב\:
+
+**ראשית - לתקן את כלי הבדיקה.** אין להפוך את `shadow-compare` לשער CI מחייב במצבו הנוכחי. הוא עדיין יכול לשמש לאיתור, אך לא להוכחת שימור תוכן.
+
+**שנית - לתקן את הפערים האמיתיים במסלול המאוחד.** העיקר הוא מעקב אחר כל פריט לפי זהותו, ולא רק לפי סכום מילים: H7, הערות גוף, TOC, מטא־נתונים, שער אחורי ושורות מקור.
+
+**שלישית - רק לאחר הוכחת parity מלאה - להתחיל בהסרת נתיבי המורשת.** לא להסיר נתיב לפני שמוכח שכל התוכן והגאומטריה שלו מכוסים במודל ובמקרינים החדשים.
+
+בפרט, נמצאה אי־התאמה ברורה מול החלטת המשתמש D-107: ברירות המחדל הנוכחיות של ה־TOC ומסנני הרמות אינן מממשות את ההחלטה. זו אינה השערה ויש לתקן אותה בשורש, יחד עם בדיקות מתאימות.
+
+---
+
+## פרומט המשך לסוכן ה־AI
+
+הפרומט הבא מנחה את הסוכן לבצע את שלב 9b, לתקן את הליקויים בביצוע 9a, ולהתקדם ל־9c רק כאשר התנאים לכך הוכחו. הוא כולל גם את האבחונים שעלו בביקורת הזאת, כדי שלא יחזור על תיקונים שכבר קיימים ב־`main` או על הנחות לא מוכחות.
+
+**document: **
+
+# הוראת ביצוע - שלב 9b: תיקון שורשי הפערים, הוכחת שימור תוכן והכנה להסרת המורשת
+
+## 0. נקודת מוצא ומטרת העל
+
+עבוד על המאגר:
+
+`SUGINACH/Tora_Book_Typesetter_Red_Work_2`
+
+התחל מ־`main` העדכני, לאחר מיזוג PR #41 ו־PR #42. אל תמשיך מענף `stage9/cutover` הישן ואל תבסס עבודה על PR #16 או #17.
+
+מטרת העל אינה רק לגרום לבדיקות לעבור. עלינו להגיע למנוע עימוד אחד, פשוט, דטרמיניסטי, בעל מקור־אמת יחיד לתוכן, למדידה, לגאומטריה, לתכנון ולהקרנה. שימור מלא של התוכן וזהות כל פריטי העימוד הוא תנאי מוחלט.
+
+השלב הנוכחי הוא **9b - השלמת parity ותיקון שורשי הפערים**. אין לבצע עדיין הסרה של מנוע המורשת או שינוי ברירת המחדל למנוע המאוחד.
+
+יש לפעול ברציפות, בלי לעצור ולבקש אישור לכל החלטת מימוש רגילה. עם זאת, אין להסתיר חוסר ודאות, לכסות על פער באמצעות fallback או לבצע שינוי בסמנטיקה שאינה מוכרעת בהחלטות המשתמש.
+
+## 1. גבולות שאסור לחצות
+
+1. אין לעסוק ב־P6/P7, אין להוסיף אותם למסלול בדיקות ואין להשתמש בהם כשער קבלה.
+2. אין לשנות ברירות מחדל שהמשתמש אישר, אלא במקום שבו מימוש קיים סותר החלטה מפורשת ומתועדת שלו. במקרה כזה יש ליישם את ההחלטה עצמה, לא להמציא ברירת מחדל חדשה.
+3. אין להסתמך על PDF ייחוס כמטרה להתאמת המנוע. הייחוס נשמר לפרובננס בלבד.
+4. אין לתקן תוצאה לאחר העימוד באמצעות שכבות CSS, Renderer, fallback, תיקוני hash או העברות מאוחרות שאינן חלק ממנגנון התכנון המשותף.
+5. אין ליצור עוד מנגנון צדדי במקום מקור־אמת חסר. כאשר יש כפילות - לאחד את מקור ההחלטה, ואז לחבר אליו את כל הצרכנים.
+6. אין לשנות את פרופיל ברירת המחדל של IMUD לפני השלמת parity ואישור שערי הקבלה.
+7. מסמך הבדיקה הראשי הוא `audits/very_long_test_text.txt`. הקורפוס הקנוני משמש בדיקת הצלבה. בדיקות סינתטיות הן רק בדיקות יחידה ממוקדות, ולא תחליף למסמך האמיתי.
+8. כל מסמך בדיקה שנוצר חייב להיות תקין מבחינה מבנית: אין שתי כותרות רצופות מאותה רמה בלי טקסט גוף ביניהן, אין כותרת שמכילה רק הערת שוליים, וההיררכיה והתוכן שאחריה אמינים ומייצגים ספר אמיתי.
+
+## 2. תיקון ראשון: להפוך את כלי Shadow Compare למכשיר מדידה אמין
+
+הקובץ `tools/stage9/shadow-compare.js` הוא נכס חשוב, אבל מימושו הנוכחי אינו מדויק מספיק. אסור לחבר אותו כעת לשער CI מחייב.
+
+### 2.1 תיקון המדדים השגויים
+
+א. `legacyInventory` מגדיל את `fnAreas` לכל אזור/רשומת footnote בעמוד, ולא לכל הערה ייחודית.
+
+ב. `unifiedInventory` מגדיל `noteCount` לפי `noteId` ייחודיים.
+
+ג. `sourceInventory` סופר זוגות סוגריים גולמיים באמצעות Regex.
+
+אלו שלושה מדדים שונים. אין להשוות ביניהם כאילו הם מספר ההערות. יש לבנות מלאי הערות מתוך המבנים הסמנטיים בפועל בכל מנוע.
+
+לכל הערה יש להשוות, ככל שהמידע קיים:
+
+- `noteId`
+- `sourceId` או מזהה טוקן המקור
+- `anchorId` / `anchorToken`
+- סמן ההערה
+- סוג ההערה: גוף, צד, סיום, placeholder או המשך
+- `continuationOf`
+- `wordRange`
+- סדר ההופעה במקור
+- טקסט מלא, לאחר נרמול תחבירי מינימלי ומוגדר
+
+אין להסתפק במספר הערות, במספר עוגנים או ב־multiset של מילים.
+
+### 2.2 תיקון בדיקת הטקסט
+
+הבדיקה הנוכחית משווה multiset בלבד, כך שהיא אינה תופסת החלפה של טקסט בין שתי הערות, שינוי עוגן או שינוי סדר.
+
+בנוסף, בשגיאת `G4-note-bodies` ובשגיאת `G4-side-bodies` מחושבת אותה פעולת `mDiff` פעמיים. הכיוון השני שגוי. יש לתקן ולבדוק בנפרד:
+
+- מה חסר במאוחד לעומת המורשת;
+- מה חסר במורשת לעומת המאוחד.
+
+הוסף בדיקות שליליות שמוכיחות שהכלי מזהה:
+- העברת טקסט מהערה אחת לאחרת;
+- החלפת עוגן בין שתי הערות;
+- מחיקת הערה;
+- כפילות הערה זהה;
+- שינוי סמן בלבד;
+- שינוי סדר;
+- פיצול הערה להמשך;
+- שינוי טווח מילים של המשך.
+
+שתי הערות בעלות טקסט זהה חייבות להישאר שתי זהויות נפרדות.
+
+### 2.3 תיקון איסוף תוכן מהפלט
+
+`unifiedInventory` הנוכחי סורק בעיקר את `r.pages` ואת `pg.columns`, ומחמיץ משטחי תוכן מבניים, בין היתר:
+
+- `spanning.lines`
+- `gateLines`
+- `bands`
+- מקטעי שער;
+- TOC כללי ומפורט;
+- הערות צד;
+- הערות גוף והמשכיהן;
+- עמודי endnotes;
+- כל פריט נוסף שמוצג בפועל ב־PageModel או במקרינים.
+
+יש לבצע מיפוי מלא של כל מקורות התוכן בפלט. לכל מילה/פריט יש מקור או הסבר סמנטי מדוע אינו מופיע בגוף.
+
+חשוב: שלב 8 העביר את DOM/HTML/PDF לצריכת PageModel. לכן בדיקת parity חייבת לבדוק גם את `r.pageModel`, ולא להסתמך רק על `r.pages` הישן. יש לבדוק את המודל הקנוני ואת המקרינים שלו. אין להניח שהמבנים הישנים והחדשים זהים רק משום שהקוד עדיין מחזיק את שניהם.
+
+### 2.4 תיקון מקור האמת של המקור
+
+`sourceInventory` משתמש כיום ב־`tokenizeDoc` של מנוע המורשת וב־Regex על סוגריים. כך כלי הבדיקה עלול לשחזר את הנחות המורשת במקום לבדוק את שני המנועים מול מקור עצמאי.
+
+יש להשתמש בפענוח המקור לפי הדקדוק וההגדרות האמיתיים של המסמך, כולל תוחמי ההערות המוגדרים בהגדרות, ולתעד לכל פריט מקור מזהה יציב, טווח מקור וסוג סמנטי.
+
+אין להניח שכל סוגריים מרובעים הם בהכרח הערה, ואין להניח שכל הערה ניתנת לספירה לפי Regex יחיד. בדוק גם תוחמים מותאמים, המשכים ומבנים מקוננים בהתאם לדקדוק הנתמך בפועל.
+
+### 2.5 תיקון שערי TOC וכותרות בכלי
+
+כיום G6 בודק בעיקר כותרות H1 וכיסוי רמות 1-2, בעוד שהחלטת המשתמש D-107 קובעת:
+
+- תוכן כללי: רמות 1-6;
+- תוכן מפורט: רמות 2-6;
+- רמה 7 אינה מופיעה באף אחד משני התכנים.
+
+יש למדוד בנפרד את ה־TOC הכללי וה־TOC המפורט, ולהשוות את רשומותיהם לפי רמה, טקסט, מזהה מקור, עוגן ויעד עמוד.
+
+אין להסתפק בבדיקה של `r.toc.general`; יש לבדוק גם את התוכן המפורט ואת העמודים שנבנו בפועל.
+
+### 2.6 תיקון סיווג הרפאים והמטא
+
+הכלי מסווג כיום מילים קצרות, מילים מתוך כותרות ומילות ריהוט שער באמצעות כללים רחבים. הדבר עלול להסוות תוכן רפאים או להפוך תוכן תקין לירידה בלתי מוסברת.
+
+כל חריגה צריכה להיות מסווגת לפי מקור מוגדר:
+- מילת תחביר שהמנוע צורך;
+- מילה שמופיעה במטא;
+- טקסט שער;
+- כותרת/TOC;
+- סמן/מספור;
+- טקסט הערה;
+- תוכן גוף;
+- או פער אמיתי.
+
+אין להוסיף מילה לרשימת ההיתרים רק כדי להוריד כישלון. כל כלל היתר חייב לנבוע מדקדוק או מהחלטה כתובה ולכלול בדיקת שלילה.
+
+### 2.7 תיקון ספירת השערים והדוח
+
+הדוח `audits/STAGE9_SHADOW_2026-11-18.md` טוען ל־10/12 שערים ירוקים, בעוד JSON הקנוני מכיל תשע הצלחות ושני כישלונות - 11 תוצאות.
+
+יש להגדיר רשימת שערים אחת בקוד, שממנה נגזרים:
+- המספר הכולל;
+- מספר העוברים;
+- מספר הנכשלים;
+- פירוט הממצאים;
+- הדוח Markdown;
+- וה־JSON.
+
+אין לכתוב ידנית מספרים בדוח. יש לייצר אותם מאותו אובייקט תוצאות.
+
+הדוח צריך להבהיר מה הוא מודד. לדוגמה, `sideWords.length` הוא מספר מילים בביאורי הצד, ולא מספר הביאורים. אין לקרוא לפער של 894 מילים "894 ביאורים חסרים".
+
+## 3. תיקון שורש: H7 וביאורי צד
+
+הפער שנמדד הוא 2,041 מילים במורשת לעומת 1,147 במאוחד. זהו פער משמעותי שחובה להסביר, אבל הנתון לבדו אינו מוכיח שיש 894 ביאורים חסרים.
+
+אין לתקן לפי ההשערה שהסיבה היא היעדר תמיכה ב־anchor-following. תיקון הצמדת הערות הגוף לעוגנים כבר קיים ב־main במסגרת שלב 6 (`reconcileNotesAfterPlacement`). אין להוסיף אותו שוב, ואין לשכפל ממנו לוגיקה בלי להוכיח שנדרש.
+
+### 3.1 מעקב אחר כל פריט H7
+
+עקוב באמצעות מזהה מקור יציב לאורך כל הצינור:
+
+1. טוקן המקור (`tokens`);
+2. פענוח `block-tokenizer` / `dfa-lexer`;
+3. בניית הבלוק;
+4. `applyHeadingModes`;
+5. `asSideNote`;
+6. יצירת רשומת ההערה ב־`dp-planner`;
+7. `ownToken`, `anchorToken`, `noteId`;
+8. הוספה ל־`page.sideNotes`;
+9. `placeSideNotes`;
+10. `placed`, `deferred`, `pending`, עמוד זנב;
+11. PageModel;
+12. DOM/HTML/PDF.
+
+בכל מעבר יש לתעד את מספר הפריטים ואת זהותם. כך ניתן לזהות את השלב הראשון שבו פריט נעלם, משתנה או מקבל עוגן שגוי.
+
+### 3.2 נקודה חשודה שחובה לאמת
+
+ב־`side-notes.js`, בתוך `placeSideNotes`, כאשר `findAnchorLine(page, sn.anchorToken)` נכשל, המיקום נקבע לראש אזור התוכן:
+
+`anchor ? lineYTop(...) : page.template.contentBox.top`
+
+יש לבדוק אם זה תקין כאשר ה־H7 עצמו מופיע בעמוד אחד והפסקה המארחת (`anchorToken`) מופיעה בעמוד הבא. במצב כזה קיימת סכנה שהביאור יוצב בראש העמוד של הכותרת, אף שהעוגן החזותי שלו נמצא בעמוד הבא.
+
+אל תניח שהבעיה הזאת היא שורש הפער לפני שמפיקים ראיות. אם היא מתאמת, יש לתקן את תזמון/מיקום הפריט בתוך מנגנון התכנון המשותף כך שהביאור ייקשר לעמוד שבו נמצא העוגן האמיתי, ולא להוסיף הזזה בדיעבד במקרין.
+
+יש לבדוק גם:
+- מספר H7 באותו רצף;
+- כמה H7 שמפנים לאותו מארח;
+- H7 לפני מעבר עמוד/טור;
+- H7 שהפסקה המארחת שלו נמצאת בעמוד הבא;
+- H7 שהכותרת הבאה אחריו אינה פסקת גוף;
+- H7 ללא מארח תקין - חייב ליצור ממצא מפורש ולא להיעלם בשקט.
+
+### 3.3 חיזוק אימות H7
+
+`verifyH7Conversion` בודק כיום בעיקר האם טוקן הכותרת מופיע ב־`placement.placed`. הוא אינו מוכיח שטקסט הביאור נשמר במלואו או שהעוגן נכון.
+
+יש להרחיב את האימות כך שיבדוק:
+- `ownToken` תואם בדיוק לטוקן המקור;
+- `anchorToken` מצביע לפסקה המארחת הצפויה;
+- טקסט הביאור נשמר;
+- כל טוקן H7 מקבל פריט אחד בלבד;
+- אין פריט צד ללא מקור;
+- אין פריט שהוצב בעמוד לפני העוגן שלו;
+- כל deferred/pending נסגרים בהצבה או בממצא ברור.
+
+אל תאפשר ל־`anchorToken` להחליף `ownToken` בבדיקת זהות - אלה שני מזהים בעלי תפקידים שונים.
+
+הרחב את בדיקות `s7-notes.test.js` כך שיכסו מסמך עם מספר H7, לא רק H7 יחיד ובדיקת `placed.length >= 1`.
+
+## 4. תיקון שורש: הערות גוף
+
+פער 81/129/132 אינו מדד אמין למספר ההערות, משום שהוא משווה אזורים בעמוד, מזהים ייחודיים וסוגריים גולמיים.
+
+יש ליצור מיפוי מלא של ההערות במקור ושל תוצאת כל מנוע.
+
+לכל הערה יש לוודא:
+- קיום מזהה;
+- סמן יחיד בגוף, לפי מדיניות המיקום;
+- גוף הערה פעם אחת במקום ההצגה בפועל;
+- עוגן נכון;
+- רצף מילים שלם;
+- פיצול/המשך עם `continuationOf` ו־`wordRange` תקינים;
+- אין אובדן, כפילות או שינוי סדר;
+- מצב inline / footnote / endnote / rejected-to-body תואם להגדרות ולהחלטות המשתמש.
+
+השתמש בהחלטת D-30: הסמן נספר פעם אחת בעוגן בגוף, ותוכן ההערה נספר פעם אחת במקום הצגתו בפועל. אין לספור את ה־placeholder ואת תוכן המרזב פעמיים.
+
+בדוק בנפרד את מצב `footnotes`, `endnotes` ו־`inline`, ואת מפת ההגדרות שמפעילה אותם. אין לכפות מצב אחד כדי ליצור התאמה מספרית למנוע השני.
+
+## 5. תיקון שורש: תוכן העניינים - אי־התאמה מפורשת ל־D-107
+
+נמצא כשל מימוש ברור, ללא צורך בהשערה:
+
+ב־`pipeline.js` בניית התוכן הכללי משתמשת בסינון:
+
+`headingsAll.filter(h => h.level <= 2)`
+
+בעוד בניית התוכן המפורט מקבלת את כל `headingsAll`.
+
+אבל DECISIONS.md, החלטת המשתמש D-107, קובעת במפורש:
+
+- תוכן כללי: רמות 1-6;
+- תוכן מפורט: רמות 2-6;
+- H7 מוסתר בשני התכנים;
+- תוכן כללי ומפורט פעילים כברירת מחדל;
+- inline grouping כבוי בכל הרמות;
+- מספור שורות ומספרי עמודים מוצגים.
+
+גם ברירות המחדל ב־`settings-registry.js` אינן תואמות לכך: התוכן המפורט כבוי; רמות 3-6 כבויות; וקיבוץ inline מופעל ברמות מסוימות.
+
+יש ליישם את החלטת המשתמש במלואה:
+1. תיקון הסינון בתוכן הכללי והמפורט.
+2. תיקון `splitGeneralDetail` ותאימות לאחור, לאחר בדיקת כל צרכני הפונקציה.
+3. תיקון ברירות המחדל ב־`settings-registry.js` כך שישקפו את ההחלטה.
+4. תיקון מסלול ייבוא הגדרות IMUD בלי לדרוס בחירות משתמש מפורשות.
+5. בדיקת סדר ועוגני הכותרות.
+6. בדיקת ה־TOC בפועל ב־DOM, HTML ו־PDF.
+
+בדיקות חובה:
+- H1-H6 מופיעות בתוכן הכללי כברירת מחדל.
+- H2-H6 מופיעות בתוכן המפורט.
+- H1 אינו מופיע בתוכן המפורט.
+- H7 אינו מופיע באף אחד מהם.
+- H0 אינו נכנס בטעות לתוכן.
+- inline כבוי כברירת מחדל בכל הרמות.
+- שינוי מפורש של המשתמש ברמת TOC נשמר ולא נדרס על ידי הייבוא.
+- אין כפילות או השמטה של רשומה.
+- כל עוגן וקישור מובילים לעמוד הסופי הנכון.
+
+אין להרחיב את ה־TOC על חשבון תקינות מבנית, ואין לשנות גופנים, גודל, ריווח או הגדרות אחרות שאינן נדרשות לתיקון הזה.
+
+## 6. מטא־נתונים, שערים ושורות מקור
+
+### 6.1 ערכי מטא
+
+אין לקבל את טענת F-9a-1 כאילו ערכי מטא חייבים להופיע כטקסט גוף. יש לבדוק את הסמנטיקה המאושרת:
+
+- האם השורה הופכת ל־metadata;
+- האם הערך נצרך בתיבת שער;
+- האם הוא מוצג בעמוד שער או בשער אחורי;
+- האם קיימת כפילות או השמטה.
+
+יש להשוות את הנתונים במקור, ב־DocumentModel/PageModel ובפלט הסופי. אין להוסיף אותם לגוף רק כדי שה־word count יתאים למורשת.
+
+### 6.2 השער האחורי
+
+D-107 קובעת ארבעה מקטעים משמעותיים בשער האחורי, עם שמות הניתנים להתאמה.
+
+בדוק את כל השדות וההתנהגות:
+- זכויות יוצרים;
+- הוצאה/פרסום;
+- קשר;
+- פרטים נוספים.
+
+וודא שכל ערך נשמר דרך ההגדרות, PageModel והמקרינים. אם המנוע המאוחד מציג רק שני בלוקים במקום ארבעה, יש לאתר אם חסרה בניית מידע, אם המידע לא מחובר למודל או אם הוא לא מוקרן. תקן במקום שבו אובדן המידע מתרחש.
+
+אין להמציא ערכים כדי למלא חללים, ואין לשכפל טקסט מטא לגוף.
+
+### 6.3 `(מקור: …)`
+
+הדוח קובע הבדל בין המנועים, אך אינו מוכיח איזו התנהגות היא הנכונה.
+
+חפש החלטה מפורשת ב־DECISIONS.md ובתוכנית העבודה. אם קיימת - יישם אותה. אם אינה קיימת - אל תכריע לפי המורשת בלבד ואל תסיר את הטקסט. יש לשמר את המידע הסמנטי, לתעד את ההתנהגות הנוכחית ואת ההבדל ולהימנע מאובדן תוכן.
+
+## 7. חקירת 640 המילים והפערים הנותרים
+
+אין להמתין לסיום תיקון H7 כדי להבין מהן 640 המילים. יש לאתרן לפי מזהי מקור ורכיבי תוכן.
+
+תחילה תקן את כלי האיסוף כך שיכלול את כל המשטחים המבניים, ולאחר מכן בצע התאמה לפי:
+- source token ID;
+- source range;
+- סוג הפריט;
+- מיקום ב־PageModel;
+- מיקום בהקרנה;
+- כמות הופעות.
+
+לכל ירידה או עודף יש להסביר את המקור המדויק. אין לאפשר רשימת היתר רחבה שתסתיר חוסרים.
+
+## 8. ארכיטקטורת התיקון - בלי טלאים
+
+העיקרון המחייב הוא שהמידע וההחלטה ייווצרו פעם אחת ויזרמו דרך המודל:
+
+- פענוח מקור אחד עם מזהי פריטים יציבים;
+- DocumentModel אחיד;
+- מדידה אחת;
+- תכנון אחד;
+- מודל פריטים וגאומטריה קנוני;
+- PageModel יחיד;
+- DOM/HTML/PDF כמקרינים בלבד.
+
+אין להוסיף תנאי special-case נפרד ל־Renderer, אין להזיז הערות לאחר ההצבה כדי להסתיר בעיה בתכנון, ואין לחשב מחדש מידות במקרינים.
+
+כאשר חסר מידע או אין אפשרות להצבה חוקית, יש להפיק ממצא מפורש ולשמר את זהות הפריט. אסור להעלים פריט או להעבירו לתצוגת fallback בלי שהדבר נובע ממדיניות כתובה.
+
+## 9. סדר הביצוע וה־PRים
+
+עבוד בפרוסות קטנות והגיוניות, כל אחת עם שורש אחד ותיעוד בדיקות:
+
+1. **9b.1 - Shadow Compare:** תיקון מדדי זהות, איסוף משטחי תוכן, TOC כללי/מפורט, שערים וספירת תוצאות. הוסף בדיקות יחידה לכל באג מתודולוגי.
+2. **9b.2 - TOC:** יישום מלא של D-107, כולל ברירות מחדל, סינון רמות, ייבוא הגדרות ובדיקות פלט.
+3. **9b.3 - H7 וביאורי צד:** מעקב זהות end-to-end, איתור שלב האובדן ותיקון מנגנון העוגן בשורש.
+4. **9b.4 - הערות גוף:** מיפוי לפי noteId/anchorId/wordRange ושימור מלא של טקסט וסמנים.
+5. **9b.5 - שערים ומטא:** השלמת ארבעת שדות השער האחורי, והכרעה/תיקון של מטא ושורות מקור בהתאם להחלטות הקיימות.
+6. **9b.6 - אימות סופי:** הפעלת כלי ההשוואה המתוקן בשני הקורפוסים, בדיקת PageModel והמקרינים, ותיעוד כל פער שנותר.
+
+אפשר לאחד פרוסות רק אם הן חולקות את אותו שורש שינוי ואפשר לבדוק אותן באופן ברור. אין לצבור שינויים בלתי קשורים ל־PR ענקי.
+
+כל PR חייב לכלול:
+- תיאור השורש;
+- הסבר מדוע זה השורש ולא השערה;
+- השינוי המרכזי;
+- בדיקת רגרסיה שנכשלת לפני התיקון ועוברת אחריו;
+- בדיקת שלמות תוכן;
+- השפעה על מספר עמודים/גאומטריה אם השתנו;
+- הוכחת דטרמיניזם.
+
+## 10. בדיקות קבלה מחייבות
+
+הרץ לפי הצורך, ולפני השלמת 9b:
+
+- `npm test`
+- בדיקות determinism
+- `layout-audit`
+- `full-math-audit`
+- `corpus-invariants`
+- בדיקות ההערות ומזהי המקור
+- בדיקות PageModel
+- בדיקות DOM/HTML/PDF
+- Node 18, 20, 22 ב־CI.
+
+הרץ לפחות על:
+1. `audits/very_long_test_text.txt` - מסמך האמת המרכזי;
+2. `red-build/tests/fixtures/canonical_corpus.txt` - קורפוס קנוני;
+3. מסמך בדיקה ארוך נוסף רק אם הוא תקין מבחינה מבנית ונחוץ להוכחת תנאי ספציפי.
+
+הוכחת parity אינה רק ספירת מילים. יש להראות:
+- שכל פריט מקור מופיע בדיוק במקום המיועד;
+- אין איבוד או שכפול;
+- סמנים ועוגנים תקינים;
+- טקסטי ההערות שלמים;
+- TOC מלא לפי ההחלטה;
+- מטא ושערים תקינים;
+- PageModel ו־DOM/HTML/PDF מייצגים אותו תוכן;
+- אין הפרת גאומטריה, חפיפה, גלישה או סדר קריאה;
+- הרצות חוזרות דטרמיניסטיות.
+
+אין לעדכן hash צפוי רק כדי להפוך בדיקה לירוקה. אם שינוי פריסה מכוון, הסבר אותו באמצעות השוואת שורות, תוכן, עוגנים וגאומטריה לפני/אחרי.
+
+## 11. Pages ובדיקת משתמש
+
+האתר מתפרסם מענף `gh-pages` נפרד, ולכן אין להניח שמיזוג ל־`main` מפרסם את השינוי.
+
+בכל שינוי שיש לו השפעה שניתן לראות או לבדוק בממשק או בפלט המשתמש:
+1. בנה את נכסי האפליקציה;
+2. בנה/סנכרן Pages אחרי השינוי;
+3. ודא שה־`gh-pages` מכיל את קובצי הבנייה המעודכנים;
+4. ודא ש־workflow הפרסום הסתיים בהצלחה;
+5. בדוק בפועל את התוצאה באתר, או ציין במפורש אם אין אפשרות לאמת חזותית.
+
+אין לחכות לסוף כל השלב כדי לפרסם סדרת שינויים חזותיים. יש לבצע Pages אחרי כל שינוי כזה, ולא רק בסוף.
+
+שינויי בדיקות ותיעוד בלבד אינם מחייבים פרסום Pages אם אין להם אפקט במוצר.
+
+## 12. תנאי מעבר ל־9c - הסרת המורשת
+
+אין להתחיל ב־9c לפני שכל שערי 9b עוברים. כאשר הם עוברים, יש להתחיל מיד את 9c בפרוסות הבאות:
+
+### 9c.1 - PDF
+בדוק את `ui/engine-worker-main.js` ואת נתיב `exportPdfFromModel`.
+
+הוכח שאין קריאה שנייה ל־`typeset()` או `projectDocument()` לצורך ייצוא מהנתיב המאוחד. לאחר parity מלא, הסר את ה־dispatch לייצוא PDF של המורשת והפוך היעדר PageModel לשגיאה מפורשת.
+
+### 9c.2 - HTML
+בדוק את `ui/app-shell.js` ואת `exportHtmlFromModel`.
+
+הסר את צריכת `result.pages` של המורשת מנתיב הייצוא החי. אין להוסיף fallback ל־`exportHtml` הישן. PageModel חסר חייב להיות שגיאה מפורשת.
+
+### 9c.3 - DOM
+בדוק את `ui/preview-tab.js` ואת `renderLegacyPage`.
+
+העבר את כל התצוגה לצריכת PageModel, הסר את נתיב `page.legacy` ואת `renderLegacyPage` רק אחרי בדיקת כל הצרכנים והוכחת DOM parity.
+
+### 9c.4 - מנוע העימוד
+בדוק את `core/pipeline.js` ואת dispatch ל־`legacyTypeset`.
+
+רק לאחר שכל המקרינים צורכים את המודל הקנוני וכל שערי התוכן והגאומטריה עוברים, הסר את dispatch המורשת והעבר את ברירת המחדל למנוע המאוחד. זהו שינוי משמעותי, ולכן יש לבצעו בפרוסה נפרדת עם בדיקות מלאות.
+
+### 9c.5 - מחיקת קוד מת
+בדוק באמצעות callgraph וכלי הסריקה את כל הצרכנים של:
+- `legacy-imud-flow.js`
+- `legacy-projector.js`
+- `legacy-settings-map.js`
+- `geometry-projector` הישן וכל פונקציה שאיבדה צרכנים.
+
+הסר קוד רק כאשר הוכח שאין לו צרכנים פעילים, ושאין תלות סמויה ב־tests או בייצוא.
+
+אין להשאיר שני מנועי runtime פעילים או מסלול fallback קבוע. rollback נעשה באמצעות commit, לא באמצעות מנוע שני בפרודקשן.
+
+## 13. דיווח נדרש
+
+בסוף כל פרוסה דווח בקצרה אך במדויק:
+- אילו PRים נפתחו ומוזגו;
+- אילו קבצים ומנגנונים השתנו;
+- מה היה שורש הבעיה ומה הראיות;
+- אילו בדיקות עברו ובאילו גרסאות Node;
+- אילו פערים נשארו;
+- האם נבנה Pages ומה תוצאת הפרסום;
+- האם ניתן להתחיל את הפרוסה הבאה.
+
+אין לדווח "הושלם" כשיש בדיקות רצות או ממצאים שטרם הוסברו.
+
+**יעד סופי:** מנוע עימוד אחד, פשוט ומאוחד, עם זהות תוכן וגאומטריה מלאה, ועם יכולת להוסיף פריטי עימוד חדשים דרך חוזה אחיד - בלי מסלולים כפולים, בלי טלאים, בלי אובדן תוכן ובלי שכבות תיקון בדיעבד.
+
+---
+
+**החלטת מנהל הפרויקט\:** שלב 9a יישאר ממוזג - הוא סיפק מיפוי חשוב והציף בעיות שאסור להחמיץ. אבל אין להחשיב את כלי ההשוואה הנוכחי כהוכחת parity, ואין להתקדם להסרת המורשת לפני שלב 9b. המשימה הדחופה ביותר כעת היא לתקן את מדידת האמת, ובמקביל לתקן את ה־TOC בהתאם להחלטת המשתמש ולחקור את H7/הערות הגוף לפי זהויות מקור.
+
+הקישור למצב הפרויקט: [github.com](https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2?utm_source=chatgpt.com)\.
+
+## Prompt:
+18.11.2026, 8:27:29
+
+סוכן הAI הודיע שהוא השלים את השלב. 
+התנהג אתה כמנהל הפרויקט! 
+בדוק את שלימות הביצוע, נכונות דרך הביצוע, ובמיוחד בשלב זה בו נתקל הסוכן בבעיות שצצו ורגרסיות, נעשו הרבה החלטות ע"י הסוכן, בדוק היטיב את נכונות הבנת מקור הבעיה, ועריכה פשוטה אחידה ואלגנטית לפתירתה.
+ודא ביצוע בדיקות מתאימות והצלחתם.
+מזג PR הראויים למיזוג!
+והכן פרומט המפרט את כל הנצרך לסוכן הAI עם השלמות ותיקונים לשלבים הקודמים והפניה לשלב הבא עם פירוט השלב ליתר דיוק הביצוע כפי שאתה היית מבצע, ועם רמת ההקפדה והזהירות שלך, שאוכל להדביק והוא יתחיל!!!
+אין צורך להדגיש הוראות להעביר לסוכן, כי אני מעביר לו רק את הפרומטים שאתה נותן לי, ובמידת הצורך הכנס את ההוראות לפרומט. 
+אנחנו חייבים להתקדם לקראת סיום!!! 
+אי אפשר להתעכב כל הזמן!! 
+עשה כל הנדרש בכדי שנתקדם!!! 
+במידת הצורך הכן פרומט לסוכן הAI, ותוך כדי עבור מיד לביצוע הנדרש להתקדמות. 
+בשלבים בהם יהיה ניתן לבחון את השינויים (או את אימות אי השינויים) מנקודת מבט המשתמש, הוסף הוראה לבניית פייג'ס לאחר כל שינוי, למרות שלא אתן דיווח רק לאחר שיושלמו כל השלבים.
+
+[Attachment: Pasted text(7).txt]
+
+## Response:
+18.11.2026, 8:27:37 · gpt-6-t-mini
+
+החומר המצורף מתעד התקדמות עד תחילת 9c.3, אך הוא נקטע בדיוק באמצע העבודה על נתיב התצוגה. חשוב לי להבחין בין מה שהסוכן דיווח לבין מה שקיים בפועל ב־GitHub: אני בודק כעת את ה־PRים, ה־commits וה־CI העדכניים, ואז אבחן את השינויים עצמם — במיוחד את תיקון הדקדוק, הצמדת H7, חיבורי ההערות, שערי הכריכה והמעבר ל־PageModel.
+
+אימות ה־remote מאשר ש־9b אכן התקדם מעבר לנקודת הקטיעה: PRים \#44–\#49 מוזגו, ו־PR \#50 הוא כרגע השינוי היחיד של 9c.1 שעלה ל־GitHub. בדיקות \#50 עברו בכל שלוש גרסאות Node וגם `layout-audit`, `full-math-audit` ו־`corpus-invariants`\.
+
+עם זאת, מצאתי ב־PR \#50 שתי נקודות איכות שאטפל בהן לפני מיזוג: נגררו אליו קובצי מדדי ביצועים זמניים שאין הצדקה לעדכן בעקבות ריצת בדיקות רגילה, ובדיקת ה־Worker בודקת כרגע את קוד המקור באופן סטטי ולא מריצה בפועל ייצוא PDF דרך פרוטוקול ה־Worker. אני מחזק את ההוכחה הזאת במקום להסתפק ב־CI ירוק.
+
+הסקירה של 9b מראה שהסוכן לא הסתפק בהשוואת ספירות: הוא איתר שלושה שורשים נפרדים — דקדוק H7 שלא זיהה כותרות עם `מספר`/ציטוט לפני המקף, הערות חוצות־שורות שנשארו בטעות בגוף, והכנסה של הערה שהועברה בסוף המרזב במקום לפי סדר הסמנים. התיקונים ממוקמים בפרסר ובמתכנן, ולא במקרינים, וזה הכיוון הארכיטקטוני הנכון. אני עדיין בודק את גבולות המקרים ואת תקינות כלי ההשוואה לפני שאאשר שהשערים באמת מוכיחים את מה שהם טוענים.
+
+
+
+---
+---
+
