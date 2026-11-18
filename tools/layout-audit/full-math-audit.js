@@ -127,14 +127,13 @@
       const idx = pg.i;
       if (pg.t === 'unknown') cnt('TYPE_UNKNOWN', { type: 'TYPE_UNKNOWN', severity: 'high', page: idx, detail: 'מסווג סוג העמוד לא זיהה אף מחלקת page--* (בעבר עבר בשקט)' });
       if (pg.header) {
-        // **9c.4 (unified — HEADER_POSITION מודע-תבנית):** במקרין המודל הכותרת
-        // העליונה מוצבת מעל ראשית הזרימה של אותו עמוד (contentBox.top − 18,
-        // furniture-geometry — אותו מקור כמו הפרויקטור). בעמודי פתיחת-סימן
-        // הזרימה מתחילה מתחת לכותרת הפרק — הסף הקבוע (107.2) היה מכויל
-        // לרנדרר המורשת שמיקם ב-CSS. הבדיקה: מעל ראשית הטורים בפועל.
-        const colTops = (pg.cols || []).map((c) => c.y).filter((v) => typeof v === 'number' && v > 0);
-        const flowTopOf = colTops.length ? Math.min.apply(null, colTops) : FLOW_TOP;
-        if (pg.header.bottom > flowTopOf + 0.5 || pg.header.top < -0.5) cnt('HEADER_POSITION', { type: 'HEADER_POSITION', severity: 'high', page: idx, top: Math.round(pg.header.top * 10) / 10, bottom: Math.round(pg.header.bottom * 10) / 10 });
+        // **9c.4 (החזרת הסף הקבוע):** עם תיקון השורש ב-furniture-geometry
+        // (הכותרת הרצה נשארת בראש העמוד גם בפתיחת-סימן — h2TopOffset אינו
+        // מוריד אותה) הסף הקבוע 107.2 תקף שוב לכל סוגי העמודים. הריכוך
+        // ה"מודע-תבנית" (השוואה מול ראשית הטורים) הסתיר את הרגרסיה —
+        // הכותרת ב-257px עברה כי הטורים בפתיחת-סימן מתחילים נמוך. שני
+        // האודיטים חוזרים לאותו חוזה (P-7: השוואה בין אודיטים).
+        if (pg.header.bottom > FLOW_TOP + 0.5 || pg.header.top < -0.5) cnt('HEADER_POSITION', { type: 'HEADER_POSITION', severity: 'high', page: idx, top: Math.round(pg.header.top * 10) / 10, bottom: Math.round(pg.header.bottom * 10) / 10 });
       }
       if (pg.folio) {
         S.folio.present++;
