@@ -160,17 +160,20 @@ describe('s9c-pdf-export — ייצוא PDF מה-PageModel בלבד (9c.1)', () 
     const app = createApp(doc, { transport: createInlineTransport(), embeddedFont: FONT_BYTES });
     // בלי טקסט ובלי עימוד כלל: אין תוצאה, אין מודל, אין דגלי-שינוי —
     // הייצוא חייב להיכשל מפורשות על היעדר המודל (לא עימוד חלופי בשקט)
-    let reTypesets = 0;
-    const orig = pipeline.typeset;
-    pipeline.typeset = function () { reTypesets++; throw new Error('אסור עימוד חלופי בייצוא (9c.1)'); };
+    let legacyCalls = 0;
+    const originalLegacyExport = exportApi.exportPdf;
+    exportApi.exportPdf = function () {
+      legacyCalls++;
+      throw new Error('אין fallback לייצוא PDF של המורשת (9c.1)');
+    };
     let out;
     try {
       out = app.exportRequest('pdf');
     } finally {
-      pipeline.typeset = orig;
+      exportApi.exportPdf = originalLegacyExport;
     }
     assert(out === null, 'ללא תוצאת עימוד הייצוא מסורב מפורשות (null + הודעה) — לא עימוד חלופי');
-    assertEq(reTypesets, 0, 'לא בוצע עימוד חלופי בשקט');
+    assertEq(legacyCalls, 0, 'לא בוצע fallback לנתיב המורשת');
   });
 
   it('Worker E2E: אחרי typeset מאוחד ה-PDF נכתב מאותו PageModel בלי fallback', async () => {
