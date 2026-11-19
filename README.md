@@ -1,6 +1,6 @@
 # Tora Book Typesetter RED — Repository guide
 
-> **תיעוד ניווט מקיף.** Updated against `main` tree `178bcc8e6ada0e8f672f798b19640f9a49854e72` (19 Nov 2026). Includes every tracked non-font file (471 entries) and excludes 1,759 font files. Directory inventory is complete for this snapshot; descriptions are concise navigation aids, not substitute for reading source. If the repository changes, update this map.
+> **תיעוד ניווט מקיף.** Updated against merged tree `main@aedf5ba` + this branch (19 Nov 2026). Includes every tracked non-font file (478 entries, including the two new files this PR adds) and excludes 1,759 font binaries. Directory inventory is complete for this snapshot; descriptions are concise navigation aids, not substitute for reading source. If the repository changes, update this map.
 
 ## Authority and work rules — read first
 
@@ -71,7 +71,7 @@ tools/                            Audit/parity/performance/corpus and Stage 9 mi
 
 ## Full file inventory (all tracked non-font files)
 
-- **Snapshot:** 471 non-font tracked files; 1,759 font assets excluded by request.
+- **Snapshot:** 478 non-font tracked files (incl. `PROJECT_GLOSSARY.md` and `audits/ENGINE_TRANSITION_INVENTORY_2026-11-19.md` added by this PR); 1,759 font binaries excluded by request.
 - **Descriptions:** concise navigation aids based on directory context, names and available headers; reports/artifacts are evidence, not implementation. AI archives are historical and should be reconciled against formal decisions and current code.
 
 ### Root-level files
@@ -87,6 +87,7 @@ tools/                            Audit/parity/performance/corpus and Stage 9 mi
 - `MIGRATION.md` — Migration overview, compatibility and transition notes.
 - `OPEN_QUESTIONS.md` — Unresolved product/engineering questions and decision requests.
 - `OPERATIONS.md` — Developer and operational instructions for running, testing and maintaining the app.
+- `PROJECT_GLOSSARY.md` — Comprehensive project/architecture glossary (added by this PR): module map, runtime concepts, typography/layout/notes/output terms, settings, audit/testing, migration history, authority hierarchy and red flags.
 - `PROVENANCE.md` — Provenance, source lineage and historical/reference information.
 - `README.md` — Project front door, authoritative-plan warning, project overview, navigation and file inventory (this document).
 - `RELEASE_NOTES.md` — Release history and notable project changes.
@@ -138,6 +139,7 @@ tools/                            Audit/parity/performance/corpus and Stage 9 mi
 - `audits/ENGINE_CURRENT_STATE.md` — Audit/closure/analysis document: findings, methodology, evidence and conclusions; check date/commit before treating as current.
 - `audits/ENGINE_DUPLICATION_REGISTER.md` — Audit/closure/analysis document: findings, methodology, evidence and conclusions; check date/commit before treating as current.
 - `audits/ENGINE_RUNTIME_PATHS.md` — Audit/closure/analysis document: findings, methodology, evidence and conclusions; check date/commit before treating as current.
+- `audits/ENGINE_TRANSITION_INVENTORY_2026-11-19.md` — Companion capability/defaults/geometry/identifier inventory and open forensic checklist for the engine transition (added by this PR); folio rule: bare gematria per D-108.
 - `audits/FULLMATH_FLOOR_ROOT_CLOSURE_2026-11-17.md` — Audit/closure/analysis document: findings, methodology, evidence and conclusions; check date/commit before treating as current.
 - `audits/GOLD_V21_GAP_ANALYSIS.md` — Audit/closure/analysis document: findings, methodology, evidence and conclusions; check date/commit before treating as current.
 - `audits/H3_SPACING_OLD_STYLE_PARITY_2026-11-17.md` — Audit/closure/analysis document: findings, methodology, evidence and conclusions; check date/commit before treating as current.
@@ -147,6 +149,7 @@ tools/                            Audit/parity/performance/corpus and Stage 9 mi
 - `audits/long_test_text.txt` — Audit log, baseline, corpus or captured result; evidence only, not implementation.
 - `audits/mid_long_test_text.txt` — Audit log, baseline, corpus or captured result; evidence only, not implementation.
 - `audits/no_long_test_text.txt` — Audit log, baseline, corpus or captured result; evidence only, not implementation.
+- `audits/NEXT_LEGACY_PARITY_EXECUTION_PROMPT_2026-11-19.md` — Executed execution prompt for the legacy↔unified full-parity milestone (branch/workflow/comparator/benchmark requirements); binding work order, not a status claim.
 - `audits/P6_P7_D97_CLASSIFICATION.md` — Audit/closure/analysis document: findings, methodology, evidence and conclusions; check date/commit before treating as current.
 - `audits/PERFORMANCE_BASELINE.md` — Audit/closure/analysis document: findings, methodology, evidence and conclusions; check date/commit before treating as current.
 - `audits/RELATED_REPOSITORY_REUSE_AUDIT.md` — Audit/closure/analysis document: findings, methodology, evidence and conclusions; check date/commit before treating as current.
@@ -156,6 +159,9 @@ tools/                            Audit/parity/performance/corpus and Stage 9 mi
 - `audits/S9B_SHAAR_BACK_2026-11-18.md` — Audit/closure/analysis document: findings, methodology, evidence and conclusions; check date/commit before treating as current.
 - `audits/S9B_TOC_D107_2026-11-18.md` — Audit/closure/analysis document: findings, methodology, evidence and conclusions; check date/commit before treating as current.
 - `audits/SETTINGS_AND_TEXT_IDENTIFIERS_AUDIT.md` — Audit/closure/analysis document: findings, methodology, evidence and conclusions; check date/commit before treating as current.
+- `audits/STAGE1_MAP_FORENSIC_FINDINGS_2026-11-19.md` — Forensic annex to the Stage 1 map review (layer-by-layer model evidence); check date/commit before treating as current.
+- `audits/STAGE1_MAP_RECONCILIATION_PROMPT_2026-11-19.md` — Execution prompt that ordered the Stage 1 map reconciliation; work order provenance.
+- `audits/STAGE1_MAP_REVIEW_2026-11-19.md` — Review that found the Stage 1 map v1 errors (adapter/layer confusion, stale counts); superseded by the reconciled map in PR #66.
 - `audits/STAGE2_MODEL_COVERAGE.md` — Audit/closure/analysis document: findings, methodology, evidence and conclusions; check date/commit before treating as current.
 - `audits/STAGE3_MEASUREMENT.md` — Audit/closure/analysis document: findings, methodology, evidence and conclusions; check date/commit before treating as current.
 - `audits/STAGE4_LINE_ENGINE.md` — Audit/closure/analysis document: findings, methodology, evidence and conclusions; check date/commit before treating as current.
@@ -176,6 +182,7 @@ tools/                            Audit/parity/performance/corpus and Stage 9 mi
 - `audits/STAGE9_SHADOW_very_long_2026-11-18.json` — Structured audit output/data snapshot (JSON); use alongside the corresponding report and script.
 - `audits/UI_OPERATIONAL_AUDIT.md` — Audit/closure/analysis document: findings, methodology, evidence and conclusions; check date/commit before treating as current.
 - `audits/UNIFIED_ENGINE_MIGRATION_PLAN.md` — Audit/closure/analysis document: findings, methodology, evidence and conclusions; check date/commit before treating as current.
+- `audits/USER_REQUIREMENTS_AND_UI_HISTORY_2026-11-19.md` — Normative consolidation of user requirements and UI history (authority hierarchy, folio rule D-108, UI sync contract); binding reference for scope disputes.
 - `audits/very_long_test_text.txt` — Audit log, baseline, corpus or captured result; evidence only, not implementation.
 - `audits/דוגמא מגרסא ישנה - כולל סימון בלוקים ופיסקאות.pdf` — Visual/reference document from older version; archival evidence only, not final quality target.
 - `audits/דוגמא מגרסא ישנה - כולל סימון בלוקים פיסקאות שורות.pdf` — Visual/reference document from older version; archival evidence only, not final quality target.
