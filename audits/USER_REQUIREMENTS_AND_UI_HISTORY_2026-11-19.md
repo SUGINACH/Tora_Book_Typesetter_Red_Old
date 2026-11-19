@@ -205,13 +205,14 @@ S75 קבע body-first למדיניות הערות וכן את החלוקה המ�
 - baseline S0: P3a „גימטריה יחידה בלי גרשיים (כמקור)” — https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/blob/main/audits/baseline_S0/parity_report.txt
 - כלי parity הישן: P3a „ב, לא ב׳” — https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/blob/main/tools/layout-parity/README.md
 - המימוש ההיסטורי בקוד: https://github.com/SUGINACH/Tora_Book_Typesetter_Red_Work_2/blob/main/red-build/src/engine/layout/legacy-imud-flow.js
+- חריג היסטורי לא מאושר: פונקציית `toGematria` במורשת הוסיפה גרש לחלק האלפים רק מעל 999; הקוד עצמו מציין שהדבר לא נצפה בייחוס ושהקורפוס מגיע לכ־730 בלבד. הוראת המשתמש ב־D-108 מחייבת שאין סימני גרש/גרשיים בפוליו גם במספרים גבוהים; יש לבדוק זאת כקלט קצה ולנקות את ההרחבה המלאכותית במסלול הפוליו, בלי להשפיע על סימון מספרים בתחומים אחרים.
 
 ## 8. תמונת מצב שאומתה ב־19.11.2026
 
 - main: 710b4e75064f48edd290cd7381fc2c551a8a71f7 אחרי מיזוג PR #67, שהוא תיעוד/ביקורת בלבד.
 - PR #67 מוזג בהצלחה; אין בו שינוי מנוע.
 - PR #66: ענף stage1/capability-map, HEAD 1153effe7b74889071aa6084e025e0133b8761ef; מכיל מפת יכולות/דוחות/ארטיפקטים ותיקון בדיקת s9d, אך PR body, base SHA ומסמכי reconciliation עדיין משקפים 9d86bfe ומסקנות ישנות. לאחר מיזוג #67 ה־PR אינו mergeable עד עדכון/rebase. Gate crosswalk אומר ששלב 1 אינו סגור בגלל Q14.
-- PR #65: Draft, glossary/repo map; לא למזג עד תיקון הסתירה עם D-31 וביקורת freshness.
+- PR #65: Draft, glossary/repo map; לא למזג עד תיקון שורת Folio שמורה כרגע על geresh/gershayim — עליה לדרוש גימטריה חשופה לפי D-108 — וביקורת freshness.
 - gh-pages: HEAD 90bfaf97c1803c7af3617d5081b16b43ff271b87, פריסת 9c.3 מ־18.11.2026. ה־index.html מציג cache key 2026-11-18-s9c3. לכן האתר הציבורי שנפרס אינו מעיד על כל שינוי שנעשה ב־main מאז.
 - UI source: app-shell.js מקים Preview קבוע ושלוש לשוניות; caret-map.js קיים; app-shell.js מחבר onCaretMove ו־onActivatePage; editor-tab.js מציג מפת שבירות כרשימה נפרדת; s10-ui.test.js בודק חלק מהסנכרון ב־DOM shim. אין בכך אישור שהדפדפן החי עובד.
 - PR #66 Actions ב־HEAD 1153effe: CI, corpus-invariants ו־full-math-audit הושלמו success. לפי דוח הסוכן: npm test, test:determinism ו־cross-check עברו; browser layout-audit ו־shadow עדכני לאחר 9c/9d לא הופעלו במסגרת reconciliation.
