@@ -24,6 +24,7 @@
 - [SESSION_HANDOFF](ai-chat/SESSION_HANDOFF.md): handoff היסטורי; נכון לתאריך 12.11 ולכן יש לאמת מול מצב המאגר.
 - [ChatGPT archive](ai-chat/ChatGPT.md): ארכיון השיחות הארוך; פרומפטים, ביקורות, החלטות והוראות ביצוע.
 - [AI requests summary](spec/סיכום בקשות מAI.md): סיכום בקשות/היסטוריה, הצלבה מול החלטות.
+- [Engine transition inventory](audits/ENGINE_TRANSITION_INVENTORY_2026-11-19.md): initial inventory of capabilities, page/text IDs, geometry, defaults, parity/cutover gates and unresolved research.
 - [SRS](spec/Software_Requirements_Specification.md), [Master Spec](spec/01_MASTER_SPECIFICATION.md), [Unified item contract](spec/03_UNIFIED_ITEM_CONTRACT.md).
 
 ---
@@ -549,6 +550,8 @@ These exports are ~34–56 KB each; filenames and content indicate substantial o
 ---
 
 ## 11. Current engine-transition glossary and red flags (19.11.2026)
+
+**Companion inventory:** [ENGINE_TRANSITION_INVENTORY_2026-11-19.md](audits/ENGINE_TRANSITION_INVENTORY_2026-11-19.md) — initial component/default/parity inventory and open investigation checklist.
 
 ### Legacy 9C.3 baseline
 The stable reference for transfer is specified as `main@4992e09` (9C.3). It is not the final design authority; user-approved defaults and explicit corrections override legacy behavior. Full contract: `audits/ENGINE_CONTRACT_9C3.md`.
