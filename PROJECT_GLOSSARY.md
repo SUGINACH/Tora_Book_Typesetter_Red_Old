@@ -316,7 +316,7 @@ Every visual/engine change must be checked in both preview and PDF (user require
 Top page text slots R/C/L and recto/verso sources, align, width, font, size, color, baseline and divider. `decoration/headers-builder.js`, `structural-stamps.js`, settings and legacy header logic. Header baseline not same as header box height.
 
 ### Folio
-Page number format/sequence/starting page, placement, frame and font. `decoration/folio.js`, settings, D-107. Hebrew numeral formatting has a dedicated user decision; ensure geresh/gershayim placement/Unicode.
+Page number format/sequence/starting page, placement, frame and font. `decoration/folio.js`, `legacy-imud-flow.js`, settings, D-107 and D-108. **Printed folios and TOC page labels use bare Hebrew gematria without geresh/gershayim** (א, ב, טו, טז); do not apply the D-31 punctuation rule to page folios. Test exact strings and reject U+05F3/U+05F4.
 
 ### TOC / contents
 General/detailed TOC, levels, entries, numbering, folios, grouping, wrap, page break/atomic group, hyperlinks. `decoration/toc-builder.js`, `S9B_TOC_D107.md`, tests.
