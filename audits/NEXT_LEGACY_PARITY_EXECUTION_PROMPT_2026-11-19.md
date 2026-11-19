@@ -27,7 +27,7 @@
 # ב. תיקוני חובות קודמים לפני מימוש מנוע
 
 ## B1. PR #66 — reconciliation ומפת היכולות
-PR #66 כרגע על stage1/capability-map@1153effe7b74889071aa6084e025e0133b8761ef, אך המסמכים/PR body עדיין מציגים חלק מהנתונים הישנים ומסמכי reconciliation מציינים HEAD 9d86bfe. לאחר מיזוג #67, ה־base של PR #66 התיישן והוא אינו mergeable.
+נקודת הבדיקה האחרונה שנשמרה: PR #66 על stage1/capability-map@1153effe7b74889071aa6084e025e0133b8761ef; המסמכים/PR body עדיין מציגים חלק מהנתונים הישנים ומסמך reconciliation מציין HEAD 9d86bfe. ה־base_sha שנשמר ב־PR metadata הוא 178bcc8e... מלפני מיזוג #67. GitHub עשוי לחשב mergeable באופן דינמי; בדוק מחדש את base/head/mergeable מול origin/main לפני כל פעולה, ואל תסתמך על מצב זה בדוח.
 
 בצע:
 1. fetch branch ו־main; עדכן את branch באופן נקי על base main החדש. אין לדרוס commits או לשנות history בכוח.
@@ -47,7 +47,7 @@ PR #66 כרגע על stage1/capability-map@1153effe7b74889071aa6084e025e0133b876
 
 # ג. פתיחת ענף העבודה החדש — unified בלבד
 
-1. לאחר בדיקת ה־PRs, צור ענף חדש מן origin/main העדכני, בשם:
+1. צור מיד, לפני תיקון או מיזוג PRs קודמים, ענף חדש מן origin/main העדכני, בשם:
    engine/legacy-parity-preview-20261119
 2. כל מימוש ה־unified/הצגה/בדיקות נעשים בענף זה בלבד. אין לעבוד על main ואין להשתמש ב־UNIFIED או branch היסטורי בלי לבדוק את מצבו.
 3. הפעל את פרופיל unified במפורש בענף זה בלבד, בנתיב ה־UI/Worker האמיתי. אל תשנה את ברירת המחדל של main או את האתר הציבורי הקיים. branch preview אינו אישור cutover.
