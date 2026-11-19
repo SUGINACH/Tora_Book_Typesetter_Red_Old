@@ -22,7 +22,8 @@
    - audits/USER_REQUIREMENTS_AND_UI_HISTORY_2026-11-19.md
    - audits/STAGE1_MAP_REVIEW_2026-11-19.md, audits/STAGE1_MAP_FORENSIC_FINDINGS_2026-11-19.md, audits/STAGE1_MAP_RECONCILIATION_PROMPT_2026-11-19.md, audits/STAGE1_MAP_RECONCILIATION_2026-11-19.md, audits/STAGE1_GATE_CROSSWALK_2026-11-19.md, audits/STAGE1_OPEN_DECISIONS_RECONCILIATION_2026-11-19.md
    - Stage8/Stage9 reports and latest issue registry entries.
-7. מיד לאחר אימות שה־working tree נקי וש־origin/main מעודכן, צור את ענף המימוש החדש לפי סעיף ג (או ענף בשם ייחודי חדש אם השם כבר תפוס). זהו ענף עצמאי מן main; אל תמתין להשלמת תיקוני PR #65/#66 כדי להתחיל בו. עבודות תיקון PR ישנות ייעשו בענפים/PRs נפרדים ולא ייכנסו אוטומטית לענף המימוש.\n8. בסיום שחזור הסביבה צור handoff מקומי/בריפו שמציין commit, branch, working tree, מה שוחזר, ומה לא שוחזר. כל תוצאה מקומית צריכה להישמר ב־commit או artifact מקושר לפני סיום סשן.
+7. מיד לאחר אימות שה־working tree נקי וש־origin/main מעודכן, צור את ענף המימוש החדש לפי סעיף ג (או ענף בשם ייחודי חדש אם השם כבר תפוס). זהו ענף עצמאי מן main; אל תמתין להשלמת תיקוני PR #65/#66 כדי להתחיל בו. עבודות תיקון PR ישנות ייעשו בענפים/PRs נפרדים ולא ייכנסו אוטומטית לענף המימוש.
+8. בסיום שחזור הסביבה צור handoff מקומי/בריפו שמציין commit, branch, working tree, מה שוחזר, ומה לא שוחזר. כל תוצאה מקומית צריכה להישמר ב־commit או artifact מקושר לפני סיום סשן.
 
 # ב. תיקוני חובות קודמים לפני מימוש מנוע
 
