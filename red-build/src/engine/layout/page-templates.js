@@ -37,7 +37,59 @@ const PAGE_SIZES = {
  * @param {object} settings
  * @param {boolean} isRecto
  */
+// **שלב ההעברה למנוע המאוחד — מקטע 1 (גאומטריית עמוד וטורים):**
+// כשפרופיל IMUD פעיל (הגדרות שמקורן ב-default_settings.json של התוכנה
+// המקורית — importImudSettings מסמן _layout-profile='imud' ומצרף _imudRaw),
+// הגריד נבנה **מהחוזה המכויל מהייחוס** (core/imud-geometry.js) ולא מהאחוזים
+// הגנריים. הפער שתוקן (דוח חקירת האתר החי 19.11, ג.10): האחוזים הגנריים
+// (grid-col-width-pct=40% מהתוכן) ייצרו חור מרכזי של 134.9px בין הטורים,
+// מול מרזב 13.48px במקור; שוליים של 7.5% מול 120.72px (15.2%) במקור.
+// לא ערכי קסם: המקור הוא החוזה המשותף ששני המנועים צורכים.
+const {
+  GEO, FLOW_BOTTOM, SINGLE_W, H0_AREA_H, TOC_FIRST_TOP, TOC_CONT_TOP, TOC_STRETCH_BOTTOM
+} = require('../core/imud-geometry');
+
+function isImudProfile(settings) {
+  return !!(settings && (settings['_layout-profile'] === 'imud' || settings._imudRaw));
+}
+
+/** תבנית עמוד מהחוזה המכויל של IMUD — אותה גאומטריה שהמורשת מייצרת. */
+function buildImudPageTemplate(type, settings, isRecto) {
+  const twoCol = !( [PAGE_TYPES.PREFACE, PAGE_TYPES.SHAAR_MAIN, PAGE_TYPES.SHAAR_SUB,
+    PAGE_TYPES.SHAAR_BACK, PAGE_TYPES.TOC_GENERAL, PAGE_TYPES.TOC_DETAIL,
+    PAGE_TYPES.CUSTOM, PAGE_TYPES.FILLER].includes(type) );
+  const binding = Number(settings['binding-offset-px']) || 0;
+  const columns = twoCol
+    ? [
+        { x: GEO.COL_R_X + (isRecto ? binding : -binding), w: GEO.COL_W }, // ימין קודם (RTL)
+        { x: GEO.COL_L_X + (isRecto ? binding : -binding), w: GEO.COL_W }
+      ]
+    : [ { x: GEO.COL_L_X, w: SINGLE_W } ]; // טור רחב — 2×269.41+13.48 (grid)
+  const gutter = GEO.COL_R_X - (GEO.COL_L_X + GEO.COL_W); // 13.48
+  // תחתית הזרימה קבועה מהחוזה; הפוליו מתחתיה (baseline 1054.5 — מקטע 3)
+  const textTop = type === PAGE_TYPES.SIGN_OPEN
+    ? GEO.FLOW_TOP + 180 // h2-spacer (GEO.H2_SPACER) לפני סימן+כותרת — כמו flowSection של המורשת
+    : GEO.FLOW_TOP;
+  return {
+    type, isRecto, imud: true,
+    width: GEO.PAGE_W, height: GEO.PAGE_H,
+    margins: { top: GEO.FLOW_TOP, bottom: GEO.PAGE_H - FLOW_BOTTOM, side: GEO.COL_L_X, outer: GEO.PAGE_W - (GEO.COL_R_X + GEO.COL_W) },
+    columns, gutter,
+    headerHeight: GEO.HEADER_BASELINE,   // פס הכותרת: גליפים 42.56–57.56pt (גאומטריית הפס; התוכן — מקטע 3)
+    folioHeight: GEO.PAGE_H - GEO.FOLIO_BASELINE,
+    h2TopOffset: type === PAGE_TYPES.SIGN_OPEN ? 180 : 0,
+    contentBox: { top: textTop, bottom: FLOW_BOTTOM, height: FLOW_BOTTOM - textTop },
+    numbered: true,
+    counts: true,
+    hasRunningHead: [PAGE_TYPES.REGULAR, PAGE_TYPES.SIGN_OPEN, PAGE_TYPES.H3_SPREAD,
+      PAGE_TYPES.PREFACE, PAGE_TYPES.TOC_GENERAL, PAGE_TYPES.TOC_DETAIL].includes(type)
+  };
+}
+
 function buildPageTemplate(type, settings, isRecto = true) {
+  // **מקטע 1:** פרופיל IMUD ⇒ החוזה המכויל (לא הגריד הגנרי). הנתיב הלא-IMUD
+  // (קורפוס ה-DP הכללי) אינו משתנה כלל — אותן נוסחאות אחוזים כמו קודם.
+  if (isImudProfile(settings)) return buildImudPageTemplate(type, settings, isRecto);
   const size = PAGE_SIZES[settings['page-size']] || PAGE_SIZES.A4;
   const marginSide = size.w * settings['grid-margin-side-pct'] / 100;
   const binding = settings['binding-offset-px'] || 0;
@@ -86,4 +138,4 @@ function buildPageTemplate(type, settings, isRecto = true) {
   };
 }
 
-module.exports = { PAGE_TYPES, PAGE_SIZES, buildPageTemplate, MM_TO_PX };
+module.exports = { PAGE_TYPES, PAGE_SIZES, buildPageTemplate, buildImudPageTemplate, isImudProfile, MM_TO_PX };
