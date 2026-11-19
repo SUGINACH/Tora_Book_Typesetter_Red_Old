@@ -129,13 +129,13 @@ Source stacks/sizes (source defaults, NOT canonical after D-107):
 - Note source body FRL 9pt, note title David Libre 9pt, note marker gematria superscript 8pt, listing marker 8pt.
 - Main gate Lia Sgula/Bellefair 46pt; subtitle Livorna/David 21; description Livorna/FRL 12; edition David 11.5; author David 15; year David 12.
 - Back cover text Assistant ExtraLight, legacy size roles: rights 13.5; 4 fields 10/11/10/9.5.
-- Folio source: gematria, bottom-center, no frame, start 1; legacy folio 10.5pt vs D-107 registry 11.
+- Folio source: **bare gematria without geresh/gershayim**, bottom-center, no frame, start 1; legacy folio 10.5pt vs D-107 registry 11. Legacy source computes `folioDisplay` with `toGematria(pageNumber)`; `D-108` clarifies that D-31 does not apply to printed page folios.
 Colors: registry defaults black #000000 for body/headings/header/folio/gates/notes; background #ffffff. Source backgrounds #f4f1e8 but mode none and opacity=15 (verify consumer/theme). Dividers: column none, header gray, section spear, H3–H6 none, shaar dividers none. Do not infer actual theme render from raw JSON alone.
 
 ## 8. Header/folio/TOC defaults to verify in runtime
 - Header slots R/C/L. Regular source: R book title split right; C H2 without siman; L book title split left; centered; widths 33.33/33.34/33.33%. Verso R book title split R, C H1, L split L. distinct even/odd true; alternating false; title-split false.
 - Legacy SZ sizes R/C/L=15/11/15pt, baseline 71.9. Registry defaults per-slot David HB, 11pt, black. Verify source mapping, actual family/size and baseline in all output paths.
-- Folio source format gematria (not in registry enum; enum currently Hebrew/decimal/daf-hebrew); D-107 Hebrew bottom-center Livorna Bold 11pt black. Verify enum and format implementation.
+- Folio source format gematria (not in registry enum; enum currently Hebrew/decimal/daf-hebrew); **bare gematria only, no geresh/gershayim** (D-108; matches `legacy-imud-flow.js`, `ENGINE_CONTRACT_9C3.md` and baseline S0). D-107: bottom-center, Livorna Bold 11pt black. Verify runtime exact output in both engine profiles.
 - TOC both enabled; general levels1–6, detailed2–6; H7 hidden; numbering/folios on, inline false. Sizes as source table above; wrapping/atomic page groups/links are layout.
 
 ## 9. Full settings/text inventory
