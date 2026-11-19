@@ -192,7 +192,7 @@
 
 ## 10. ממצאי ביקורת משלימים — חובה ליישם לפני כתיבת המפה המתוקנת
 
-קרא גם את `audits/STAGE1_MAP_REVIEW_ADDENDUM_2026-11-19.md`. נספח זה מוסיף עובדות קונקרטיות שיש לטפל בהן:
+קרא גם את `audits/STAGE1_MAP_FORENSIC_FINDINGS_2026-11-19.md`. נספח זה מוסיף עובדות קונקרטיות שיש לטפל בהן:
 
 1. **run-ours אינו PageModel:** `tools/layout-parity/run-ours.js` בונה `ours-model.json` חדש מתוך `result.pages`; הוא אינו מעתיק את `result.pageModel`. שדה `model.meta.engine` אף מקובע למחרוזת legacy, גם בהרצת `--unified`. `paragraphs` מסונתזים לפי `paraId` ב-adapter. לכן יש לסווג מחדש את טענות `paragraphs=0`, `fontKey=0/4002` והיעדר y/sizePt: הן עשויות לשקף adapter שאינו תואם לפרופיל המאוחד, ולא חוסר במודל עצמו. בדוק את PageModel ישירות, ובנפרד את שימור paragraph/block identity עד אליו.
 2. **בדיקת s9d של digest:** בדיקת "legacy hash" משתמשת ב-`getDefaultSettings()`, שבאותו קובץ נבדק במפורש כ-`isImudProfile=false`. היא לא מאמתת `legacyProfile`, לא משווה ל-hash צפוי, ורק בודקת מחרוזת ועמודים. אסור לייחס לה legacy non-regression. תקן את מסלול הריצה וההשוואה או שנה את הטענה/שם הבדיקה; אל תמציא hash.
