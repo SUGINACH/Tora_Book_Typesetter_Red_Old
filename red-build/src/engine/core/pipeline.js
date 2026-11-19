@@ -43,7 +43,7 @@ const { applyDropWord } = require('../typography/dropword');
 // פסקאות) עוברות כולן דרכו; אין עוד words[] שמחליט שבירה במסלול ה-DP.
 const { layoutModelBlock, flatTextOf } = require('../line/pipeline-bridge');
 const { planPages, layoutHash, bodyGeometryHash } = require('../layout/dp-planner');
-const { buildPageTemplate, PAGE_TYPES } = require('../layout/page-templates');
+const { buildPageTemplate, PAGE_TYPES, isImudProfile } = require('../layout/page-templates');
 // **שלב 5 פרוסה 2 (§§2.3/2.5/2.7 בביקורת):** מדדי הערה חד-פעמיים (חותמת CP2),
 // חוזי ColumnModel/PagePlan + validation + immutability, ורשם ה-trace.
 const { stampNoteMetrics } = require('../layout/footnote-budget');
@@ -106,7 +106,15 @@ function typeset(rawText, settingsIn, env = {}) {
   // את ה-JSON הגולמי) ⇒ הפעלת הפורט הנאמן של מנוע המקור. התנהגות המקור
   // היא המפרט — כולל הגיאומטריה המדויקת שנמדדה מקובצי הייחוס שהעלה המשתמש
   // (בקשת 03.11: "בדיקת עימוד מתמטית ומוחלטת דרך וורקפלו").
-  if (settingsIn && settingsIn['_layout-profile'] === 'imud' && settingsIn._imudRaw) {
+  // **שלב ההעברה למנוע המאוחד — דגל בדיקה דו-מנועי:** ‏RED_UNIFIED_IMUD=1
+  // משאיר את אותן ההגדרות בדיוק (כולל _imudRaw והמפתחות המיובאים) אך מריץ
+  // את המנוע המאוחד. זהו **מנגנון הוכחת שקילות בלבד** (tools/layout-parity/run-ours.js --unified):
+  // אסור שיהיה דרך להפעלה בנתיב החי. הלקח מהחיתוך הכושל של 9c.4 (דוח חקירת
+  // האתר החי, סעיף ד): ה-CI בדק את המנוע שהמשתמשים *לא* קיבלו — הדגל הזה
+  // מאפשר לבדוק את שניהם על אותם קלטים ולהשוות מול בסיס 9C.3.
+  const forceUnifiedImud = !!(typeof process !== 'undefined' && process.env
+    && String(process.env.RED_UNIFIED_IMUD) === '1');
+  if (!forceUnifiedImud && settingsIn && settingsIn['_layout-profile'] === 'imud' && settingsIn._imudRaw) {
     const { legacyTypeset } = require('../layout/legacy-imud-flow');
     return legacyTypeset(rawText, settingsIn, env);
   }
@@ -265,6 +273,12 @@ function typeset(rawText, settingsIn, env = {}) {
   const resetPolicy = settings['footnote-reset-policy'];
   const nextMarkerNum = makeCounter(resetPolicy); // מדיניות איפוס (D-41)
 
+  // **שלב ההעברה — מקטע 1 (גאומטריית עמוד וטורים):** מעקב אחרי הכותרת
+  // הפותחת האחרונה — גוף של סעיף H0 (הקדמה) נמדד ומוזרם ברוחב הטור
+  // הרחב של תבנית ההקדמה (SINGLE_W=552.3 בפרופיל IMUD), כמו flowSection
+  // של המורשת (isH0Body ⇒ SINGLE_W). עד כאן נמדד ברוחב טור רגיל (269px)
+  // ⇒ שורות הקדמה קצרות וגלישת עמודים. הגופן של גוף ההקדמה — מקטע 2.
+  let lastHeadingLevel = null;
   for (const t of tokens) {
     if (t.type === 'editorial') continue;
 
@@ -307,6 +321,8 @@ function typeset(rawText, settingsIn, env = {}) {
         forceNewPage: hMode === 'new-page', sideNote: hMode === 'side-note',
         lines: lines.map(ln => ({ ...ln, kind: 'heading', tokenId: t.id, level: t.level }))
       });
+      // **מקטע 1:** עדכון ההקשר — הפסקאות הבאות שייכות לסעיף הכותרת הזה.
+      lastHeadingLevel = t.level;
       // **S8 (F-08 — שיעור הלב):** עיטורי H2 שצורכים גובה מוזמנים כאן — בגודלם
       // הסופי, לפני הפריסה. H2 במודל regular (בטור): השורות מתנפחות בהזמנה;
       // H2 full-width: ההזמנה נכנסת לפס החוצה־טורים ב‑dp-planner. המידע נוסע על
@@ -450,9 +466,16 @@ function typeset(rawText, settingsIn, env = {}) {
     }
 
     // full-width-mode: המדידה ברוחב מלא (כמו H1) — לפני הפריסה, לא אחריה
+    // **מקטע 1 (העברה):** פסקה בסעיף H0 (הקדמה) בפרופיל IMUD — נמדדת ברוחב
+    // הטור הרחב של תבנית ההקדמה (SINGLE_W=552.3), כמו flowSection של המורשת
+    // (isH0Body ⇒ SINGLE_W). עד כאן נמדדה ברוחב טור רגיל (269px) ⇒ שורות
+    // הקדמה קצרות וגלישת עמודים. **היקף מוגבל לפרופיל IMUD בלבד** — קורפוס
+    // ה-DP הקנוני (הנתיב הלא-IMUD) שמור על נעילת D-107 שלו ללא שינוי;
+    // עקביות הרוחב שם היא הכרעה מוצרית נפרדת. הגופן של גוף ההקדמה — מקטע 2.
+    const inH0Section = lastHeadingLevel === 0 && isImudProfile(settings);
     const colW = (csBlock && csBlock.style.layoutMode === 'full-width')
       ? fullWidthWidth(settings)
-      : columnWidthFor({ kind: 'paragraph' }, settings);
+      : (inH0Section ? fullWidthWidth(settings) : columnWidthFor({ kind: 'paragraph' }, settings));
     const customFactorById = new Map(csInlineSpans.map(s => [s.styleId, s.factor]));
     let csInfo = null; // **S11:** סגנון הבלוק שיוצמד לשורות ולבלוק (מדלג על ערכי איטרציות קודמות)
 

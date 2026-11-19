@@ -1,6 +1,6 @@
 // ui/app.bundle.js — **נוצר אוטומטית** ע"י tools/build-worker-bundle.js (אין לערוך ידנית)
 // חבילת מעטפת ה־UI (המנוע רץ ב־Worker הנפרד)
-// מודולים: 75 · בלי חותמות זמן (דטרמיניזם)
+// מודולים: 76 · בלי חותמות זמן (דטרמיניזם)
 'use strict';
 
 var __crypto = (function () {
@@ -329,6 +329,7 @@ var __paths = {
   "src/engine/extensions/extensions-io.js|./style-schema": "src/engine/extensions/style-schema.js",
   "src/engine/extensions/extensions-io.js|../decoration/custom-pages": "src/engine/decoration/custom-pages.js",
   "src/engine/decoration/custom-pages.js|../layout/page-templates": "src/engine/layout/page-templates.js",
+  "src/engine/layout/page-templates.js|../core/imud-geometry": "src/engine/core/imud-geometry.js",
   "src/engine/import/docx-import.js|./zip-reader": "src/engine/import/zip-reader.js",
   "src/engine/import/docx-import.js|./xml-lite": "src/engine/import/xml-lite.js",
   "src/ui/preview-tab.js|../engine/output/dom-renderer": "src/engine/output/dom-renderer.js",
@@ -368,6 +369,7 @@ var __paths = {
   "src/engine/layout/legacy-imud-flow.js|../core/ledger": "src/engine/core/ledger.js",
   "src/engine/layout/legacy-imud-flow.js|../decoration/headers-builder": "src/engine/decoration/headers-builder.js",
   "src/engine/layout/legacy-imud-flow.js|../output/line-font": "src/engine/output/line-font.js",
+  "src/engine/layout/legacy-imud-flow.js|../core/imud-geometry": "src/engine/core/imud-geometry.js",
   "src/engine/layout/legacy-imud-flow.js|../core/h3-contract": "src/engine/core/h3-contract.js",
   "src/engine/layout/legacy-imud-flow.js|../decoration/legacy-ornaments": "src/engine/decoration/legacy-ornaments.js",
   "src/engine/decoration/legacy-ornaments.js|./ornament-fit": "src/engine/decoration/ornament-fit.js",
@@ -8162,7 +8164,59 @@ const PAGE_SIZES = {
  * @param {object} settings
  * @param {boolean} isRecto
  */
+// **שלב ההעברה למנוע המאוחד — מקטע 1 (גאומטריית עמוד וטורים):**
+// כשפרופיל IMUD פעיל (הגדרות שמקורן ב-default_settings.json של התוכנה
+// המקורית — importImudSettings מסמן _layout-profile='imud' ומצרף _imudRaw),
+// הגריד נבנה **מהחוזה המכויל מהייחוס** (core/imud-geometry.js) ולא מהאחוזים
+// הגנריים. הפער שתוקן (דוח חקירת האתר החי 19.11, ג.10): האחוזים הגנריים
+// (grid-col-width-pct=40% מהתוכן) ייצרו חור מרכזי של 134.9px בין הטורים,
+// מול מרזב 13.48px במקור; שוליים של 7.5% מול 120.72px (15.2%) במקור.
+// לא ערכי קסם: המקור הוא החוזה המשותף ששני המנועים צורכים.
+const {
+  GEO, FLOW_BOTTOM, SINGLE_W, H0_AREA_H, TOC_FIRST_TOP, TOC_CONT_TOP, TOC_STRETCH_BOTTOM
+} = require('../core/imud-geometry');
+
+function isImudProfile(settings) {
+  return !!(settings && (settings['_layout-profile'] === 'imud' || settings._imudRaw));
+}
+
+/** תבנית עמוד מהחוזה המכויל של IMUD — אותה גאומטריה שהמורשת מייצרת. */
+function buildImudPageTemplate(type, settings, isRecto) {
+  const twoCol = !( [PAGE_TYPES.PREFACE, PAGE_TYPES.SHAAR_MAIN, PAGE_TYPES.SHAAR_SUB,
+    PAGE_TYPES.SHAAR_BACK, PAGE_TYPES.TOC_GENERAL, PAGE_TYPES.TOC_DETAIL,
+    PAGE_TYPES.CUSTOM, PAGE_TYPES.FILLER].includes(type) );
+  const binding = Number(settings['binding-offset-px']) || 0;
+  const columns = twoCol
+    ? [
+        { x: GEO.COL_R_X + (isRecto ? binding : -binding), w: GEO.COL_W }, // ימין קודם (RTL)
+        { x: GEO.COL_L_X + (isRecto ? binding : -binding), w: GEO.COL_W }
+      ]
+    : [ { x: GEO.COL_L_X, w: SINGLE_W } ]; // טור רחב — 2×269.41+13.48 (grid)
+  const gutter = GEO.COL_R_X - (GEO.COL_L_X + GEO.COL_W); // 13.48
+  // תחתית הזרימה קבועה מהחוזה; הפוליו מתחתיה (baseline 1054.5 — מקטע 3)
+  const textTop = type === PAGE_TYPES.SIGN_OPEN
+    ? GEO.FLOW_TOP + 180 // h2-spacer (GEO.H2_SPACER) לפני סימן+כותרת — כמו flowSection של המורשת
+    : GEO.FLOW_TOP;
+  return {
+    type, isRecto, imud: true,
+    width: GEO.PAGE_W, height: GEO.PAGE_H,
+    margins: { top: GEO.FLOW_TOP, bottom: GEO.PAGE_H - FLOW_BOTTOM, side: GEO.COL_L_X, outer: GEO.PAGE_W - (GEO.COL_R_X + GEO.COL_W) },
+    columns, gutter,
+    headerHeight: GEO.HEADER_BASELINE,   // פס הכותרת: גליפים 42.56–57.56pt (גאומטריית הפס; התוכן — מקטע 3)
+    folioHeight: GEO.PAGE_H - GEO.FOLIO_BASELINE,
+    h2TopOffset: type === PAGE_TYPES.SIGN_OPEN ? 180 : 0,
+    contentBox: { top: textTop, bottom: FLOW_BOTTOM, height: FLOW_BOTTOM - textTop },
+    numbered: true,
+    counts: true,
+    hasRunningHead: [PAGE_TYPES.REGULAR, PAGE_TYPES.SIGN_OPEN, PAGE_TYPES.H3_SPREAD,
+      PAGE_TYPES.PREFACE, PAGE_TYPES.TOC_GENERAL, PAGE_TYPES.TOC_DETAIL].includes(type)
+  };
+}
+
 function buildPageTemplate(type, settings, isRecto = true) {
+  // **מקטע 1:** פרופיל IMUD ⇒ החוזה המכויל (לא הגריד הגנרי). הנתיב הלא-IMUD
+  // (קורפוס ה-DP הכללי) אינו משתנה כלל — אותן נוסחאות אחוזים כמו קודם.
+  if (isImudProfile(settings)) return buildImudPageTemplate(type, settings, isRecto);
   const size = PAGE_SIZES[settings['page-size']] || PAGE_SIZES.A4;
   const marginSide = size.w * settings['grid-margin-side-pct'] / 100;
   const binding = settings['binding-offset-px'] || 0;
@@ -8211,7 +8265,95 @@ function buildPageTemplate(type, settings, isRecto = true) {
   };
 }
 
-module.exports = { PAGE_TYPES, PAGE_SIZES, buildPageTemplate, MM_TO_PX };
+module.exports = { PAGE_TYPES, PAGE_SIZES, buildPageTemplate, buildImudPageTemplate, isImudProfile, MM_TO_PX };
+
+};
+__modules["src/engine/core/imud-geometry.js"] = function (require, module, exports) {
+// src/engine/core/imud-geometry.js — חוזה גאומטריית IMUD המכוילת (מקור אמת יחיד)
+'use strict';
+
+/**
+ * **שלב ההעברה למנוע המאוחד — מקטע 1 (גאומטריית עמוד וטורים).**
+ *
+ * עד כאן חיו הקבועים הללו רק בתוך `layout/legacy-imud-flow.js` — והמנוע
+ * המאוחד בנה גריד גנרי מאחוזים (grid-col-width-pct וכו') שאין לו מיפוי
+ * מפתחות IMUD. התוצאה הנמדדת: חור מרכזי של 134.9px בין הטורים מול מרזב
+ * 13.48px במקור (דוח חקירת האתר החי, 19.11, ג.10).
+ *
+ * כעת הגאומטריה המכוילת מהייחוס היא **מודול חוזה משותף** — בדיוק כמו
+ * `core/h3-contract.js` שכבר משותף לשני המנועים. שני הצרכנים:
+ *   1. `layout/legacy-imud-flow.js` — מייבא את אותם הערכים (אפס שינוי
+ *      התנהגות; מוכח ב-digest זהה של הקורפוסים).
+ *   2. `layout/page-templates.js` — כשפרופיל IMUD פעיל (הגדרות שמקורן
+ *      ב-default_settings.json של המקור), תבנית העמוד נבנית מהחוזה
+ *      הזה ולא מהאחוזים הגנריים.
+ *
+ * החוזה המלא (מיקומים, גדלים, פורמטים): audits/ENGINE_CONTRACT_9C3.md.
+ * יחידות: px @96dpi; PDF = px×0.75.
+ */
+
+// ---------- גיאומטריית עמוד (מכויל מהייחוס המסומן) ----------
+const GEO = {
+  PAGE_W: 793.7, PAGE_H: 1122.5,               // A4
+  COL_W: 269.41,                                // רוחב טור (col:right 269 בתגיות המקור)
+  COL_R_X: 403.61, COL_L_X: 120.72,             // שפות טורים (ימני/שמאלי)
+  MARGIN_R_X: 686.3, MARGIN_L_X: 56.7, MARGIN_W: 50.5, // טורי שוליים (margin-col)
+  FLOW_TOP: 107.2,                              // ראשית זרימת הגוף בעמוד רגיל
+  FLOW_H: 915,
+  LINE_H: 21.44,
+  H2_SPACER: 180,                               // h2-spacer לפני סימן+כותרת
+  HEADER_BASELINE: 71.9,                        // פס כותרת: גליפים 42.56–57.56pt
+  FOLIO_BASELINE: 1054.5,                       // עמודון: y0=783.82pt (גליף ~1045px), ממורכז
+  FN_AREA_TOP: 969.5,                           // תחילת מרזב ההערות (y0=727.1pt בייחוס)
+  FN_PITCH: 16.7,                               // פס שורות הערה (8.5pt × 1.5 × 4/3)
+  TOC_NUM_X: 66.1,                              // מספרי תוכן-עניינים בשמאל (x0≈49.6pt)
+  TOC_TITLE_X1: 727.4,                          // שפה ימנית של כותרות תוכן-עניינים (545.6pt)
+  TOC_STAIR: 8,                                 // מדרגת כניסה לפי רמה (padding-right 8px)
+  MN_PITCH: 9.6                                 // פס שורות הערת-צד (8px × 1.2)
+};
+
+// ---------- קבועים אנכיים נגזרים ----------
+const FLOW_BOTTOM = GEO.FLOW_TOP + GEO.FLOW_H; // 1022.2px — תחתית הזרימה האמיתית
+const H2_AREA_H = 284.25;   // אזור h2: מרווח-עליון 22% + סימן + כותרת + שוליים (S4.19)
+const H0_AREA_H = 249.2;    // זרימת ההקדמה מתחילה ב-356.4px (S4.19)
+const SINGLE_W = 552.3;     // .single-wide-col = 2×269.41+13.48 (grid)
+const TITLE_W_PCT = 0.6;    // תיבת כותרת 2/3 — 60% מרוחב הפס (S74)
+const H23_TITLE_W = SINGLE_W * TITLE_W_PCT; // 331.38px
+const H0_LINE_H = 20.55;    // פס שורת ההקדמה (11.5pt×1.34×4/3 — S4.13)
+const H0_TITLE_Y = 309.0;   // מיקום כותרת ההקדמה (S4.24)
+const TOC_TITLE_BLOCK_H = 213;
+// גיאומטריית עמודי תוכן-העניינים — אבסולוטית ונפרדת מזרימת הגוף (S4.14)
+const TOC_FIRST_TOP = 370.7;
+const TOC_CONT_TOP = 113.7;
+const TOC_STRETCH_BOTTOM = 1005.7;
+
+// ---------- מתיחת סוף-עמוד + משיכת זנב-יתום (העתק נאמן מ-v21-glm, S4.17) ----------
+const PAGE_STRETCH_MAX = 48;      // v21: תקרת מתיחת הבלוק האחרון בעמוד (px)
+const JUSTIFY_MAX_GAP = 9;        // v21: תקרת ריווח (padding) שמתווסף אחרי פסקה
+const JUSTIFY_MAX_LH_EXTRA = 3;   // v21: תקרת תוספת גובה-שורה במתיחת עמוד (px)
+const ORPHAN_RECLAIM_BUFFER = 12; // v21: באפר "חירום" בתחתית העמוד למשיכת יתום
+const RECLAIM_BELOW_BASE = 2;     // v21: היתר כיווץ מתחת לבסיס לשורה (px)
+
+// ---------- גדלי גופן (pt — כמו הגדרות המקור; פיקסלים = pt×4/3) ----------
+// ליבה סטטית בלבד: legacy-imud-flow מוטט חלק מהשדות מההגדרות (S6.3) —
+// המוטציה נשארת שם; המנוע המאוחד קורא את ערכי ברירת המחדל מכאן.
+const SZ_CORE = {
+  body: 12, h0Title: 17, h0Body: 11.5, h2: 17, siman: 20, h3: 13.5,
+  h4: 12.5, h5: 11.5, h6: 10.5, parenDelta: -2,
+  fnBody: 8.5, fnMarker: 8, marginNote: 6, folio: 10.5,
+  hdrR: 15, hdrC: 11, hdrL: 15, divider: 6.75,
+  tocNum: 10.5, tocTitle: 17,
+  tocLevel: { 1: 12, 2: 11, 3: 10.5, 4: 10, 5: 9.5, 6: 9, 7: 8.8 }
+};
+
+module.exports = {
+  GEO,
+  FLOW_BOTTOM, H2_AREA_H, H0_AREA_H, SINGLE_W, TITLE_W_PCT, H23_TITLE_W,
+  H0_LINE_H, H0_TITLE_Y,
+  TOC_TITLE_BLOCK_H, TOC_FIRST_TOP, TOC_CONT_TOP, TOC_STRETCH_BOTTOM,
+  PAGE_STRETCH_MAX, JUSTIFY_MAX_GAP, JUSTIFY_MAX_LH_EXTRA, ORPHAN_RECLAIM_BUFFER, RECLAIM_BELOW_BASE,
+  SZ_CORE
+};
 
 };
 __modules["src/engine/import/docx-import.js"] = function (require, module, exports) {
@@ -15115,39 +15257,15 @@ const { resolveSlot: resolveHdrSlotText, trimEdgePunctuation: hdrTrimPunct } = r
 const { hexColorToRgb } = require('../output/line-font');
 
 // ---------- גיאומטריה (px @96dpi; PDF = px×0.75) — מכויל מהייחוס ----------
-const GEO = {
-  PAGE_W: 793.7, PAGE_H: 1122.5,               // A4
-  COL_W: 269.41,                                // רוחב טור (col:right 269 בתגיות המקור)
-  COL_R_X: 403.61, COL_L_X: 120.72,             // שפות טורים (ימני/שמאלי)
-  MARGIN_R_X: 686.3, MARGIN_L_X: 56.7, MARGIN_W: 50.5, // טורי שוליים (margin-col)
-  // **S4.14 (מסומן-גיאומטריה):** ראשית הזרימה האמיתית בעמוד רגיל = 107.2px —
-  // נגזר ממחסנית תוויות הייחוס (body-flow label − היסט השכבה) ומהשורה הראשונה
-  // הנמדדת בעמודים רגילים (13-15: שורת-גוף ראשונה ב-107.2px בדיוק). הערך
-  // הקודם 96.7 היה נמוך ב-10.5px — הזרימה כולה ישבה גבוה מדי.
-  FLOW_TOP: 107.2,                              // ראשית זרימת הגוף בעמוד רגיל
-  // **S4.14:** גובה הזרימה המקסימלי = 915px — נמדד ישירות מתוויות body-flow
-  // של הייחוס בעמודים ללא הערות (13-15: block 914/915, תחתית אמיתית 1022.2).
-  // הערך הקודם 925 הכניס שורה עודפת בעמודים ללא הערות (סה"כ +8 שורות במסמך).
-  FLOW_H: 915,
-  // **S4.13 (פס שורה אמיתי — היסוד לכל הסטייה המצטברת):** המקור מגדיר
-  // line-height: var(--line-height-body)=1.34 על 12pt ⇒ 16.08pt = **21.44px**
-  // לכל תיבת שורה. הדפדפן שומר את השבר בסכומי ה-DOM (scrollHeight), ורק
-  // ההדפסה ל-PDF מצמידה כל שורה לפיקסל שלם — לכן במדידת הייחוס נראים פסים
-  // מעורבים 21/22px (15.75/16.5pt, היסטוגרמה: 1277+1101) שהממוצע שלהם 21.44.
-  // הקליברציה הקודמת (21 שטוח) חסכה 0.44px לשורה ⇒ 2% קיבולת ⇒ כשורה
-  // לטור ⇒ +2 שורות לעמוד — בדיוק הסטייה המצטברת שנצפתה (עמודינו 90-93
-  // שורות מול 87-90 בייחוס). כעת: המילוי, הפריסה והמודל כולם ב-21.44.
-  LINE_H: 21.44,
-  H2_SPACER: 180,                               // h2-spacer לפני סימן+כותרת
-  HEADER_BASELINE: 71.9,                        // פס כותרת: גליפים 42.56–57.56pt
-  FOLIO_BASELINE: 1054.5,                       // עמודון: y0=783.82pt (גליף ~1045px), ממורכז
-  FN_AREA_TOP: 969.5,                           // תחילת מרזב ההערות (y0=727.1pt בייחוס)
-  FN_PITCH: 16.7,                               // פס שורות הערה (8.5pt × 1.5 × 4/3)
-  TOC_NUM_X: 66.1,                              // מספרי תוכן-עניינים בשמאל (x0≈49.6pt)
-  TOC_TITLE_X1: 727.4,                          // שפה ימנית של כותרות תוכן-עניינים (545.6pt)
-  TOC_STAIR: 8,                                 // מדרגת כניסה לפי רמה (padding-right 8px)
-  MN_PITCH: 9.6                                 // פס שורות הערת-צד (8px × 1.2)
-};
+// **שלב ההעברה למנוע המאוחד — מקטע 1:** הקבועים הגאומטריים עברו למודול
+// החוזה המשותף `core/imud-geometry.js` (מקור אמת יחיד — כמו h3-contract).
+// הערכים זהים מילולית; ההוכחה: digest הקורפוסים אינו משתנה. ההערות
+// ההיסטוריות (S4.13/S4.14 — הכיול מול הייחוס המסומן) נשמרות שם.
+const {
+  GEO, FLOW_BOTTOM, H2_AREA_H, H0_AREA_H, SINGLE_W, TITLE_W_PCT, H23_TITLE_W,
+  H0_LINE_H, TOC_TITLE_BLOCK_H, TOC_FIRST_TOP, TOC_CONT_TOP, TOC_STRETCH_BOTTOM,
+  PAGE_STRETCH_MAX, JUSTIFY_MAX_GAP, JUSTIFY_MAX_LH_EXTRA, ORPHAN_RECLAIM_BUFFER, RECLAIM_BELOW_BASE
+} = require('../core/imud-geometry');
 
 // גדלי גופן (pt — כמו הגדרות המקור; פיקסלים = pt×4/3)
 const SZ = {
@@ -15807,18 +15925,6 @@ class LineBreaker {
 //  מודל: עמוד = מחסנית אנכית של פסים (span של h3) ובלוקים דו-טוריים מאוזנים.
 // =====================================================================
 
-const FLOW_BOTTOM = GEO.FLOW_TOP + GEO.FLOW_H; // 1022.2px — תחתית הזרימה האמיתית (עמודים 13-15: block עד 1021)
-// **S4.19 (ה-spacer המלא של המקור):** אזור ה-h2 = מרווח-עליון
-// 22% × גובה הזרימה (0.22×915=201.3) + סימן (20pt×1.1+6=35.3) + כותרת (27.2)
-// + שולי כותרת (20). המדידה מהייחוס (עמ' 24/38 — עמודי h2 ללא הערות): סימן ב-y=307.88px,
-// כותרת ב-344.05, תוכן ב-391.45 — בדיוק הנוסחה. **עמ' 11 (עם הערות) נראה נמוך יותר
-// כי ה-fn-area מוכנס ל-wrapper לפני הפוטר (insertBefore במקור) ומקטין את ה-flow —
-// ה-spacer (flex-basis 22%) מתכווץ ב-0.22×גובה-ההערות וכל אזור ה-h2 זז למעלה**
-// (ההוכחה: עמ' 11 — הפרש 22.98px = 0.22×שמורת-הערות 105.3). ההזזה מיושמת
-// בסוף מילוי העמוד (הערות ידועות רק אז — כמו ה-relayout של ה-flex במקור).
-// הערך הקודם 261.3 כויל מעמ' 11 בלבד — עמודי ה-h2 הרגילים (24/38) שקעו 23px
-// וכל הפרקים שאחריהם הוסטו בשורה שלמה.
-const H2_AREA_H = 284.25;
 // **S4.19:** פטור עמודי h2+span מה-spacer המלא — כיול S4.14 (261.3) נשאר להם.
 const H2_SPAN_EXEMPT = (
   (typeof process !== 'undefined' && process.env && process.env.RED_H2_SPAN_EXEMPT) !== '0'
@@ -15836,50 +15942,7 @@ const H3_SPAN_TOP_PAD_PX = H3_TOP_PAD_PX;
 const H3_SPAN_BOTTOM_PAD_PX = H3_BOTTOM_PAD_PX;
 const H3_SPAN_MARGIN_BOTTOM_PX = H3_MARGIN_BOTTOM_PX;
 const H3_SPAN_H = H3_SPAN_LINE_H + H3_SPAN_BOTTOM_PAD_PX;
-const H0_AREA_H = 249.2;   // **S4.19:** זרימת ההקדמה מתחילה ב-356.4px — המדידה מהייחוס
-// (עמ' 10, שורות ההקדמה 2-3): הייחוס יושב 9.7-10.2px מתחת ל-348 הקודם; גם לדף
-// ה-h0 יש spacer (הכותרת ב-309 = 107.2+201.3+0.5) + כותרת (27.2) + שוליים (20)
-// ⇒ 309+47.4 = 356.4. הערך הקודם 240.8 השאיר את שורות ההקדמה גבוהות בכ-10px.
-const SINGLE_W = 552.3;    // .single-wide-col = 2×269.41+13.48 (grid)
-// **S74 (בעיה 1 — בקשת משתמש 12.11):** כותרות 2 ו-3 החד-טוריות מוגבלות ל־60%
-// מרוחב הפס **הנוכחי** (לא מרוחב העמוד) — תיבה של 331.38px הממורכזת בפס.
-// כותרת ארוכה נעטפת לשורות במקום למלא את רוחב הפס. הרינדור (DOM ו-PDF)
-// ממרכז את הפסים ברוחב הפס המלא — תיבת ה־60% חולקת את אותו מרכז בדיוק,
-// ולכן אין כל שינוי ברינדור: רק רוחב העטיפה כאן מצטמצם.
-const TITLE_W_PCT = 0.6;
-const H23_TITLE_W = SINGLE_W * TITLE_W_PCT; // 331.38px
-// **S4.13:** פס שורת ההקדמה — אותו line-height של הגוף (1.34) על 11.5pt
-// ⇒ 15.41pt = 20.55px. מדידת הייחוס בעמוד ההקדמה: פסים 15.0–16.3pt (ממוצע 20.5px
-// לפני הצמדת ההדפסה). הערך הקודם (22.2 = ×1.45) היה קליברציה שגויה שדחפה
-// את שורות ההקדמה והזיזה את נקודות החיתוך שלה (נצפה ב-P7: שורות ההקדמה
-// הראשונות שנותרו שונות אחרי תיקון LINE_H).
-const H0_LINE_H = 20.55;
-const TOC_TITLE_BLOCK_H = 213;
-// **S4.14:** גיאומטריית עמודי תוכן-העניינים — אבסולוטית ונפרדת מזרימת הגוף
-// (השורה הראשונה בעמודי ה-TOC של הייחוס ב-113.6px, לא ב-FLOW_TOP). הערכים
-// שומרים על המיקומים הקודמים המכוילים (96.7+213+61 / 96.7+17 / 1011.7−6).
-const TOC_FIRST_TOP = 370.7;
-const TOC_CONT_TOP = 113.7;
-const TOC_STRETCH_BOTTOM = 1005.7;
 
-// =====================================================================
-// **S4.17 — יישור תחתית עמוד + משיכת זנב-יתום (העתק נאמן מ-v21-glm).**
-// הייחוס (דוגמא מגרסא ישנה) יוצר ב-v21-glm ע"י מנוע שכולל מערכת מתיחה/כיווץ
-// שחסרה בפורט שלנו: בסוף כל עמוד שהפרק ממשיך אחריו רצים stretchPageToBottom
-// (מתיחת הבלוק האחרון עד תחתית שטח הגוף) ואז tryReclaimOrphanTail — משיכת
-// זנב פסקה יתום של 1-2 שורות חזרה לעמוד ע"י כיווץ עדין של הטור השמאלי.
-// ההוכחה מהייחוס עצמו (בלי עיניים): היסטוגרט הפסים של הייחוס מכילה זנב של
-// ~230 פסים ב-23-24.4px (= בסיס 21.44 + עד 3px מתיחה — JUSTIFY_MAX_LH_EXTRA)
-// ו-74 זוגות פסים ב-19-20px (= בסיס 21.44 − עד 2px כיווץ — ALLOW_BELOW_BASE),
-// וקטעי הכיווץ מתחילים תמיד בפסקאות הראשונות של הטור (compressColumnBy
-// מחלק לפי הסדר). זו בדיוק הסיבה שעמודי הייחוס מכילים 1-2 שורות יותר
-// בנקודות החיתוך — הפערים שנצפו כ-delete+insert שכנים ב-P7.
-// =====================================================================
-const PAGE_STRETCH_MAX = 48;      // v21: תקרת מתיחת הבלוק האחרון בעמוד (px)
-const JUSTIFY_MAX_GAP = 9;        // v21: תקרת ריווח (padding) שמתווסף אחרי פסקה
-const JUSTIFY_MAX_LH_EXTRA = 3;   // v21: תקרת תוספת גובה-שורה במתיחת עמוד (px)
-const ORPHAN_RECLAIM_BUFFER = 12; // v21: באפר "חירום" בתחתית העמוד למשיכת יתום
-const RECLAIM_BELOW_BASE = 2;     // v21: היתר כיווץ מתחת לבסיס לשורה (px)
 // **S4.18:** רצפת מרווח-הפסקה בכיווץ משיכת-יתום — נמדד מהייחוס (עמ' 14 שמאל:
 // מרווחי פסקה 22.4-24.4px ⇒ gap 1-3px; הרצפה 2). דריסה: RED_GAP_COMPRESS_FLOOR.
 const GAP_COMPRESS_FLOOR = parseFloat(

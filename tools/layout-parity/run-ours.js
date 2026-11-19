@@ -1,8 +1,11 @@
 // tools/layout-parity/run-ours.js — הרצת RED על טקסט המבחן בנתיב החי + ייצור מודל + PDF
 //
-// שימוש: node run-ours.js [קובץ-טקסט] [תיקיית-פלט] [--determinism] [--html]
+// שימוש: node run-ours.js [קובץ-טקסט] [תיקיית-פלט] [--determinism] [--html] [--unified]
 //   --determinism — מריץ את העימוד פעמיים ונכשל אם ה-hash/מספר העמודים שונים
 //   --html        — מייצא גם ours.html (ייצוא HTML עצמאי, אותו רינדור כמו התצוגה)
+//   --unified     — מריץ את **המנוע המאוחד** על אותם קלטים/הגדרות בדיוק
+//                   (RED_UNIFIED_IMUD=1) — להשוואת שקילות מול בסיס 9C.3 בזמן
+//                   ההעברה המדורגת. בלי הדגל: הנתיב החי האמיתי (כיום המורשת).
 //   (ברירת המחדל: audits/no_long_test_text.txt — בעל ייחוס; הקובץ הגדול:
 //   audits/very_long_test_text.txt — בדיקות אינווריאנטים מוחלטים בלבד, ראה verify-corpus.py).
 //
@@ -106,9 +109,17 @@ function classifyOurs(pg, contentRowCount) {
 }
 
 function main() {
-  const args = process.argv.slice(2).filter((a) => a !== '--determinism' && a !== '--html');
+  const args = process.argv.slice(2).filter((a) => a !== '--determinism' && a !== '--html' && a !== '--unified');
   const wantDeterminism = process.argv.includes('--determinism');
   const wantHtml = process.argv.includes('--html');
+  // **שלב ההעברה — דגל בדיקה דו-מנועי (מקטע 1):** ‏--unified מריץ את אותם
+  // הקלטים וההגדרות בדיוק דרך **המנוע המאוחד** (RED_UNIFIED_IMUD=1 — עוקף
+  // את ה-dispatch למורשת ב-pipeline.typeset). המטרה: למנוע את עיוורון ה-CI
+  // של 9c.4/9c.5, שבו run-ours בדק את המורשת בזמן שהאתר החי הריץ את
+  // המנוע המאוחד. ברירת המחדל (בלי הדגל) נותרת הנתיב החי האמיתי —
+  // כלומר בודקים את מה שהמשתמשים מקבלים בפועל.
+  const wantUnified = process.argv.includes('--unified');
+  if (wantUnified) process.env.RED_UNIFIED_IMUD = '1';
   const text = fs.readFileSync(args[0] || path.join(AUD, 'no_long_test_text.txt'), 'utf8');
   const outDir = args[1] || path.join(AUD, 'layout-parity-artifacts');
   const srcLabel = path.relative(ROOT, path.resolve(args[0] || path.join(AUD, 'no_long_test_text.txt'))).replace(/\\/g, '/');
@@ -298,6 +309,11 @@ function main() {
     // בזרם none_rows במקום בסוף הטור הימני — הפרש סדר קריאה ב-P7.
     const fnStruct = [];
     for (const fn of (pg.footnotes || [])) {
+      // **שלב ההעברה (--unified):** המנוע המאוחד עשוי להחזיר פריטי הערה
+      // בצורה שונה (למשל בלי fn.lines או עם שדות אחרים). פריט ללא lines
+      // תקין אינו מפיל את בונה המודל — ההערות של המנוע המאוחד יועברו
+      // למודל במקטע 8 של ההעברה (הערות שוליים והערות צד); כאן מדלגים בבטחה.
+      if (!fn || !Array.isArray(fn.lines)) continue;
       // **S4.26 (זרימה רציפה):** פריט זרימה אחד לכל הערות העמוד — משוחזר
       // לפריטי הערה (מקובץ לפי noteIdx) לצרכי verify-corpus/C10; שורות
       // הזרימה נשפכות כשורות קריאה רגילות (סמנים בגודל רישום בפנים).
