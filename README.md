@@ -29,7 +29,7 @@ At the reviewed migration point, legacy IMUD layout remains the stable baseline 
 | Decisions/defaults | [DECISIONS.md](DECISIONS.md), [audits/SETTINGS_AND_TEXT_IDENTIFIERS_AUDIT.md](audits/SETTINGS_AND_TEXT_IDENTIFIERS_AUDIT.md) |
 | Engine map | [audits/ENGINE_CURRENT_STATE.md](audits/ENGINE_CURRENT_STATE.md), [audits/ENGINE_RUNTIME_PATHS.md](audits/ENGINE_RUNTIME_PATHS.md) |
 | Duplicated/parallel logic | [audits/ENGINE_DUPLICATION_REGISTER.md](audits/ENGINE_DUPLICATION_REGISTER.md) |
-| Unified engine plan | [audits/UNIFIED_ENGINE_MIGRATION_PLAN.md](audits/UNIFIED_ENGINE_MIGRATION_PLAN.md) |
+| Unified engine plan | [audits/UNIFIED_ENGINE_MIGRATION_PLAN.md](audits/UNIFIED_ENGINE_MIGRATION_PLAN.md), [transition inventory](audits/ENGINE_TRANSITION_INVENTORY_2026-11-19.md) |
 | Tests/corpora | `red-build/tests/`, `audits/*test_text.txt`, CI workflows |
 | Performance | [audits/PERFORMANCE_BASELINE.md](audits/PERFORMANCE_BASELINE.md), `tools/perf-*.js`, audit JSON |
 | AI requirements/history | `ai-chat/` and [spec/סיכום בקשות מAI.md](spec/סיכום בקשות מAI.md) |
