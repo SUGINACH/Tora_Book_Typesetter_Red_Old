@@ -42,6 +42,11 @@ node tools/layout-parity/run-ours.js # הרצת המנוע הישן + מודל +
 האפליקציה החיה: פתחו את `red-build/ui/index.html` בדפדפן (מקומי
 לחלוטין, אין בקשות רשת). ייצוא PDF/ZIP ב-Worker; ייצוא HTML עצמאי.
 
+**🔗 פריסה חיה (GitHub Pages):**
+<https://suginach.github.io/Tora_Book_Typesetter_Red_Old/> — עותק מקוון
+של גיבוי המנוע הישן (ענף `gh-pages`; נבדק: 421 עמודים, hash מורשת,
+אפס שגיאות).
+
 ## נקודת הכרעה יחידה
 `red-build/src/engine/core/pipeline.js` — `typeset()` מפנה ל-`legacyTypeset`
 כאשר ההגדרות מסומנות פרופיל IMUD; כל קלט אחר מקבל **שגיאה מפורשת**
