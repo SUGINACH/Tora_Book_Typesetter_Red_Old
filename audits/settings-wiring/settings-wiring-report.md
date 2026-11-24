@@ -84,6 +84,84 @@ gtoc/dtoc-show, gtoc/dtoc-grp), סימן (f/s-siman), פתיחות אי-זוגי
   fn-bar=1000 (נדרס ע"י תקרת 50% של body-first), header book-name-split/rest
   (זהים לחצאים ב-recto).
 
+
+## EXT-23 (25.11.2026) — סבב תיקונים שני: חיווט שאריות הסוויפ + שני באגי שורש
+
+**רקע:** סוויפ v2/v3 (הריצה החיה על מסמך fixed של 421 עמודים) השאיר 126 מפתחות
+ללא השפעה (פסק-דין פר-מפתח: 191 wired / 24 partial / 126 no-effect — מתוך 341).
+בדיקת שור שיטתית (Node + מסמך עשיר) הראתה שלושה סוגים: באגים אמיתיים,
+חסימות עדיפות, ושאריות מתועדות.
+
+### א. תיקוני חיווט (המנוע)
+
+| קבוצה | מפתחות | שורש + מנגנון |
+| --- | --- | --- |
+| פוליו שערים | main/back/sub-shaar-show-number | הצגה חייבה מספר: עמוד שאינו נספר אין לו גיליון להציג — כעת הדלקת show מכריחה ספירה של אותו עמוד |
+| ספירת שער-משנה | count-shaar-sub-pages | הגדרה חיה במקום cfg.countSubShaar (raw); ברירת המחדל ברישום תוקנה ל-true — כמקור (sub-shaar-count-numbering=true) וכהתנהגות ההיסטורית |
+| גיליון תוכן | general/detailed-toc-show-numbering | D-62 הוחל גם בנתיב המורשת (shows מותנה בדגל; ברירת מחדל true — ה-digest נעול) |
+| קיבוץ TOC | toc-{g,d}grp-1/2 | הדיפלוקט r.level<=2 הוסר — הקיבוץ נקרא מההגדרה לכל רמה (ברירות המחדל false/true משחזרות בדיוק) |
+| מספור שורות TOC | toc-count-row-numbers | קדומת מספר סידורי לטקסט השורה (ספירה מקומית לכל תוכן; כבוי כברירת מחדל) |
+| הערות — הסטה | note-placement-mode='endnotes', endnotes-enabled | הערות-שוליים מוסטות לזרם הערות-הסיום: המרזב לא נבנה, התקציב מתאפס, הגוף ממלא את העמוד; ההערות מתווספות לעמודי הסיום עם מספרי הסמנים שהוקצו |
+| הערות — טורים | endnote-columns | 1/2 טורים בעמודי הסיום (ברירת המחדל ברישום תוקנה 1→2 — הפריסה ההיסטורית); נמדד: 84 שורות ⇒ 51/33 (2 טורים) מול 51/33 בשני עמודים (1 טור) |
+| הערות-צד | s-note-body-font, s-note-body-color | marginApi מההגדרה (ברירת מחדל ברישום תוקנה ל-Hadassah — הגופן בפועל); הקרנה: תת-גופן דינמי S73; ה-DOM: fontOf |
+| עיטורי צד H3 | h3-side-orn (+height-em) | פס overlay אחרי ה-hash: עיטורי צד לפס h3-title (pyramid/lance/shoshanta/scroll או imud:) |
+| עיטור סיום פרק | chapter-end-ornament (+w/h-em) | תחתית העמוד האחרון של כל פרק H2 (לפני פתיחת ה-H2 הבא/סוף הספר); רק במקום פנוי — לעולם לא דוחף תוכן |
+| מפרידי כותרות | heading-dividers-h3-h6 | קו דק תחת H3 (פס) ו-H4..H6 (שורות טור); **תיקון דיו: סוג rule לא צויר ב-DOM כלל** (רק ב-PDF) — נוסף ענף רינדור |
+| דיבור המתחיל (ד"ה) | dh-auto-detect, dh-font, dh-color | כמו applyDibburHamatchil של המקור הירוק: פתיח הפסקה עד המפריד הראשון (≤80 תווים) מסומן dhWords; הרינדור ב-DOM (span w--dh) וב-PDF (תת-גופן דינמי + צבע) |
+| שער אחורי | shaar-back-text | טקסט שהוזן בכוונה גובר על יבוא ברירת-המחדל (imud-book-back-copyright / cfg.backCopyright) — עד כאן השדה היה חנוק לנצח |
+| סמנים חכמים | page-num-format (שחזור), טורי הערות | שחזור הערך אחרי הסוויפ אומת (notRestoredKeys ריק) |
+
+### ב. שני תיקוני שור שנחשפו בדרך
+
+1. **אובדן הערות-סיום מרובות (חמור):** שורות "הערת סיום -" רצופות דרסו זו את זו
+   (pendingEndNote נדרס) — במסמך ה-fixed **64 מתוך 65 הערות אבדו בשקט**. כעת כל
+   שורה נסגרר לטוקן עצמאי. שימור התוכן גובר על נעילת ה-digest (עיקרון S4.24);
+   הנעילות של s76/s77 חודשו מתועד: legacy-8b344→legacy-ff891, legacy-0861db→legacy-f0a28.
+2. **דיפלוקט בקיבוץ TOC:** רמות 1/2 הוצמדו בקוד (r.level<=2) בניגוד להגדרה.
+
+### ג. שיפורי ה-harness
+
+- **פסק-דין פר-מפתח** (wired/partial/no-effect) במקום all-or-nothing: מקרה אחד
+  שקול (למשל book-name-split מול first-half) לא ממית מפתח שלם.
+- **המתנת light-keys** 1200→2700ms — ה-dirty-guard של הרענון הקל נוקה ב-~2.5 שנ';
+  ב-1.2 שנ' הייצוא נחתך (err:dirty) והמפתחות סומנו ERROR בטעות.
+
+### ד. אימותים
+
+- **Node: 26/26 סוויטות ירוקות** (npm test; exit 0), דטרמיניזם OK.
+- **בדיקות ממוקדות בדפדפן** (fixed, 422 עמודים): h3-side-orn/chapter-end/toc-ggrp-2/
+  shaar-back-text/note-placement-mode=endnotes — CHANGED; dh-auto-detect/dh-color —
+  CHANGED (לאחר ייצוב בסיס); heading-dividers — CHANGED (לאחר תיקון הדיו).
+- **סוויפ v4 מלא:** 758 מקרים; 483 השפיעו; 191 wired + 24 partial; שחזור מלא
+  (notRestoredKeys=[]) ובסיס יציב (finalCheck.ok, hash legacy-47d53906…).
+  המסמך ה-fixed עלה 421→422 עמודים — **תוצאה רצויה**: 65 הערות-סיום נשמרות
+  במקום 1 (תיקון השור של אובדן ההערות).
+
+### ה. שאריות מתועדות לאחר EXT-23 (לא באגים)
+
+- **תלויות-מסמך (fixed חסר H0/H1/H7/shaar-sub):** heading-0/1-* (פריטי פאנל),
+  toc-*-1/*-7 (רמות 1 ו-7), toc-level-1/7-show/inline, show-shaar-sub,
+  shaar-sub-enabled, shaar-sections-*, odd-h0/odd-h1 (פתיחת H0 נוחתת במקרה באי-זוגי),
+  h2-reset-siman, sub-shaar-show-number, shaar-sub-box-*, count-endnote-pages
+  (הערות בסוף הספר — אין עמודים אחרי לראות את המספור). **אומתו LIVE במסמך עשיר**
+  (ext23-richdoc-check: heading-0/1, shaar-sub, toc-gshow-1 ועוד — 25/29 LIVE).
+- **תלויות-קומבינציה:** header-opening-* (דורש opening-dedicated), header-*-custom-text
+  (דורש source=custom), h3-side-orn-height-em / chapter-end-ornament-w/h-em (דורשים
+  את העיטור עצמו), imud-orn-* (מצב image דורש הפניה), long-footnote-policy (דורש
+  הערה חורגת), footnote-columns (המרזב חד-טורי היסטורי — הטור השני אינו ממומש).
+- **לא מומשו במנוע הישן וגם לא במקור:** aq-* (12), prevent-widows/orphans (4),
+  widow-strictness, runt-min-width-pct, balance-chapter-end,
+  allow-terminal-residual-fallback, imbalance-max-delta-px.
+- **חוזה A4 מכויל:** grid-* (4), margin-top/bottom-px, binding-offset-px, h2-top-offset.
+- **מקור האמת = המסמך:** imud-book-* (מטא-נתוני העורך גוברים), shaar-*-image.
+- **ממשק/ייצוא בלבד:** theme-set-id, trace-verbosity, diagnostics-enabled,
+  audit-stage-snapshots, offline-guard, debounce-light-change-ms, pdf-crop-marks,
+  export-bleed-mm, measure-impl, background-page-type.
+- **צימוד-פס:** heading-7-size-pt, first-word-align-cap-top, shaar-year-*,
+  shaar-main/sub-divider (ערכי CSS מול מזהי עיצוב), imud-shaar-sub, imud-divider,
+  imud-chapter-end, footnote-separator-rule וה-light-keys (אומתו חיים ידנית —
+  ה-blocking בסוויפ הוא dirty-guard, לא מוות).
+
 ## שימוש חוזר
 
 ה-harness נשמר ב-`tools/browser-settings-sweep.js` — לטעינה בקונסולת הדפדפן

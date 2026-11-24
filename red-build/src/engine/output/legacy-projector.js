@@ -418,6 +418,18 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
             markerSize: projCfg.markerSize });
         // **S73:** צבע גוף הטקסט מההגדרות (body-color; שחור ⇒ אפס אופרטורים)
         if (bodyColor) for (const w of words) if (w.color == null) w.color = bodyColor;
+        // **EXT-23 (ד"ה — דיבור המתחיל):** מילות הפתיח (dhWords מהזרימה) —
+        // גופן/צבע מההגדרות (dh-font ⇒ תת-גופן דינמי S73; dh-color).
+        const dhWordsS23 = Math.max(0, Number(ln.dhWords) || 0);
+        if (dhWordsS23 > 0) {
+          const dhFamS23 = String(settings['dh-font'] || '');
+          const dhKeyS23 = dhFamS23 ? fontKeyOf(dhFamS23) : null;
+          const dhColS23 = colorOf(settings['dh-color']);
+          for (let wi2 = 0; wi2 < Math.min(dhWordsS23, words.length); wi2++) {
+            if (dhKeyS23 && dhFamS23) words[wi2].fontKey = dhKeyS23;
+            if (dhColS23) words[wi2].color = dhColS23;
+          }
+        }
       }
       out.lines.push({
         x: col.x, y: ln.y, w: col.w, h: ln.heightPx, words,
@@ -433,7 +445,14 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
   // שלהן ב-DOM הוא heading-7-font — Hadassah; האפור הקבוע #404040 של D-89
   // הוחלף בהגדרה עם ברירת מחדל שחורה — בקשת משתמש מפורשת). בלי ערך —
   // שחור (אפס אופרטורי rg).
-  const mnColor = headingColorOf(7);
+  // **EXT-23 (s-note-body-font/color):** גופן וצבע גוף הערות-צד מההגדרות —
+  // ברירת המחדל Hadassah/'margin' משחזרת את המפתח ההיסטורי; משפחה אחרת
+  // רשומה מצוירת כתת-גופן דינמי (מנגנון S73 — כמו המדידה marginApi).
+  const mnFamS23 = String(settings['s-note-body-font'] || 'Hadassah Friedlaender');
+  const mnFontKeyS23 = fontKeyOf(mnFamS23);
+  // EXT-23: צבע גוף הערות-צד — s-note-body-color (שחור = אין אופרטור),
+  // נפילה לצבע הכותרת ההיסטורי (heading-7-color) כשאין ערך
+  const mnColorS23 = colorOf(settings['s-note-body-color']) || headingColorOf(7);
   for (const mn of (pg.marginNotes || [])) {
     const x = mn.side === 'right' ? GEO.MARGIN_R_X : GEO.MARGIN_L_X;
     for (const l of mn.lines) {
@@ -441,7 +460,7 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
       // **S5.1:** הערות-צד בגופן המקור (Hadassah Friedlaender — כמו המדידה
       // במנוע וכמו ה-DOM); עד כאן צוירו בגוף הטקסט — התצוגה ≠ הייצוא בגופנים.
       const words = placeWords(l.text.split(' '), mnApi, x, GEO.MARGIN_W, SZ.marginNote, 'center', baseY);
-      for (const w of words) { w.fontKey = 'margin'; if (mnColor) w.color = mnColor; }
+      for (const w of words) { w.fontKey = mnFontKeyS23; if (mnColorS23) w.color = mnColorS23; }
       out.lines.push({
         x, y: l.y, w: GEO.MARGIN_W, h: GEO.MN_PITCH, words, align: 'center',
         kind: 'margin-note', level: null, isLast: false, sizePt: SZ.marginNote,

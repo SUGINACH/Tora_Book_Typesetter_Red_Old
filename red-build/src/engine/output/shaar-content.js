@@ -139,7 +139,10 @@ function buildShaarBlocks(page, settings, metadata) {
     // של המקור. מקור הערך: שדה ההגדרה גובר (ייבוא inp-book-back-*;
     // shaar-back-text ההיסטורי לזכויות); נפילה למטא המסמך (כמו המורשת).
     // **אין כותרת-ספר/מחבר/שנה בשער האחורי** ו**אין ערכים מומצאים**.
-    const copyright = settings['imud-book-back-copyright'] || settings['shaar-back-text'] || meta['שמירת זכויות'] || '';
+    // **EXT-23 (חיווט shaar-back-text):** טקסט שהוזן בכוונה בשדה ההיסטורי גובר
+    // על יבוא ברירת-המחדל (imud-book-back-copyright) — עד כאן השדה היה חנוק
+    // לנצח תחת ערך הייבוא. ברירת המחדל (ריק) — שרשרת הנפילות כמו קודם (digest נעול).
+    const copyright = String(settings['shaar-back-text'] || '').trim() || settings['imud-book-back-copyright'] || meta['שמירת זכויות'] || '';
     const publisher = settings['imud-book-back-publishing'] || meta['פרטי הוצאה לאור'] || '';
     const contact = settings['imud-book-back-contact'] || meta['פרטי קשר'] || '';
     const extra = settings['imud-book-back-extra'] || meta['פרטים נוספים'] || '';

@@ -208,8 +208,12 @@ describe('S76 — נייטרליות legacy מלאה (התיקונים ב-body-f
     // line-height 1.22 של ה-CSS המקורי חל על שני מצבי הצבת ההערות כאחד
     // (הכותרת אינה תלויה במצב ההערות); אותה הצדקה ואותו דוח כמו s72.
     // הקודם: legacy-1231b1b7e15cb.
-    assert(r.layoutHash.startsWith('legacy-8b3449320ba23'),
-      `legacy אינו נייטרלי — התקבל ${r.layoutHash.slice(0, 20)} (צפוי נעילת S74+R-03+H3-CSS)`);
+    // **EXT-23 (שימור הערות-סיום מרובות):** נעילה מחודשת legacy-8b344→legacy-ff891 —
+    // 65 הערות-הסיום הרצופות של המסמך הקבוע דרסו זו את זו (pendingEndNote נדרס;
+    // רק האחרונה שרדה — 64 הערות אבדו בשקט). התיקון סוגרר כל שורה לטוקן
+    // עצמאי; שימור התוכן גובר על הנעילה (עיקרון S4.24). הקודם: legacy-8b3449320ba23.
+    assert(r.layoutHash.startsWith('legacy-ff89157b56301'),
+      `legacy אינו נייטרלי — התקבל ${r.layoutHash.slice(0, 20)} (צפוי נעילת S74+R-03+H3-CSS+EXT-23)`);
   });
 
   it('body-first במסמך הבדיקה הקבוע: ההאש החדש של S76 (שינוי מכוון, מתועד ב-s72)', () => {
@@ -225,7 +229,9 @@ describe('S76 — נייטרליות legacy מלאה (התיקונים ב-body-f
     // **H3-CSS (17.11):** נעילה מחודשת legacy-a0946→legacy-5f0dc — חוזה
     // ה-CSS המקורי (pitch 1.22, ריפודים 8/4/4); ההצדקה המלאה ב-s72
     // וב-audits/H3_SPACING_OLD_STYLE_PARITY_2026-11-17.md. הקודם: legacy-a0946f99c7c197bd.
-    assert(r.layoutHash.startsWith('legacy-0861db'),      `body-first נעול על ההאש החדש — התקבל ${r.layoutHash.slice(0, 20)}`);
+    // **EXT-23:** נעילה מחודשת legacy-0861db→legacy-f0a28 — אותו שימור-הערות
+    // (65 הערות-סיום במקום 1). הקודם: legacy-0861db…
+    assert(r.layoutHash.startsWith('legacy-f0a28cfec8c1'),      `body-first נעול על ההאש החדש — התקבל ${r.layoutHash.slice(0, 20)}`);
     assertEq(r.contentPreserved, true, 'שימור תוכן');
   });
 });

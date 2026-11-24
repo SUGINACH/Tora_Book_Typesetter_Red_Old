@@ -146,7 +146,9 @@
       const applied = normEq(settingsVal(c.key), c.val);
       let settleInfo = '';
       if (LIGHT_KEYS.has(c.key)) {
-        await sleep(1200);
+        // **EXT-23:** ה-dirty-guard של הרענון הקל נוקה ב-~2.5 שנ' (debounce);
+        // 1.2 שנ' קטעו את הייצוא (err:dirty) — המתנה ארוכה יותר.
+        await sleep(2700);
         settleInfo = 'light';
       } else {
         clickRetypeset();
@@ -231,9 +233,26 @@
     const errors = ok.filter(function (r) { return r.err || r.settle === 'TIMEOUT'; });
     const notApplied = ok.filter(function (r) { return r.applied === false; });
     const notRestored = ok.filter(function (r) { return r.restoredOk === false; });
+    // **EXT-23:** פסק דין פר-מפתח — wired/partial/no-effect (מקרה אחד
+    // ללא שינוי אינו ממית מפתח שלם: ערכים שקולים/תלויי-מסמך מסומנים
+    // partial ולא no-effect).
+    const perKey = {};
+    for (const r of ok) {
+      if (!perKey[r.key]) perKey[r.key] = { cases: 0, changed: 0 };
+      perKey[r.key].cases++;
+      if (r.changed) perKey[r.key].changed++;
+    }
+    const verdicts = { WIRED: [], PARTIAL: [], NO_EFFECT: [] };
+    for (const k of Object.keys(perKey)) {
+      const v = perKey[k];
+      if (v.changed === v.cases) verdicts.WIRED.push(k);
+      else if (v.changed > 0) verdicts.PARTIAL.push(k);
+      else verdicts.NO_EFFECT.push(k);
+    }
     return {
       total: S.results.length, ms: S.ms || (Date.now() - S.startedAt),
       changedCount: ok.filter(function (r) { return r.changed; }).length,
+      perKeyVerdicts: verdicts,
       noChangeKeys: [...new Set(noChange.map(function (r) { return r.key; }))],
       errorKeys: [...new Set(errors.map(function (r) { return r.key; }))],
       notApplied: notApplied.map(function (r) { return { key: r.key, val: r.val, before: r.before }; }),

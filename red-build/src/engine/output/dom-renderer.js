@@ -174,7 +174,12 @@ function renderLine(ln, doc, settings = {}) {
   const words = (ln.words || []).map(w => scrubPUAText(w));
   const spans = ln.parenSpans || [];
   const customs = ln.customSpans || [];
-  if ((spans.length && parenScale !== 1) || customs.length) {
+  // **EXT-23 (ד"ה — דיבור המתחיל):** פתיח הפסקה (מסומן בדגל dhWords מהזרימה)
+  // נצייר בגופן/צבע של dh-font/dh-color — כמו --fn-dh/--dh-color במקור הירוק.
+  const dhWords = Math.max(0, Number(ln.dhWords) || 0);
+  const dhFam = dhWords && settings['dh-font'] ? fontStack(settings['dh-font']) : null;
+  const dhCol = dhWords ? (settings['dh-color'] || null) : null;
+  if ((spans.length && parenScale !== 1) || customs.length || (dhWords && (dhFam || dhCol))) {
     for (let i = 0; i < words.length; i++) {
       const span = doc.createElement('span');
       const cIdx = customs.findIndex(c => c.wi === i);
@@ -184,6 +189,11 @@ function renderLine(ln, doc, settings = {}) {
       } else if (spans.includes(i)) {
         span.className = 'w w--paren';
         span.style.fontSize = `${Math.round(parenScale * 100)}%`;
+      } else if (i < dhWords && (dhFam || dhCol)) {
+        // **EXT-23 (ד"ה):** מילות הפתיח — גופן/צבע מההגדרות
+        span.className = 'w w--dh';
+        if (dhFam) span.style.fontFamily = dhFam;
+        if (dhCol) span.style.color = dhCol;
       } else {
         span.className = 'w';
       }
@@ -1283,9 +1293,11 @@ function renderLegacyPage(pg, settings, doc) {
   // **S4.26:** גופן הערות-הצד מההגדרות (ברירת מחדל: Hadassah Friedlaender
   // — כמו המדידה במנוע וכמו הייחוס); עד כאן ירשו את גופן הגוף.
   {
-    const mnFont = fontOf('heading-7-font');
-    // **S73:** צבע הערות-צד — heading-7-color (הגופן בפועל); שחור כברירת מחדל
-    const mnCol = nonBlack(settings['heading-7-color']);
+    // **EXT-23 (s-note-body-font/color):** גופן וצבע גוף הערות-הצד מההגדרות —
+    // ברירת המחדל Hadassah/#000000 משחזרת בדיוק את הקבועים ההיסטוריים
+    // (הגופן בפועל היה heading-7-font = Hadassah); הצבע הקודם — heading-7-color.
+    const mnFont = fontOf('s-note-body-font') || fontOf('heading-7-font');
+    const mnCol = nonBlack(settings['s-note-body-color']) || nonBlack(settings['heading-7-color']);
     for (const mn of (pg.marginNotes || [])) {
       const x = mn.side === 'right' ? GEO.MARGIN_R_X : GEO.MARGIN_L_X;
       for (const l of (mn.lines || [])) {
@@ -1510,6 +1522,14 @@ function renderLegacyPage(pg, settings, doc) {
         r.style.backgroundColor = `rgb(${Math.round(ink.color[0] * 255)},${Math.round(ink.color[1] * 255)},${Math.round(ink.color[2] * 255)})`;
         if (d.kind === 'shaar-panel') { r.style.zIndex = '0'; root.insertBefore(r, root.firstChild); }
         else root.appendChild(r);
+      } else if (ink.type === 'rule') {
+        // **EXT-23 (heading-dividers-h3-h6):** קו דק (kindStyle 'thin'/'line') —
+        // עד כאן סוג ה-rule לא צויר בכלל ב-DOM (רק ב-PDF); המפרידים לא נראו.
+        const r = doc.createElement('div');
+        r.className = 'deco deco--rule';
+        position(r, d.x, d.y, d.w, Math.max(1, d.h));
+        r.style.backgroundColor = '#000000';
+        root.appendChild(r);
       } else if (ink.type === 'svg' || ink.type === 'image') {
         const r = doc.createElement('div');
         r.className = 'deco deco--' + (ink.type === 'svg' ? 'svg' : 'img');

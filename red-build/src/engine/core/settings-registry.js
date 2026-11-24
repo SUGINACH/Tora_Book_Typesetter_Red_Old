@@ -59,7 +59,7 @@ const registry = [
   // הזה ואילך; הערך האפקטיבי = סוד − start‑idx + initial‑value (נוסחת V1 formatPageNumberDisplay).
   K('page-num-start-idx', 'number', 1, P.GRID, 'inp-page-num-start-idx', ['decoration/folio'], 'fx:folio-start-idx', { min: 1, max: 999, note: 'שוחזר מ‑V1 (REQ-HDR-03): סוד העמוד הנספר שממנו מתחיל התצוגה' }),
   K('count-shaar-pages', 'bool', false, P.GRID, 'chk-count-shaar', ['decoration/folio'], 'fx:count-shaar'),
-  K('count-shaar-sub-pages', 'bool', false, P.GRID, 'chk-count-shaar-sub', ['decoration/folio'], 'fx:count-shaar-sub', { note: 'Iteration-003: המקור מונה שערי-משנה בפוליו אך לא את השערים הראשי/אחורי (sub-shaar-count-numbering=true, main/back=false) — בקרה פר-סוג' }),
+  K('count-shaar-sub-pages', 'bool', true, P.GRID, 'chk-count-shaar-sub', ['decoration/folio'], 'fx:count-shaar-sub', { note: 'Iteration-003: המקור מונה שערי-משנה בפוליו אך לא את השערים הראשי/אחורי (sub-shaar-count-numbering=true, main/back=false) — בקרה פר-סוג. EXT-23: ברירת המחדל תוקנה ל-true — כמקור וכהתנהגות ההיסטורית של המנוע (ספירת שערי-המשנה); הערך הקודם (false) לא תאם לאף אחד מהם' }),
   // **EXT-22:** הצגת הגיליון על עמודי השערים (main/back/sub-shaar-show-number
   // במקור; ברירת המחדל false — השערים אינם מציגים מספר, כמו המקור).
   K('main-shaar-show-number', 'bool', false, P.GRID, 'chk-main-shaar-show-num', ['layout/legacy-imud-flow'], 'fx:main-shaar-show-num'),
@@ -180,9 +180,9 @@ const registry = [
   K('fn-placement-mode', 'enum', 'body-first', P.NOTES, 'sel-fn-placement', ['layout/legacy-imud-flow'], 'fx:fn-placement', { enum: ['body-first', 'legacy'], note: 'S75 (בקשה 1): body-first (ברירת המחדל) — הגוף ממלא את העמוד; ההערות נכנסות בחלל שמתחת לגוף (תקרה 50% מגובה הזרימה); הערה שאינה נכנסת מוצבת חלקית והמשכה בעמוד הבא; legacy = מנגנון S74 הקודם (שער תקציב-ההערות + קיבולת עמוד מלאה)' }),
   K('endnotes-enabled', 'bool', false, P.NOTES, 'chk-endnotes', ['layout/legacy-imud-flow'], 'fx:endnotes-on', { note: 'נגזר מ‑note-placement-mode=endnotes (D-39); קלט ישן true ממופה ל‑mode=endnotes בהגירה (project-io)' }),
   K('endnote-title-text', 'string', 'הערות', P.NOTES, 'inp-endnote-title', ['layout/legacy-imud-flow'], 'fx:endnote-title'),
-  K('endnote-columns', 'number', 1, P.NOTES, 'sel-en-cols', ['layout/legacy-imud-flow'], 'fx:en-cols', { enum: [1, 2], note: 'S7.1.1: טור אחד או שניים בעמודי הערות' }),
+  K('endnote-columns', 'number', 2, P.NOTES, 'sel-en-cols', ['layout/legacy-imud-flow'], 'fx:en-cols', { enum: [1, 2], note: 'S7.1.1: טור אחד או שניים בעמודי הערות. EXT-23: ברירת המחדל תוקנה ל-2 — הפריסה ההיסטורית בפועל של עמודי הערות (שני טורים); הערך הקודם (1) לא תאם לרינדור והיה חסר צרכן ממילא' }),
   K('f-note-body-font', 'font', 'אסיסטנט קל מאוד', P.NOTES, 'sel-fnote-body-font', ['layout/legacy-imud-flow', 'layout/legacy-imud-flow'], 'fx:fnote-body-font', { note: 'S74 (בעיה 5): ברירת המחדל של הרינדור בפועל של הגרסה הישנה — Assistant ExtraLight 8.5pt (נמדד בייחוס עמ׳ 31/37: כל שורות גוף ההערה; הסמן בלבד FRL 8pt). הגדרת f-note-body הישנה (FRL) לא חוברה לרינדור בפועל במקור' }),
-  K('s-note-body-font', 'font', 'Frank Ruhl Libre', P.NOTES, 'sel-snote-body-font', ['layout/legacy-imud-flow'], 'fx:snote-body-font'),
+  K('s-note-body-font', 'font', 'Hadassah Friedlaender', P.NOTES, 'sel-snote-body-font', ['layout/legacy-imud-flow', 'output/legacy-projector', 'output/dom-renderer'], 'fx:snote-body-font', { note: 'EXT-23: ברירת המחדל = הגופן בפועל של הרינדור ההיסטורי (Hadassah — כמדידת marginApi וה-DOM); הערך הקודם (FRL) לא תאם לרינדור — הוחלף כדי לנעול את ה-digest' }),
   // **S73 (צבע פר-גופן — הערות):** ברירת מחדל שחורה (בקשת משתמש מפורשת:
   // "ברירת המחדל של כל הגופנים ללא יוצא מן הכלל = שחור"). האפור הקבוע
   // (#404040) של הערות-הצד הוחלף בהגדרה.

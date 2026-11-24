@@ -196,10 +196,10 @@ describe('S77 בקשה 1 — שורת החיתוך מיושבת לשני הצד�
     // H3 בלבד legacy-5f0dc · F-BL2 בלבד legacy-1457d · משולב legacy-0861db.
     // **H3-CSS (17.11):** נעילה מחודשת legacy-a0946→legacy-5f0dc — חוזה ה-CSS
     // המקורי לכותרת 3; ההצדקה ב-s72 וב-audits/H3_SPACING_OLD_STYLE_PARITY_2026-11-17.md.
-    assert(r.layoutHash.startsWith('legacy-0861db'),      `body-first נעול על ההאש של S76+R-03 — התקבל ${r.layoutHash.slice(0, 20)} (cutLast/centerLast אסור שיזיזו שורות)`);
+    assert(r.layoutHash.startsWith('legacy-f0a28cfec8c1'),      `body-first נעול על ההאש של S76+R-03+EXT-23 — התקבל ${r.layoutHash.slice(0, 20)} (cutLast/centerLast אסור שיזיזו שורות)`); // EXT-23: שימור 65 הערות-סיום
     const rOld = legacyTypeset(text, { ...s, 'fn-placement-mode': 'legacy' }, {});
     // **H3-CSS (17.11):** נעילה מחודשת legacy-1231b→legacy-8b344 — אותו חוזה במצב legacy.
-    assert(rOld.layoutHash.startsWith('legacy-8b3449320ba23'),
+    assert(rOld.layoutHash.startsWith('legacy-ff89157b56301'), // EXT-23: שימור 65 הערות-סיום (הקודם: legacy-8b344)
       `legacy נשאר נעול על S74+R-03 — התקבל ${rOld.layoutHash.slice(0, 20)}`);
   });
 });
