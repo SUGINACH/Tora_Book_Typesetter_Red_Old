@@ -120,9 +120,15 @@ describe('D-108 מטריצת הפוליו — פורמט חשוף בכל הער�
   it('מקור יחיד: אתרי הפוליו של המורשת מחוברים לפורמט החשוף (לא ל-toGematria)', () => {
     // שמירה מפני רגרסיה: אם אתר folioDisplay/fallback-ה-TOC יחזור ל-toGematria
     // (שמוסיף מפריד אלפים מעל 999) — הבדיקה נכשלת. סריקת מקור כמו s10-ui.
+    // **EXT-20 (בדיקת דפדפן 24.11):** האתרים עברו דרך folioOf — עטיפת
+    // page-num-format שברירת המחדל שלה ('hebrew') היא toBareGematria החשופה;
+    // הבדיקה נותרה מגן-רגרסיה על אותה אינווריאנטה דרך המבנה החדש.
     const src = fs.readFileSync(path.join(RB, 'src/engine/layout/legacy-imud-flow.js'), 'utf8');
-    assert(src.includes('toBareGematria(p.pageNumber)'), 'אתר folioDisplay של המורשת משתמש ב-toBareGematria');
-    assert(src.includes('toBareGematria(pi)'), 'fallback תווית ה-TOC של h1 משתמש ב-toBareGematria');
+    assert(src.includes('folioOf(p.pageNumber)'), 'אתר folioDisplay של המורשת מחובר ל-folioOf');
+    assert(src.includes('folioOf(pi)'), 'fallback תווית ה-TOC של h1 מחובר ל-folioOf');
+    assert(src.includes("if (pnFormatRaw === 'decimal') return String(num);"), 'folioOf תומך decimal (EXT-20)');
+    assert(src.includes("if (pnFormatRaw === 'daf-hebrew') return 'דף ' + toBareGematria(num);"), 'folioOf תומך daf-hebrew');
+    assert(/return toBareGematria\(num\); \/\/ hebrew/.test(src), 'ברירת המחדל של folioOf היא toBareGematria החשופה (D-108)');
     assert(!src.includes('toGematria(p.pageNumber)'), 'אף אתר פוליו לא חוזר ל-toGematria');
     assert(src.includes("require('../decoration/folio')"), 'המורשת מייבאת את מקור הפורמט המשותף');
   });

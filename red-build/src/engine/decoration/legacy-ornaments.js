@@ -63,16 +63,27 @@ function planLegacyOrnaments(pages, settings, measureFn, io = {}) {
     const kindTop = settings['h2-orn-top'];
     const kindBottom = settings['h2-orn-bottom'];
     const kindSide = settings['h2-orn-side'];
+    // **EXT-20 (בדיקת דפדפן 24.11 — חיבור בוררי הספרייה):** מצב 'image' —
+    // העיצור מספריית IMUD דרך ההפניה שהבורר כותב (imud-orn-*; לפני כן 'image'
+    // היה חסר מקור ונפל שקט). בלי הפניה — העיטור לא מוזרק (אין דיו) — כמו 'none'.
+    const styleOf = (kind, refKey) => {
+      if (kind !== 'image') return kind;
+      const ref = settings[refKey];
+      return ref ? String(ref) : null;
+    };
+    const styleTop = styleOf(kindTop, 'imud-orn-top');
+    const styleBottom = styleOf(kindBottom, 'imud-orn-bottom');
+    const styleSide = styleOf(kindSide, 'imud-orn-side');
 
     // גבולות אזור-h2 חוקיים: מעל הפס העליון, ועד ראש זרימת הגוף של העמוד
     const flowTop = flowTopOf(pg, title);
 
     // ---------- עיטור עליון (מעל הסימן/הכותרת; REQ-ORN-01/02) ----------
-    if (scope.signTop && kindTop && kindTop !== 'none') {
+    if (scope.signTop && styleTop && styleTop !== 'none') {
       const y = topBand.y - margins.top - ornH;
       if (y >= 60) { // לא מטפס מעל אזור הכותרת העליונה של העמוד
         const x = centerX - ornW / 2;
-        pg.decorations.push({ x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100, w: ornW, h: ornH, kind: 'h2-orn-top', slot: 'sign-top', kindStyle: kindTop });
+        pg.decorations.push({ x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100, w: ornW, h: ornH, kind: 'h2-orn-top', slot: 'sign-top', kindStyle: styleTop });
         out.planted++;
       } else {
         out.rejected.push({ page: pg.folioDisplay || pg.index, slot: 'sign-top', reason: 'no-room-above', ornH });
@@ -81,11 +92,11 @@ function planLegacyOrnaments(pages, settings, measureFn, io = {}) {
     }
 
     // ---------- עיטור תחתון (מתחת לכותרת; בתוך אזור ה-h2 בלבד — שיעור F-08) ----------
-    if (scope.signBottom && kindBottom && kindBottom !== 'none') {
+    if (scope.signBottom && styleBottom && styleBottom !== 'none') {
       const y = title.y + title.h + margins.bottom;
       if (y + ornH <= flowTop - 1) { // חייב להיכנס לאזור — לא לחדור לזרימת הגוף
         const x = centerX - ornW / 2;
-        pg.decorations.push({ x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100, w: ornW, h: ornH, kind: 'h2-orn-bottom', slot: 'sign-bottom', kindStyle: kindBottom });
+        pg.decorations.push({ x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100, w: ornW, h: ornH, kind: 'h2-orn-bottom', slot: 'sign-bottom', kindStyle: styleBottom });
         out.planted++;
       } else {
         out.rejected.push({ page: pg.folioDisplay || pg.index, slot: 'sign-bottom', reason: 'no-room-below', ornH, flowTop });
@@ -94,15 +105,15 @@ function planLegacyOrnaments(pages, settings, measureFn, io = {}) {
     }
 
     // ---------- עיטורי צד (משני צדי הכותרת; ממורכזים אנכית לפס) ----------
-    if (scope.titleSide && kindSide && kindSide !== 'none') {
+    if (scope.titleSide && styleSide && styleSide !== 'none') {
       const gap = Math.max(4, Math.round(h2FontPx * 0.15));
       const y = title.y + (title.h - ornH) / 2;
       const halfTitle = (titleWpx * (scale > 0 ? 1 : 1)) / 2;
       const rightX = centerX + halfTitle + gap;
       const leftX = centerX - halfTitle - gap - ornW;
       if (rightX + ornW <= bandX + bandW && leftX >= bandX) {
-        pg.decorations.push({ x: Math.round(rightX * 100) / 100, y: Math.round(y * 100) / 100, w: ornW, h: ornH, kind: 'h2-orn-side', slot: 'side-r', kindStyle: kindSide });
-        pg.decorations.push({ x: Math.round(leftX * 100) / 100, y: Math.round(y * 100) / 100, w: ornW, h: ornH, kind: 'h2-orn-side', slot: 'side-l', kindStyle: kindSide });
+        pg.decorations.push({ x: Math.round(rightX * 100) / 100, y: Math.round(y * 100) / 100, w: ornW, h: ornH, kind: 'h2-orn-side', slot: 'side-r', kindStyle: styleSide });
+        pg.decorations.push({ x: Math.round(leftX * 100) / 100, y: Math.round(y * 100) / 100, w: ornW, h: ornH, kind: 'h2-orn-side', slot: 'side-l', kindStyle: styleSide });
         out.planted += 2;
       } else {
         out.rejected.push({ page: pg.folioDisplay || pg.index, slot: 'side', reason: 'title-too-wide', titleW: titleWpx });

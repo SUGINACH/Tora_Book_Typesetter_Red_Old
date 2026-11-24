@@ -1,8 +1,8 @@
 {
   "tool": "cross-check",
   "schema": 1,
-  "started": "2026-11-24T12:59:40.141Z",
-  "commit": "933e6c5",
+  "started": "2026-11-24T16:59:09.939Z",
+  "commit": "0dd85d0",
   "node": "v24.22.3",
   "corpora": [
     {
@@ -15,19 +15,19 @@
       "lockHash": "legacy-28f52",
       "contentPreserved": true,
       "hashOk": true,
-      "ms": 5376
+      "ms": 5466
     }
   ],
   "bundles": [
     {
       "file": "red-build/ui/app.bundle.js",
-      "sha256": "8b386bff363c788b",
-      "bytes": 1295739
+      "sha256": "bf89379058541cbc",
+      "bytes": 1322902
     },
     {
       "file": "red-build/ui/engine-worker.bundle.js",
-      "sha256": "dc5001922410f197",
-      "bytes": 987938
+      "sha256": "cee2b543f859e93d",
+      "bytes": 1015077
     }
   ],
   "live": null,

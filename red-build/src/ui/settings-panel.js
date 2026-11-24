@@ -307,7 +307,7 @@ function buildImudPicker(doc, opts) {
     { label: 'שער אחורי', collection: 'shaar-back', setting: 'imud-shaar-back' },
     { label: 'עיטור עליון (H2)', collection: 'orn-ud', setting: 'imud-orn-top', imageMode: 'h2-orn-top' },
     { label: 'עיטור תחתון (H2)', collection: 'orn-ud', setting: 'imud-orn-bottom', imageMode: 'h2-orn-bottom' },
-    { label: 'עיטור צדדי', collection: 'orn-lr', setting: 'imud-orn-side' },
+    { label: 'עיטור צדדי', collection: 'orn-lr', setting: 'imud-orn-side', imageMode: 'h2-orn-side' },
     { label: 'עיטור סיום פרק', collection: 'orn-ud', setting: 'imud-chapter-end', imageMode: 'chapter-end-ornament' },
     { label: 'מפריד מעוצב', collection: 'divider', setting: 'imud-divider' }
   ];

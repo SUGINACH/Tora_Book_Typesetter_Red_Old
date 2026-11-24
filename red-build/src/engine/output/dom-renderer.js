@@ -67,14 +67,15 @@ function bgRgba(color, opacity) {
  * (בעבר היה כאן ממיר מקומי שני — אי־עקביות מספור, P1-3.)
  */
 const { markerForSettings } = require('../notes/markers');
-const { planDecorations } = require('../decoration/page-decorations');
+const { planDecorations, planBackground, backgroundClassForPage } = require('../decoration/page-decorations');
 const { resolveShaarBox } = require('../decoration/shaar-boxes');
-const { columnDividerHeightPx } = require('../decoration/ornament-fit');const { folioGeometry } = require('../layout/furniture-geometry'); // **שלב 6:** גיאומטריית הגיליון — מקור יחיד עם הפרויקטור ל-PDF
+const { columnDividerHeightPx } = require('../decoration/ornament-fit');
+const { folioGeometry } = require('../layout/furniture-geometry'); // **שלב 6:** גיאומטריית הגיליון — מקור יחיד עם הפרויקטור ל-PDF
 
 const { resolveAssetRef } = require('../decoration/asset-registry');
 const { ornamentInk } = require('../decoration/ornament-ink'); // **03.11:** imud: → data-URI
 const { MM_TO_PX } = require('../layout/page-templates');
-const { isCssFrame } = require('../decoration/folio'); // **S9:** מסגרות גיליון CSS (circle/square)
+const { isCssFrame, frameNumber } = require('../decoration/folio'); // **S9:** מסגרות גיליון CSS (circle/square) + **EXT-20:** תוויות טקסטואליות
 const { assignFootnoteLanes } = require('../layout/footnote-lanes'); // **שלב 5:** מקור-אמת יחיד לחלוקת נתיבי המרזב
 const { lineFontSizePt, lineFontFamily, ptToPx } = require('./line-font');
 const { buildShaarBlocks, shaarFontOf } = require('./shaar-content'); // **03.11(ד)** // **03.11(ג):** מקור יחיד לגופן/גודל שורה
@@ -794,6 +795,32 @@ function renderLegacyPage(pg, settings, doc) {
   // **S73:** צבע גוף הטקסט מההגדרות (body-color; שחור ⇒ ירושת ברירת מחדל)
   const bodyColS = nonBlack(settings['body-color']);
   if (bodyColS) root.style.color = bodyColS;
+  // **EXT-20 (בדיקת דפדפן 24.11 — "כל ההגדרות מחוברות"):** רקע העמוד
+  // מההגדרות — background-color/background-opacity — בדיוק כמו הנתיב
+  // הכללי (renderPage; P0-5: rgba אמיתי). עד כאן העמודים המורשים לא קיבלו
+  // רקע כלל — ההגדרות לא השפיעו בפרופיל המורשת. ברירת המחדל (לבן)
+  // לא כותבת סגנון — digest נשמר.
+  const bgLegacy = settings['background-color'];
+  const bgOpLegacy = settings['background-opacity'];
+  if (bgLegacy && bgLegacy !== '#ffffff') root.style.backgroundColor = bgRgba(bgLegacy, bgOpLegacy != null ? bgOpLegacy : 1);
+  else if (Number.isFinite(bgOpLegacy) && bgOpLegacy < 1) root.style.backgroundColor = bgRgba('#ffffff', bgOpLegacy);
+  // **EXT-20:** רקע תמונה/טקסטורה לעמודי המורשת — מאותו מקור כמו הנתיב
+  // הכללי (planBackground: שעלת background-page-type + המרת inset ל-px).
+  // ברירת המחדל (ללא image/texture) ⇒ null ⇒ אפס אלמנטים — digest נשמר.
+  const bgPlanLegacy = planBackground(pg, settings);
+  if (bgPlanLegacy && bgPlanLegacy.image) {
+    const bgImgEl = doc.createElement('div');
+    bgImgEl.className = 'deco deco--page-background';
+    bgImgEl.style.backgroundImage = `url("${assetUri(bgPlanLegacy.image) || bgPlanLegacy.image}")`;
+    bgImgEl.style.inset = `${bgPlanLegacy.insetPx}px`;
+    root.appendChild(bgImgEl);
+  }
+  if (bgPlanLegacy && bgPlanLegacy.texture) {
+    const bgTexEl = doc.createElement('div');
+    bgTexEl.className = 'deco deco--page-texture';
+    bgTexEl.style.backgroundImage = `url("${assetUri(bgPlanLegacy.texture) || bgPlanLegacy.texture}")`;
+    root.appendChild(bgTexEl);
+  }
   const pt2px = (pt) => pt * (96 / 72);
   const position = (el, x, y, w, h) => {
     el.style.position = 'absolute';
@@ -1029,6 +1056,22 @@ function renderLegacyPage(pg, settings, doc) {
         const hc = nonBlack(settings[`heading-${ln.level}-color`]);
         if (hc) el.style.color = hc;
       }
+      // **EXT-20 (בדיקת דפדפן 24.11):** גופן גוף ההקדמה (heading-0-body-font
+      // ⇒ ln.font מהמודל). הזרקה רק לשורות הקדמה שערכן שונה מברירת המחדל
+      // של המקור (f-h0-body ⇒ Frank Ruhl Libre): שורות גוף רגילות (ln.font
+      // = גוף הטקסט — יורשות מהשורש) ושורות הקדמה בברירת המחדל נשארות ללא
+      // סגנון — ה-HTML זהה בתים (digest); ערך אחר מוזרק מיד.
+      if (ln.font && ln.kind !== 'heading') {
+        const rawFh0 = imudSetAll['f-h0-body'];
+        const prefaceDefaultFam = rawFh0
+          ? String(rawFh0).split(',')[0].replace(/['"]/g, '').trim()
+          : 'Frank Ruhl Libre';
+        const lnFam = String(ln.font).trim();
+        const bodyFam = String(settings['body-font'] || '').trim();
+        if (lnFam !== prefaceDefaultFam && lnFam !== bodyFam) {
+          el.style.fontFamily = fontStack(ln.font);
+        }
+      }
       // **S4.26 (חלון קלאסי שקוע — שורה 1 עוטפת את החלון):** במקור מילת-החלון
       // מרחפת (float:right, height:1.25em) והטקסט עוטף אותה בשתי השורות
       // הראשונות. שורה 1 (window בלי windowWords) מוצרת ברוחב החלון ומוזזת
@@ -1048,7 +1091,23 @@ function renderLegacyPage(pg, settings, doc) {
         const win = doc.createElement('span');
         win.className = 'w w--window';
         win.textContent = scrubPUAText(ln.windowWords.join(' ')) + ' ';
-        win.style.fontSize = `${pt2px((ln.sizePt || SZ.body) * 1.5)}px`;
+        // **EXT-20 (בדיקת דפדפן):** גודל מילת-החלון מההגדרה
+        // (first-word-size-em; ברירת המחדל 1.5 = הקבוע ההיסטורי —
+        // תואם למדידה ב-breakPara) + גופן מילת-החלון (first-word-font;
+        // ברירת המחדל המיובאת = FrankReal — אותן משפחות של .w--window
+        // ב-CSS ⇒ רינדור זהה בברירת המחדל).
+        const fwEmRender = (Number(settings['first-word-size-em']) > 0 && Number(settings['first-word-size-em']) <= 8)
+          ? Number(settings['first-word-size-em']) : 1.5;
+        win.style.fontSize = `${pt2px((ln.sizePt || SZ.body) * fwEmRender)}px`;
+        const fwFont = settings['first-word-font'];
+        if (fwFont) {
+          // **EXT-20 (הגנת digest):** הזרקה רק כשהמשפחה הראשונה שונה מ-FrankReal
+          // (ברירת המחדל של .w--window ב-CSS) — ברירת המחדל נשארת ללא סגנון
+          // מוזרק וה-HTML זהה בתים; בחירת גופן אחר מוזרקת מיד.
+          const fwStack = fontStack(fwFont);
+          const fwFirst = fwStack.split(',')[0].trim();
+          if (fwFirst !== "'FrankReal'") win.style.fontFamily = fwStack;
+        }
         // **S73:** צבע מילת-החלון — first-word-color (ברירת מחדל שחורה) — כמו המקרן
         const winCol = nonBlack(settings['first-word-color']);
         if (winCol) win.style.color = winCol;
@@ -1187,6 +1246,21 @@ function renderLegacyPage(pg, settings, doc) {
     }
     colsWrap.appendChild(colEl);
   });
+  // **EXT-20 (בדיקת דפדפן 24.11):** מפריד טורים מעוצב מההגדרה
+  // (column-divider-style: thin/dashed/double; ברירת המחדל none —
+  // אין אלמנט, ההתנהגות ההיסטורית נשמרת). קו אנכי במרכז המרווח
+  // בין הטורים (גובה אזור הזרימה) בדיו שחור.
+  const colDivider = String(settings['column-divider-style'] || 'none');
+  if (colDivider !== 'none' && (pg.columns || []).length === 2) {
+    const gutterCx = (GEO.COL_R_X + GEO.COL_L_X + GEO.COL_W) / 2;
+    const dv = doc.createElement('div');
+    dv.className = 'col-divider col-divider--' + colDivider;
+    position(dv, Math.round(gutterCx * 100) / 100, GEO.FLOW_TOP, 0, GEO.FLOW_H);
+    if (colDivider === 'thin') { dv.style.width = '1px'; dv.style.backgroundColor = '#000'; }
+    else if (colDivider === 'double') { dv.style.width = '3px'; dv.style.borderLeft = '1px solid #000'; dv.style.borderRight = '1px solid #000'; }
+    else if (colDivider === 'dashed') { dv.style.width = '1px'; dv.style.borderLeft = '1px dashed #000'; }
+    root.appendChild(dv);
+  }
   root.appendChild(colsWrap);
 
   // ---- הערות צד בטורי השוליים ----
@@ -1224,6 +1298,20 @@ function renderLegacyPage(pg, settings, doc) {
     // **S73:** צבע גוף ההערה — f-note-body-color (ברירת מחדל שחורה) — כמו המקרן
     const fnCol = nonBlack(settings['f-note-body-color']);
     const listingSz = Number(imudSetAll['note-listing-num-size']) || 8;
+    // **EXT-20 (בדיקת דפדפן 24.11):** מפריד מרזב ההערות מההגדרה
+    // (footnote-separator-rule) — כמו הנתיב הכללי (renderFootnoteArea):
+    // מחלקת fn-rule fn-rule--{style}; ברירת המחדל 'none' — אין אלמנט
+    // (ההתנהגות ההיסטורית נשמרת). הקו בראש המרזב, ברוחב הפס.
+    const fnSepRule = String(settings['footnote-separator-rule'] || 'none');
+    if (fnSepRule !== 'none' && (pg.footnotes || []).length && pg.fnSep !== false) {
+      const fnY0 = (pg.footnotes[0].lines && pg.footnotes[0].lines[0]) ? pg.footnotes[0].lines[0].y : null;
+      if (fnY0 != null && Number.isFinite(fnY0)) {
+        const rule = doc.createElement('div');
+        rule.className = `fn-rule fn-rule--${fnSepRule}`;
+        position(rule, GEO.COL_L_X, Math.round((fnY0 - 6) * 100) / 100, BAND_W, 0);
+        root.appendChild(rule);
+      }
+    }
     for (const fn of (pg.footnotes || [])) {
       // **S4.26:** זרימה שפותחת בהמשך — מסומנת fn--continuation (כמו block)
       const firstTok = fn.continuous && fn.lines[0] && (fn.lines[0].words || []).find(t => !t.gap);
@@ -1342,12 +1430,27 @@ function renderLegacyPage(pg, settings, doc) {
   }
 
   // ---- עמודון ----
-  if (pg.folioDisplay) {
+  // **EXT-20 (בדיקת דפדפן 24.11):** מיקום הגיליון, מסגרתו ודילוגו —
+  // מההגדרות החיות (page-num-position / page-num-frame), כמו הנתיב
+  // הכללי. ברירת המחדל המיובאת (bottom-center / none) משחזרת את הגיאומטריה
+  // המכוילת במדויק — digest נשמר.
+  const pnPosLegacy = String(settings['page-num-position'] || 'bottom-center');
+  if (pg.folioDisplay && pnPosLegacy !== 'none') {
     const folio = doc.createElement('div');
     folio.className = 'folio';
     folio.setAttribute('dir', 'rtl');
-    position(folio, 0, GEO.FOLIO_BASELINE - 14, GEO.PAGE_W, 18);
-    folio.style.textAlign = 'center';
+    // מיקום: ברירת המחדל = התיבה ההיסטורית המכוילת (0, FOLIO_BASELINE−14,
+    // רוחב מלא, ממורכז). האחרים — תיבות שוליים/עליונות מגיאומטריית ה-GEO.
+    // RTL: עמוד אי-זוגי (אינדקס זוגי = recto) — השפה החיצונית שמאל דפוס
+    // (הכריכה מימין); verso — ימין.
+    const isVerso = (pg.index % 2) === 1;
+    let fx = 0, fw = GEO.PAGE_W, fy = GEO.FOLIO_BASELINE - 14, fAlign = 'center';
+    if (pnPosLegacy === 'outer-left' || (pnPosLegacy === 'outer' && !isVerso)) { fx = GEO.MARGIN_L_X; fw = GEO.MARGIN_W; }
+    else if (pnPosLegacy === 'outer-right' || (pnPosLegacy === 'outer' && isVerso)) { fx = GEO.MARGIN_R_X; fw = GEO.MARGIN_W; }
+    else if (pnPosLegacy === 'top') { fy = 28; }
+    else if (pnPosLegacy === 'in-header') { fy = GEO.HEADER_BASELINE - 30; }
+    position(folio, fx, fy, fw, 18);
+    folio.style.textAlign = fAlign;
     // **S73 (גופן/גודל/צבע גיליון מההגדרות):** page-num-font ('' = גוף הטקסט —
     // התנהגות קודמת), page-num-size-pt (ברירת מחדל 10 = SZ.folio), page-num-color
     // (ברירת מחדל שחורה) — כמו המקרן. התיבה והבסיס נשארים מכוילים (FOLIO_BASELINE).
@@ -1361,7 +1464,19 @@ function renderLegacyPage(pg, settings, doc) {
     // תחת מודל תיבת-השורה (A≈0.925, D≈0.388 בגופן הגוף ⇒ lh≈21.4px) — כמו
     // המקרן, שמצייר את הגיליון בבסיס 1054.5 בדיוק. בעבר ירש normal וישב ~3.5px גבוה.
     folio.style.lineHeight = '21.4px';
-    folio.textContent = pg.folioDisplay;
+    // **EXT-20:** מסגרת הגיליון — circle/square כ-badge CSS (כמו הנתיב
+    // הכללי); parenthesis/squares/floral/diamond — תווית טקסטואלית מ-
+    // frameNumber של folio.js (מקור יחיד). ברירת המחדל none = טקסט חשוף
+    // — ההתנהגות ההיסטורית.
+    const pnFrameLegacy = String(settings['page-num-frame'] || 'none');
+    if (isCssFrame(pnFrameLegacy)) {
+      const badge = doc.createElement('span');
+      badge.className = `page-num-badge page-num-frame-${pnFrameLegacy === 'circle' ? 'circle' : 'box'}`;
+      badge.textContent = pg.folioDisplay;
+      folio.appendChild(badge);
+    } else {
+      folio.textContent = frameNumber(pg.folioDisplay, pnFrameLegacy);
+    }
     root.appendChild(folio);
   }
 
@@ -1387,7 +1502,10 @@ function renderLegacyPage(pg, settings, doc) {
         r.style.backgroundRepeat = 'no-repeat';
         r.style.backgroundPosition = 'center';
         r.style.backgroundSize = 'contain';
-        root.appendChild(r);
+        // **EXT-20 (עיצוב שער מהספרייה):** רקע עמוד-מלא — מאחורי הטקסט
+        // (z:0 + ראשון בשורש), כמו פאנלי השער; שאר העיטורים מעל.
+        if (d.kind === 'shaar-design') { r.style.zIndex = '0'; r.style.backgroundSize = '100% 100%'; root.insertBefore(r, root.firstChild); }
+        else root.appendChild(r);
       }
     }
   }
