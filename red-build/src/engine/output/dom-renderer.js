@@ -621,7 +621,10 @@ function renderPageBackgroundAndShaar(page, settings, doc, metadata) {
     els.push(el);
   }
   // עזר: שער במסך מלא מהפניה פתורה + תיבת כותרת לפי box מהעיצוב (אם נרשם)
-  const fullShaar = (slotName, cssClass, boxClass) => {
+  // **EXT-22:** תיבה מפורשת מההגדרות (shaar-{kind}-box-* במ״מ; 0=אוטומטי —
+  // builder-{kind}-{side} של המקור) גוברת על תיבת העיצוב; לכל שער ה-kind
+  // שלו (בעבר כולם קיבלו את תיבת ה-main).
+  const fullShaar = (slotName, cssClass, boxClass, kind) => {
     const slot = plan.slots.find(s => s.slot === slotName && s.asset);
     if (!slot) return;
     const resolved = resolveAssetRef(slot.asset);
@@ -631,12 +634,17 @@ function renderPageBackgroundAndShaar(page, settings, doc, metadata) {
     bg.style.backgroundImage = `url("${uri}")`;
     bg.style.inset = '0';
     els.push(bg);
-    // תיבת כותרת — מה-box של העיצוב ברישום (מ״מ) או מההגדרות; בלי box מהעיצוב —
-    // ה-fallback המסורתי של resolveShaarBox (REQ-ORN-05: התיבה תמיד נבנית על שער עם תמונה)
+    // תיבת כותרת — מפורש מההגדרות (EXT-22) > מה-box של העיצוב ברישום (מ״מ) >
+    // מההגדרות הישנות > ה-fallback המסורתי של resolveShaarBox (REQ-ORN-05).
+    const kk = kind || 'main';
+    const ovr = (side) => { const v = Number(settings[`shaar-${kk}-box-${side}`]); return v > 0 ? v : null; };
+    const explicit = (ovr('top') || ovr('bottom') || ovr('right') || ovr('left'))
+      ? { top: ovr('top') != null ? ovr('top') : 40, bottom: ovr('bottom') != null ? ovr('bottom') : 40, right: ovr('right') != null ? ovr('right') : 30, left: ovr('left') != null ? ovr('left') : 30 }
+      : null;
     const designBox = resolved.item && resolved.item.box ? resolved.item.box : null;
-    const boxRef = designBox || settings['shaar-main-box'] || null;
+    const boxRef = explicit || designBox || settings['shaar-main-box'] || null;
     {
-      const { box } = resolveShaarBox('main', settings['theme-set-id'] || 'default', { box: boxRef }, null, { top: 40, bottom: 40, right: 30, left: 30 });
+      const { box } = resolveShaarBox(kk, settings['theme-set-id'] || 'default', { box: boxRef }, null, { top: 40, bottom: 40, right: 30, left: 30 });
       const tb = doc.createElement('div');
       tb.className = boxClass;
       tb.dir = 'rtl';
@@ -650,9 +658,9 @@ function renderPageBackgroundAndShaar(page, settings, doc, metadata) {
       els.push(tb);
     }
   };
-  fullShaar('shaar-main', 'deco deco--shaar-main', 'shaar-main-box');
-  fullShaar('shaar-sub', 'deco deco--shaar-sub', 'shaar-sub-box');
-  fullShaar('shaar-back-frame', 'deco deco--shaar-back', 'shaar-back-box');
+  fullShaar('shaar-main', 'deco deco--shaar-main', 'shaar-main-box', 'main');
+  fullShaar('shaar-sub', 'deco deco--shaar-sub', 'shaar-sub-box', 'sub');
+  fullShaar('shaar-back-frame', 'deco deco--shaar-back', 'shaar-back-box', 'back');
   return els;
 }
 
@@ -950,7 +958,15 @@ function renderLegacyPage(pg, settings, doc) {
       'shaar-back': { x: 95 * MMpx, w: 377.98 },
       'shaar-sub': { x: 15 * MMpx, w: GEO.PAGE_W - 110 * MMpx }
     };
-    const gbox = GATE_BOX[pg.type] || { x: BAND_X, w: BAND_W };
+    // **EXT-22 (builder-{kind}-{left,right}):** שוליים מפורשים במ״מ (0=אוטומטי)
+    // גוברים על הקבועים המכוילים — כמו המקרן ל-PDF (תצוגה=ייצוא).
+    const gbBase = GATE_BOX[pg.type] || { x: BAND_X, w: BAND_W };
+    const gateKind = pg.type === 'shaar-main' ? 'main' : pg.type === 'shaar-sub' ? 'sub' : 'back';
+    const govL = Number(settings[`shaar-${gateKind}-box-left`]);
+    const govR = Number(settings[`shaar-${gateKind}-box-right`]);
+    const geffL = govL > 0 ? Math.round(govL * MMpx) : gbBase.x;
+    const geffR = govR > 0 ? Math.round(govR * MMpx) : Math.max(0, GEO.PAGE_W - gbBase.x - gbBase.w);
+    const gbox = (govL > 0 || govR > 0) ? { x: geffL, w: Math.max(40, GEO.PAGE_W - geffL - geffR) } : gbBase;
     for (const g of (pg.gateLines || [])) {
       const el = mkLine(g.text, g.sizePt, 'center', pt2px(g.sizePt) * 1.3);
       el.className += ' band band--gate';

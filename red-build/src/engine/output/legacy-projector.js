@@ -182,10 +182,16 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
   };
   // **EXT-17:** גדלי סמני ההערות מהגדרות המקור (ברירות המחדל: 8/8). ההגדרות
   // של פרופיל IMUD מגיעות ב-_imudRaw (כמו readConfig של העימוד עצמו).
+  // **EXT-22:** ההגדרה החיה של הרישום גוברת על ה-raw (שליטה מהפאנל).
   const imudSet = (settings && settings._imudRaw) || settings || {};
+  const liveOrRaw = (key, dflt) => {
+    const live = Number(settings && settings[key]);
+    if (live > 0) return live;
+    return Number(imudSet[key]) || dflt;
+  };
   const projCfg = {
-    markerSize: Number(imudSet['note-marker-size']) || 8,
-    listingSize: Number(imudSet['note-listing-num-size']) || 8
+    markerSize: liveOrRaw('note-marker-size', 8),
+    listingSize: liveOrRaw('note-listing-num-size', 8)
   };
   const ascent = api.ascentEm();
   const descent = api.descentEm(); // **S5.1:** המטריקה האמיתית — לא 0.2 מוקשה
@@ -230,10 +236,13 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
     // בגופן heading-N-font של הרמה; המקרן צייר הכול ב-DavidLibre קבוע.
     // נפילה ל-hApi (התנהגות קודמת) כשהמשפחה אינה רשומה.
     const bLvl = HEADING_LEVEL_OF_BAND_LEGACY[b.kind];
-    const bFam = bLvl != null ? (settings[`heading-${bLvl}-font`] || 'DavidLibre-Bold') : null;
-    const bApi = (bLvl != null && apiFor(bFam)) || hApi;
+    // **EXT-22:** גופן מפורש על הפס (siman-font/endnote-title-font — מהמודל)
+    // גובר; בלי — גופן הרמה מההגדרות כמו קודם. ברירות המחדל נופלות ל-hApi
+    // (DavidLibre-Bold) — אותה התנהגות בדיוק.
+    const bFam = b.font ? String(b.font) : (bLvl != null ? (settings[`heading-${bLvl}-font`] || 'DavidLibre-Bold') : null);
+    const bApi = (b.font && apiFor(bFam)) || (bLvl != null && apiFor(bFam)) || hApi;
     const words = placeWords(b.text.split(' '), bApi, bandLeft, bandW, b.sizePt, 'center', baseY);
-    const bKey = (bLvl != null && apiFor(bFam)) ? fontKeyOf(bFam) : 'heading';
+    const bKey = (bApi !== hApi && apiFor(bFam)) ? fontKeyOf(bFam) : 'heading';
     // **S73:** צבע הפס מההגדרות (כותרת הערות ⇒ endnote-title-color; רמה ⇒ heading-N-color)
     const bColor = bandColorOf(b);
     for (const w of words) { w.fontKey = bKey; if (bColor) w.color = bColor; }
@@ -257,7 +266,15 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
     'shaar-back': { x: 95 * MMpx, w: 377.98 },
     'shaar-sub': { x: 15 * MMpx, w: GEO.PAGE_W - 110 * MMpx }
   };
-  const gbox = GATE_BOX[pg.type] || { x: bandLeft, w: bandW };
+  // **EXT-22 (builder-{main,sub,back}-{left,right} של המקור):** שוליים מפורשים
+  // במ״מ גוברים על הקבועים המכוילים (0=אוטומטי — ההתנהגות הקיימת בדיוק).
+  const gbBase = GATE_BOX[pg.type] || { x: bandLeft, w: bandW };
+  const gateKind = pg.type === 'shaar-main' ? 'main' : pg.type === 'shaar-sub' ? 'sub' : 'back';
+  const ovL = Number(settings[`shaar-${gateKind}-box-left`]);
+  const ovR = Number(settings[`shaar-${gateKind}-box-right`]);
+  const effL = ovL > 0 ? Math.round(ovL * MMpx) : gbBase.x;
+  const effR = ovR > 0 ? Math.round(ovR * MMpx) : Math.max(0, GEO.PAGE_W - gbBase.x - gbBase.w);
+  const gbox = (ovL > 0 || ovR > 0) ? { x: effL, w: Math.max(40, GEO.PAGE_W - effL - effR) } : gbBase;
   for (const g of (pg.gateLines || [])) {
     const h = g.sizePt * (96 / 72) * 1.3;
     const baseY = baselineOf(g.y, h, g.sizePt, ascent, descent);
@@ -593,10 +610,11 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
       rowLines.forEach((rowText, rli) => {
         const lineY = r.y + rli * 26;
         const baseY = baselineOf(lineY, 26, r.sizePt, ascent, descent);
-      // כותרת מימין (במדרגות לפי רמה), מספר משמאל; **S5.1:** גופן הרמה
-      // מההגדרות (כמו ה-DOM — heading-N-font), נפילה ל-hApi כשאינה רשומה.
+      // כותרת מימין (במדרגות לפי רמה), מספר משמאל; **S5.1+EXT-22:** גופן הרמה
+      // מהמודל (r.font — ההגדרה החיה toc-gfont-N/toc-dfont-N מקובעת שם;
+      // תצוגה=ייצוא), נפילה ל-heading-N-font ואז ל-hApi כשאינה רשומה.
       const rLvl = r.level != null ? r.level : 2;
-      const rFam = settings[`heading-${rLvl}-font`] || 'DavidLibre-Bold';
+      const rFam = r.font ? String(r.font) : (settings[`heading-${rLvl}-font`] || 'DavidLibre-Bold');
       const rFamApi = apiFor(rFam);
       const rApi = rFamApi || hApi;
       // **S73:** צבע שורת ה-TOC — heading-N-color של הרמה (כמו ה-DOM)

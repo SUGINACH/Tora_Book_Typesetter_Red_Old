@@ -78,7 +78,10 @@ describe('EXT-14 — ערכות סגנון-ספר מהמקור: הטמעה + י�
     const p = importSet('פרשנות').settings;
     assertEq(p['heading-0-size-pt'], 24, 'פרשנות: s-h0=24');
     assertEq(p['_imudRaw']['odd-h1'], false, 'פרשנות: odd-h1=false מגיע לפרופיל המורשת (_imudRaw)');
-    assertEq(p['_legacy-ui-state']['odd-h1'], false, 'פרשנות: odd-h1=false נשמר גם ב-ui-state');
+    // **EXT-22:** odd-h1 הוסב מ-ui-state ל-mapped — הערך מגיע כעת גם למפתח
+    // הרישום החי (הגשר ב-readConfig קורא אותו; ברירת המחדל של הפרושנות —
+    // false — נאמנה לקובץ הערכה, כמו ה-raw).
+    assertEq(p['odd-h1'], false, 'פרשנות: odd-h1=false חי במפתח הרישום (EXT-22)');
     // קונטרס: H0=30 (כותרות גדולות)
     const k = importSet('קונטרס').settings;
     assertEq(k['heading-0-size-pt'], 30, 'קונטרס: s-h0=30');

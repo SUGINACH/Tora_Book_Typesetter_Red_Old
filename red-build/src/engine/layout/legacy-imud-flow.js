@@ -255,7 +255,25 @@ const RED_SETTING_BRIDGE_S77 = {
   'size-body': 'body-font-size-pt',
   'line-height-body': 'body-line-height',
   's-h0-body': 'heading-0-body-size-pt',
-  'f-h0-body': 'heading-0-body-font'
+  'f-h0-body': 'heading-0-body-font',
+  // **EXT-22 (השוואה עם המקור הירוק — להוספה בלבד):** הרחבת הגשר — התנהגויות
+  // פתיחה/סימן/הערות שנקראו מה-raw בלבד (b/n ב-readConfig) + גדלי
+  // תוכן-העניינים פר-רמה (s-gtoc-N/s-dtoc-N). ברירות המחדל של הרישום
+  // זהות לקבועים המכוילים — ה-digest נשמר; שינוי חי בפאנל משפיע מיד.
+  'odd-h0': 'odd-h0',
+  'odd-h1': 'odd-h1',
+  'odd-h2': 'odd-h2',
+  'h2-auto-siman': 'h2-auto-siman',
+  'h2-reset-siman': 'h2-reset-siman',
+  's-siman': 'siman-size-pt',
+  'note-marker-size': 'note-marker-size',
+  'note-listing-num-size': 'note-listing-num-size',
+  'note-num-separator': 'note-num-separator',
+  ...[1, 2, 3, 4, 5, 6, 7].reduce((acc, lvl) => {
+    acc[`s-gtoc-${lvl}`] = `toc-gsize-${lvl}`;
+    acc[`s-dtoc-${lvl}`] = `toc-dsize-${lvl}`;
+    return acc;
+  }, {})
 };
 // **EXT-20:** תרגום אוצר-מילים של סגנונות שאין זהות בין הרישום ל-raw —
 // מופה כאן פעם אחת (drop-word-mode לעיל מטופל ב-g עצמו).
@@ -1336,13 +1354,36 @@ function legacyTypeset(rawText, settings, env) {
     const shYearFontApi = fontApiFor(settings['shaar-year-font']);
     const h1FontApi = fontApiFor(settings['heading-1-font']);
     const h1SubFontApi = fontApiFor('David Libre');
+    // **EXT-22 (builder-{kind}-{left,right} של המקור):** רוחב תיבת השער
+    // משוליים מפורשים במ״מ (0=אוטומטי — 15/15 לראשי, 95/15 לאחורי,
+    // 15/95 למשנה). משמש לעטיפת השורות (מדידה=רינדור) ולמיקום האופקי
+    // במקרנים (dom-renderer + legacy-projector — תצוגה=ייצוא).
+    const gateBoxW = (kind, dfltL, dfltR) => {
+      const L = Number(settings[`shaar-${kind}-box-left`]);
+      const R = Number(settings[`shaar-${kind}-box-right`]);
+      const mm = 96 / 25.4;
+      const effL = L > 0 ? L : dfltL;
+      const effR = R > 0 ? R : dfltR;
+      return Math.max(40, GEO.PAGE_W - (effL + effR) * mm);
+    };
+    // **EXT-22 (builder-{kind}-{top,bottom}):** היסט אנכי של בלוק שורות השער —
+    // top מזיז את הבלוק מטה מגובה ברירת המחדל, bottom מעלה (כשקטן מברירת
+    // המחדל). 0=אוטומטי — אין היסט (העוגנים המכוילים נשמרים בדיוק).
+    const gateYShift = (kind, dfltTop, dfltBot) => {
+      const T = Number(settings[`shaar-${kind}-box-top`]);
+      const B = Number(settings[`shaar-${kind}-box-bottom`]);
+      const mm = 96 / 25.4;
+      const dTop = T > 0 ? (T - dfltTop) * mm : 0;
+      const dBot = B > 0 && B < dfltBot ? (dfltBot - B) * mm : 0;
+      return Math.round(dTop - dBot);
+    };
     if (type === 'shaar-main') {
       // **D-89:** צבעי הייחוס — הכותרת/המהדורה/המחבר ב-#0F172A (נמדד בעמ' 1,
       // 46pt/11pt/15pt), הנושא והתיאור ב-#0F1749 (מצוירים שם כקטועים).
       // **S6.3:** גדלים מההגדרות (s-sh-*) + גופן לכל שורה (f-sh-*) + עטיפת
       // הכותרת בגופן שלה (במקור: div עם רוחב התיבה — עוטף אוטומטית).
       const out = [];
-      const mainBoxW = GEO.PAGE_W - 30 * (96 / 25.4);
+      const mainBoxW = gateBoxW('main', 15, 15);
       const titleLines = wrapGate(meta.bookTitle, cfg.shTitle, mainBoxW, shTitleFontApi);
       const lineHOf = (sz) => sz * (96 / 72) * 1.3;
       // **S6.3 (בטיחות עטיפה):** כותרת שנעטפה לשניים דוחפת את הכותרת-המשנה
@@ -1364,6 +1405,12 @@ function legacyTypeset(rawText, settings, env) {
       }));
       out.push({ text: meta.edition || '', sizePt: cfg.shSec, y: pt(558.0), singleOp: true, color: colOf(settings['shaar-sections-color']), font: settings['shaar-sections-font'] || null });
       out.push({ text: meta.author || '', sizePt: cfg.shAuthor, y: pt(713.5), singleOp: true, color: colOf(settings['shaar-author-color']), font: settings['shaar-author-font'] || null });
+      const dyMain = gateYShift('main', 20, 16);
+      if (dyMain) out.forEach(g => { g.y += dyMain; });
+      const dyBack = gateYShift('back', 22, 18);
+      if (dyBack) out.forEach(g => { g.y += dyBack; });
+      const dySub = gateYShift('sub', 20, 20);
+      if (dySub) out.forEach(g => { g.y += dySub; });
       return out.filter(g => g.text);
     }
     if (type === 'shaar-back') {
@@ -1382,7 +1429,7 @@ function legacyTypeset(rawText, settings, env) {
       // העטיפה נמדדת באותו גופן (wrapGate) — המדידה = הרינדור.
       const shBackFontApi = fontApiFor(settings['shaar-back-text-font']);
       const backFont = settings['shaar-back-text-font'] || null;
-      const backBoxW = GEO.PAGE_W - 110 * (96 / 25.4);
+      const backBoxW = gateBoxW('back', 95, 15); // **EXT-22**
       const copyright = cfg.backCopyright || meta.copyright || '';
       const publisher = cfg.backPublishing || meta.publisher || '';
       const contact = cfg.backContact || meta.contact || '';
@@ -1412,7 +1459,7 @@ function legacyTypeset(rawText, settings, env) {
       // ונעטפת לרוחב תיבת השער (378px) כמו ה-div במקור.
       // **S6.3:** גודל הכותרת מההגדרות (s-h1; במקור 50pt) וגופן הרמה
       // (f-h1 ⇒ Lia Sgula); ההמשך ב-f-h1-sub של המקור (David Libre).
-      const subBoxW = GEO.PAGE_W - 110 * (96 / 25.4);
+      const subBoxW = gateBoxW('sub', 15, 95); // **EXT-22**
       const h1Lines = wrapGate(first, cfg.h1Size, subBoxW, h1FontApi);
       const h1LineH = cfg.h1Size * (96 / 72) * 1.3;
       // **S6.3 (בטיחות עטיפה):** כמו בשער הראשי — ההמשך לפחות 25px מתחת
@@ -1496,7 +1543,11 @@ function legacyTypeset(rawText, settings, env) {
           const areaH = spanExempt ? 261.3 : H2_AREA_H;
           if (cfg.autoSimanH2) {
             simanCounter++;
-            pg.bands.push({ kind: 'h2-siman', text: 'סימן ' + toGematria(simanCounter), sizePt: SZ.siman, y: spanExempt ? 284.9 : 307.88, h: 36, tokenId: null });
+            // **EXT-22:** גודל וגופן פס הסימן מההגדרות החיות (s-siman/f-siman
+            // של המקור; ברירות מחדל 20pt/ירושת הכותרות — הקבועים המכוילים).
+            const simanSz = Number(settings['siman-size-pt']) > 0 ? Number(settings['siman-size-pt']) : SZ.siman;
+            const simanFam = settings['siman-font'] ? String(settings['siman-font']) : '';
+            pg.bands.push({ kind: 'h2-siman', text: 'סימן ' + toGematria(simanCounter), sizePt: simanSz, y: spanExempt ? 284.9 : 307.88, h: 36, tokenId: null, ...(simanFam ? { font: simanFam } : {}) });
           }
           const disp = sec.newPage.text.replace(/^סימן\s+[א-ת]+[:\-–—\s]*/i, '').trim();
           // **S4.24 (כותרת-h2 ארוכה מהפס — עטיפה):** נמדד בחי — "בענין הזכרת
@@ -2295,7 +2346,10 @@ function legacyTypeset(rawText, settings, env) {
             // ההתנהגות ההיסטורית ('א' בגודל הגוף).
             fnResetMode === 'siman' ? {
               markerOf: (i) => fnChapterCounter + i + 1,
-              markerSizePt: cfg.fnListingNumSize,
+              // **EXT-22:** מדידת סמן הגוף בגודל הסמן (note-marker-size) —
+              // כמו הרינדור במקרן (projCfg.markerSize); ברירות המחדל זהות (8)
+              // — ה-digest נשמר. בעבר נמדד בגודל הרישום (fnListingNumSize).
+              markerSizePt: cfg.fnMarkerSize,
               markerMeasure: (t, sz) => fnApi.measureTextWidth(t, sz, 0),
               bodySizePt: bodySz,
               bodyMeasure: (t, sz) => (isH0Body && prefaceApi ? prefaceApi : { measureTextWidth: (tt, ss) => brk.w(tt, ss) }).measureTextWidth(t, sz, 0)
@@ -3271,12 +3325,15 @@ function legacyTypeset(rawText, settings, env) {
   // IMUD נותן ערכי פתיחה המשמרים את הפלט המכויל במדויק (רשימות המקור).
   const tocLevelShowS77 = (n) => settings[`toc-level-${n}-show`] === false ? false : true;
   const tocLevelInlineS77 = (n) => settings[`toc-level-${n}-inline`] === true;
-  const genShowRaw = Array.isArray(cfg.gtocShow) ? cfg.gtocShow : [1, 2, 3, 4, 5, 6];
-  const detShowRaw = Array.isArray(cfg.dtocShow) ? cfg.dtocShow : [2, 3, 4, 5, 6];
-  const lvlShown = (rawList, n) => tocLevelShowS77(n) && rawList.includes(n);
-  const genEntries = tokens.filter(t => t.type[0] === 'h' && lvlShown(genShowRaw, t.level))
+  // **EXT-22:** הצגה פר-סוג (gtoc-show/dtoc-show של המקור) — ערך הרישום גובר;
+  // המסכה המשותפת (toc-level-N-show) נשארת כ-AND. ברירות המחדל משחזרות את
+  // הרשימות המקוריות בדיוק (כללי 1–6, מפורט 2–6) — ה-digest נשמר; הדלקת
+  // רמה שמעבר לרשימת המקור (למשל 7) היא בחירה מפורשת של המשתמש.
+  const tocTypeShowS = (kind, n) => settings[(kind === 'det' ? 'toc-dshow-' : 'toc-gshow-') + n] !== false;
+  const lvlShown = (kind, n) => tocLevelShowS77(n) && tocTypeShowS(kind, n);
+  const genEntries = tokens.filter(t => t.type[0] === 'h' && lvlShown('gen', t.level))
     .map(t => ({ tokenId: t.id, level: t.level, text: t.text }));
-  const detEntries = tokens.filter(t => t.type[0] === 'h' && lvlShown(detShowRaw, t.level))
+  const detEntries = tokens.filter(t => t.type[0] === 'h' && lvlShown('det', t.level))
     .map(t => ({ tokenId: t.id, level: t.level, text: t.text }));
 
   // **S6.3:** גדלים נפרדים לכל תוכן-עניינים — s-gtoc-* מול s-dtoc-*
@@ -3329,12 +3386,16 @@ function legacyTypeset(rawText, settings, env) {
       const availW = Math.max(40, (x1 - GEO.TOC_NUM_X - 10) * 0.92);
       const lines = wrapTocRow(e.text, sizePt, availW);
       // **S6.3:** גופן השורה מההגדרות המקוריות (f-gtoc-*/f-dtoc-* ⇒ David
-      // Libre בברירת המחדל) — נקרא ישירות מה-raw (אין מפתח רישום נפרד
-      // לגופן ה-TOC); משפחה ראשונה מהמחסנית. הרינדור ב-dom-renderer לפי
-      // שדה ה-font.
+      // Libre בברירת המחדל). **EXT-22:** הגדרה חיה של הרישום (toc-gfont-N /
+      // toc-dfont-N) גוברת על ה-raw — אותו חוזה כמו שאר הגשר; משפחה ראשונה
+      // מהמחסנית. הרינדור ב-dom-renderer לפי שדה ה-font, וההקרנה ל-PDF לפי
+      // r.font (תצוגה=ייצוא).
       const rawFontKey = (kind === 'toc-detailed' ? 'f-dtoc-' : 'f-gtoc-') + e.level;
+      const liveFontKey = (kind === 'toc-detailed' ? 'toc-dfont-' : 'toc-gfont-') + e.level;
+      const liveFont = settings && settings[liveFontKey] ? String(settings[liveFontKey]) : '';
       const rawFontStack = String(rawSet[rawFontKey] || '');
-      const rawFirst = rawFontStack ? rawFontStack.replace(/'/g, '').split(',')[0].trim() : '';
+      const fontSrc = liveFont || rawFontStack;
+      const rawFirst = fontSrc ? fontSrc.replace(/'/g, '').split(',')[0].trim() : '';
       return {
         ...e, sizePt, x1, lines,
         h: tocRowH(e.level, sizes) + Math.max(0, lines.length - 1) * 26,
@@ -3342,10 +3403,15 @@ function legacyTypeset(rawText, settings, env) {
       };
     });
     // יחידות: h1 בודד; h2 + כל ה-h3..h6 שאחריו עד ה-h2 הבא
+    // **EXT-22:** קיבוץ פר-רמה ופר-סוג (gtoc-grp/dtoc-grp של המקור) — רמה
+    // עם קיבוץ כבוי נפתחת כיחידה עצמאית (break-inside נפרד). ברירת המחדל:
+    // רמות 3+ מקובצות — בדיוק ההתנהגות הקיימת.
+    const grpOf = (lvl) => settings[(kind === 'toc-detailed' ? 'toc-dgrp-' : 'toc-ggrp-') + lvl] !== false;
     const units = [];
     for (const r of rows) {
       if (r.level <= 2 || !units.length) units.push([r]);
-      else units[units.length - 1].push(r);
+      else if (grpOf(r.level)) units[units.length - 1].push(r);
+      else units.push([r]);
     }
     const pagesRows = [];
     let curRows = [], curH = 0, first = true;
@@ -3413,7 +3479,12 @@ function legacyTypeset(rawText, settings, env) {
         rows: pr.rows.map((r, i) => ({
           tokenId: r.tokenId, level: r.level, text: r.text, lines: r.lines, sizePt: r.sizePt, y: rowYs[i],
           folio: '',
-          x1: r.x1 != null ? r.x1 : GEO.TOC_TITLE_X1 - (r.level - 1) * GEO.TOC_STAIR
+          x1: r.x1 != null ? r.x1 : GEO.TOC_TITLE_X1 - (r.level - 1) * GEO.TOC_STAIR,
+          // **EXT-22 (תיקון שורש):** שדה ה-font אבד במיפוי הזה — גופן ה-TOC
+          // (raw מקור f-gtoc-N/f-dtoc-N או ההגדרה החיה toc-{g,d}font-N) מעולם
+          // לא הגיע לרינדור; ה-DOM נפל ל-heading-N-font. כעת מועבר הלאה —
+          // התצוגה והייצוא מציירים את הגופן שנבחר.
+          font: r.font != null ? r.font : null
         }))
       };
       return pg;
@@ -3448,7 +3519,7 @@ function legacyTypeset(rawText, settings, env) {
       setHeader(enPg, cfg.fnTitleText);
       enPg._enFirst = enFirst;
       // **S6.3:** גופן כותרת ההערות מההגדרות (f-note-title ⇒ David Libre).
-      if (enFirst) enPg.bands.push({ kind: 'endnote-title', text: cfg.fnTitleText, sizePt: SZ.h2, y: GEO.FLOW_TOP, h: EN_TITLE_H, tokenId: null, font: settings['endnote-title-font'] || null });
+      if (enFirst) enPg.bands.push({ kind: 'endnote-title', text: cfg.fnTitleText, sizePt: (Number(settings['endnote-title-size-pt']) > 0 ? Number(settings['endnote-title-size-pt']) : SZ.h2), y: GEO.FLOW_TOP, h: EN_TITLE_H, tokenId: null, font: settings['endnote-title-font'] || null });
       enCol = 0; enY = GEO.FLOW_TOP + (enFirst ? EN_TITLE_H : 0);
       endnotePagesBuilt.push(enPg);
     };
@@ -3556,7 +3627,14 @@ function legacyTypeset(rawText, settings, env) {
     // המחדל 1 — כולם נספרים; ההתנהגות ההיסטורית נשמרת במדויק).
     if (pnStartIdx > 1 && (pi + 1) < pnStartIdx) counted = false;
     p.pageNumber = counted ? pn++ : null;
-    const shows = ['toc-general', 'toc-detailed', 'regular', 'sign-open', 'preface'].includes(p.type);
+    const shows = ['toc-general', 'toc-detailed', 'regular', 'sign-open', 'preface'].includes(p.type)
+      // **EXT-22 (main/back/sub-shaar-show-number של המקור):** הצגת הגיליון
+      // על עמודי השערים — כבויה כברירת מחדל (כמו המקור); הדלקה חיה מציגה
+      // את מספר העמוד גם על השער (כשהוא נספר — עמוד שאינו נספר אין לו מספר
+      // ממילא).
+      || (p.type === 'shaar-main' && settings['main-shaar-show-number'] === true)
+      || (p.type === 'shaar-back' && settings['back-shaar-show-number'] === true)
+      || (p.type === 'shaar-sub' && settings['sub-shaar-show-number'] === true);
     // **D-108:** הגיליון המודפס בגימטריה חשופה בלבד — toBareGematria (מקור
     // הפורמט המשותף לשני המנועים), לא toGematria המפריד אלפים בגרש.
     // **EXT-20:** פורמט הגיליון מההגדרה (folioOf) — 'hebrew' = toBareGematria.

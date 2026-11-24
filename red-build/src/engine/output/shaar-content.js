@@ -28,19 +28,29 @@
 const MM_TO_PX = 96 / 25.4;
 const PT = (v) => v * (96 / 72); // "mm-ish" units of the legacy calibration → px
 
-/** תיבת השער לפי הסוג — מיקומי המקור (מ"מ → פיקסלים). */
+/** תיבת השער לפי הסוג — מיקומי המקור (מ"מ → פיקסלים).
+ * **EXT-22:** שוליים מפורשים מההגדרות (shaar-{kind}-box-{side} במ״מ; 0=אוטומטי
+ * — builder-{kind}-{side} של המקור הירוק) גוברים על המיקומים המקוריים;
+ * ברירות המחדל (0) משמרות את התיבות המכוילות בדיוק. */
 function shaarBoxOf(type, settings) {
   const imudProf = !!(settings && (settings['_layout-profile'] === 'imud' || settings._imudRaw));
   const mode = imudProf ? 'fixed' : null;
   const mm = (v) => Math.round(v * MM_TO_PX);
+  let box;
   if (type === 'shaar-main') {
-    return { top: mm(20), bottom: mm(16), right: mm(15), left: mm(15), mode: mode || 'between' };
+    box = { top: mm(20), bottom: mm(16), right: mm(15), left: mm(15), mode: mode || 'between' };
+  } else if (type === 'shaar-sub') {
+    box = { top: mm(20), bottom: mm(20), right: mm(95), left: mm(15), mode: mode || 'center' };
+  } else {
+    // shaar-back
+    box = { top: mm(22), bottom: mm(18), right: mm(15), left: mm(95), mode: mode || 'center' };
   }
-  if (type === 'shaar-sub') {
-    return { top: mm(20), bottom: mm(20), right: mm(95), left: mm(15), mode: mode || 'center' };
+  const kind = type === 'shaar-main' ? 'main' : type === 'shaar-sub' ? 'sub' : 'back';
+  for (const side of ['top', 'bottom', 'right', 'left']) {
+    const v = Number(settings && settings[`shaar-${kind}-box-${side}`]);
+    if (v > 0) box[side] = mm(v);
   }
-  // shaar-back
-  return { top: mm(22), bottom: mm(18), right: mm(15), left: mm(95), mode: mode || 'center' };
+  return box;
 }
 
 /** פיצול מקף של כותרת חלק (renderSubShaar המקורי): main=לפני, sub=אחרי. */

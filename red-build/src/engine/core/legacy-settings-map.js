@@ -370,6 +370,59 @@ const DISPOSITIONS = {
   'f-h0-body': { kind: 'mapped', to: 'heading-0-body-font', transform: resolveStack, reason: 'S6.3: גופן גוף ההקדמה (Frank Ruhl Libre במקור)' },
   's-h0-body': { kind: 'mapped', to: 'heading-0-body-size-pt', transform: parseFloat, reason: 'RC-2a (i004): גודל גוף ההקדמה (s-h0-body=11.5 במקור) — עד כאן לא מופה ייבוא ⇒ ההקדמה זרמה ב-12pt במקום 11.5 (הוכח מה-PDF הישן: p43 כולו 11.5pt בפיץ׳ 15.5 בקירוב)' },
 
+  // ============ **EXT-22 (בדיקת השוואה עם המקור הירוק 25.11 — "לגבי הוספה!
+  // לא הורדה!!"):** אפשרויות המקור שנוספו לרישום RED וללוח ההגדרות ============
+  // העיקר: גופן/גודל פר-רמה לכל תוכן-עניינים (f/s-gtoc-N, f/s-dtoc-N —
+  // ביחוד לגבי תוכן העניינים). ברירות המחדל של המקור זהות לברירות
+  // הרישום (David Libre; 12/11/10.5×4/8.8) — הייבוא שקוף לפלט המכויל.
+  ...[1, 2, 3, 4, 5, 6, 7].flatMap(lvl => [
+    { green: `f-gtoc-${lvl}`, red: `toc-gfont-${lvl}` },
+    { green: `f-dtoc-${lvl}`, red: `toc-dfont-${lvl}` },
+    { green: `s-gtoc-${lvl}`, red: `toc-gsize-${lvl}`, num: true },
+    { green: `s-dtoc-${lvl}`, red: `toc-dsize-${lvl}`, num: true },
+  ]).reduce((acc, e) => {
+    acc[e.green] = e.num
+      ? { kind: 'mapped', to: e.red, transform: parseFloat, reason: `EXT-22: גודל רמה ${e.green.slice(-1)} בתוכן-העניינים` }
+      : { kind: 'mapped', to: e.red, transform: firstFamily, reason: `EXT-22: גופן רמה ${e.green.slice(-1)} בתוכן-העניינים (מחסנית המקור נפתרת למשפחה ראשונה זמינה)` };
+    return acc;
+  }, {}),
+  // **EXT-22:** התנהגויות פתיחה/סימן שהיו ui-state — הייבוא ממופה למפתחות
+  // הרישום החדשים (ערכי המקור זהים לברירות המחדל המכוילות — שקוף).
+  'odd-h0': { kind: 'mapped', to: 'odd-h0', transform: (v) => v === true || v === 'true', reason: 'EXT-22: פתיחת H0 בעמוד אי-זוגי — שליטה חיה' },
+  'odd-h1': { kind: 'mapped', to: 'odd-h1', transform: (v) => v === true || v === 'true', reason: 'EXT-22: פתיחת H1 בעמוד אי-זוגי — שליטה חיה' },
+  'odd-h2': { kind: 'mapped', to: 'odd-h2', transform: (v) => v === true || v === 'true', reason: 'EXT-22: פתיחת H2 בעמוד אי-זוגי — שליטה חיה' },
+  'h2-auto-siman': { kind: 'mapped', to: 'h2-auto-siman', transform: (v) => v === true || v === 'true', reason: 'EXT-22: מספור סימן אוטומטי — שליטה חיה (S4.20/EXT-16)' },
+  'h2-reset-siman': { kind: 'mapped', to: 'h2-reset-siman', transform: (v) => v === true || v === 'true', reason: 'EXT-22: איפוס מונה סימנים לכל פרק — שליטה חיה' },
+  's-siman': { kind: 'mapped', to: 'siman-size-pt', transform: parseFloat, reason: 'EXT-22: גודל פס הסימן (20 במקור = הקבוע המכויל)' },
+  'note-marker-size': { kind: 'mapped', to: 'note-marker-size', transform: parseFloat, reason: 'EXT-22: גודל מילת-הסמן — שליטה חיה (EXT-17)' },
+  'note-listing-num-size': { kind: 'mapped', to: 'note-listing-num-size', transform: parseFloat, reason: 'EXT-22: גודל סמן הרישום — שליטה חיה (EXT-17)' },
+  'note-num-separator': { kind: 'mapped', to: 'note-num-separator', reason: 'EXT-22: המפריד אחרי מספר ההערה — שליטה חיה (EXT-17)' },
+  'main-shaar-show-number': { kind: 'mapped', to: 'main-shaar-show-number', transform: (v) => v === true || v === 'true', reason: 'EXT-22: הצגת גיליון על השער הראשי (EXT-18: הצגה/מנייה נפרדות)' },
+  'back-shaar-show-number': { kind: 'mapped', to: 'back-shaar-show-number', transform: (v) => v === true || v === 'true', reason: 'EXT-22: הצגת גיליון על השער האחורי (EXT-18)' },
+  'sub-shaar-show-number': { kind: 'mapped', to: 'sub-shaar-show-number', transform: (v) => v === true || v === 'true', reason: 'EXT-22: הצגת גיליון על שער-המשנה (EXT-18)' },
+  'hdr-divider-style': { kind: 'mapped', to: 'header-separator-line', reason: 'EXT-22: כלל הכותרת התחתון — אותו אוצר-מילים (none/gray/black); הגשר החי כבר קיים (EXT-20)' },
+  // **EXT-22 (שימור הפלט המכויל):** builder-* (תיבות השער), f-siman, s-note-title
+  // ו-f-paren — האפשרויות נוספו ללוח ההגדרות (0=אוטומטי / ירושה), אך ערכי
+  // ברירת-המחדל של המקור אינם מיובאים — הם סוטים מהפלט המכויל (בפרט
+  // builder-*: 20/16/15/15 מול התיבה של העיצוב/40-40-30-30). הערכים נשמרים
+  // ב-_imudRaw; שינוי חי בפאנל משפיע מיד.
+  'builder-main-top': { kind: 'ui-state', reason: 'EXT-22: תיבת שער ראשי — שליטה חיה דרך shaar-main-box-top (0=אוטומטי); ערך המקור לא מיובא כדי לשמר את התיבה המכוילה' },
+  'builder-main-bottom': { kind: 'ui-state', reason: 'EXT-22: כנ"ל — shaar-main-box-bottom' },
+  'builder-main-right': { kind: 'ui-state', reason: 'EXT-22: כנ"ל — shaar-main-box-right' },
+  'builder-main-left': { kind: 'ui-state', reason: 'EXT-22: כנ"ל — shaar-main-box-left' },
+  'builder-back-top': { kind: 'ui-state', reason: 'EXT-22: תיבת שער אחורי — shaar-back-box-*; ערך המקור לא מיובא (שימור הפלט)' },
+  'builder-back-bottom': { kind: 'ui-state', reason: 'EXT-22: כנ"ל' },
+  'builder-back-right': { kind: 'ui-state', reason: 'EXT-22: כנ"ל' },
+  'builder-back-left': { kind: 'ui-state', reason: 'EXT-22: כנ"ל' },
+  'builder-sub-top': { kind: 'ui-state', reason: 'EXT-22: תיבת שער-משנה — shaar-sub-box-*; ערך המקור לא מיובא (שימור הפלט)' },
+  'builder-sub-bottom': { kind: 'ui-state', reason: 'EXT-22: כנ"ל' },
+  'builder-sub-right': { kind: 'ui-state', reason: 'EXT-22: כנ"ל' },
+  'builder-sub-left': { kind: 'ui-state', reason: 'EXT-22: כנ"ל' },
+  'builder-theme-name': { kind: 'ui-state', reason: 'EXT-22: שם ערכה בבונה המקור — מטא-נתון UI' },
+  'f-siman': { kind: 'ui-state', reason: 'EXT-22: גופן הסימן — שליטה חיה דרך siman-font (ריק=ירושת כותרות); מחסנית המקור לא מיובאת כדי לשמר את המודל המכויל' },
+  's-note-title': { kind: 'ui-state', reason: 'EXT-22: גודל כותרת ההערות — שליטה חיה דרך endnote-title-size-pt (17=המכויל); 9 של המקור לא מיובא כדי לשמר את הפלט' },
+  'f-paren': { kind: 'ui-state', reason: 'EXT-22: גופן הסוגריים — טרם מומש במנוע המורשת (סוגריים בגודל-גוף מוקטן בתוך שורות מעורבות; דורש דגל-מילה במודל)' },
+
   // ============ כותרות עליונות (25 מפתחות hdr-*) ============
   'hdr-title-split': { kind: 'ui-state', reason: 'פיצול שם הספר לחצאים בכותרת העליונה — מיושם תמידית ב-legacy (hdrR/hdrL) כמו בייחוס — S4.20/EXT-19' },
   'hdr-alternating': { kind: 'ui-state', reason: 'החלפת החצאים בעמודים זוגיים-פיזיים — מיושם בהרכבת ה-legacy (S4.20/EXT-19)', issue: 'EXT-19' },

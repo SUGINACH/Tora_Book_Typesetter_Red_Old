@@ -832,7 +832,25 @@ const RED_SETTING_BRIDGE_S77 = {
   'size-body': 'body-font-size-pt',
   'line-height-body': 'body-line-height',
   's-h0-body': 'heading-0-body-size-pt',
-  'f-h0-body': 'heading-0-body-font'
+  'f-h0-body': 'heading-0-body-font',
+  // **EXT-22 (השוואה עם המקור הירוק — להוספה בלבד):** הרחבת הגשר — התנהגויות
+  // פתיחה/סימן/הערות שנקראו מה-raw בלבד (b/n ב-readConfig) + גדלי
+  // תוכן-העניינים פר-רמה (s-gtoc-N/s-dtoc-N). ברירות המחדל של הרישום
+  // זהות לקבועים המכוילים — ה-digest נשמר; שינוי חי בפאנל משפיע מיד.
+  'odd-h0': 'odd-h0',
+  'odd-h1': 'odd-h1',
+  'odd-h2': 'odd-h2',
+  'h2-auto-siman': 'h2-auto-siman',
+  'h2-reset-siman': 'h2-reset-siman',
+  's-siman': 'siman-size-pt',
+  'note-marker-size': 'note-marker-size',
+  'note-listing-num-size': 'note-listing-num-size',
+  'note-num-separator': 'note-num-separator',
+  ...[1, 2, 3, 4, 5, 6, 7].reduce((acc, lvl) => {
+    acc[`s-gtoc-${lvl}`] = `toc-gsize-${lvl}`;
+    acc[`s-dtoc-${lvl}`] = `toc-dsize-${lvl}`;
+    return acc;
+  }, {})
 };
 // **EXT-20:** תרגום אוצר-מילים של סגנונות שאין זהות בין הרישום ל-raw —
 // מופה כאן פעם אחת (drop-word-mode לעיל מטופל ב-g עצמו).
@@ -1913,13 +1931,36 @@ function legacyTypeset(rawText, settings, env) {
     const shYearFontApi = fontApiFor(settings['shaar-year-font']);
     const h1FontApi = fontApiFor(settings['heading-1-font']);
     const h1SubFontApi = fontApiFor('David Libre');
+    // **EXT-22 (builder-{kind}-{left,right} של המקור):** רוחב תיבת השער
+    // משוליים מפורשים במ״מ (0=אוטומטי — 15/15 לראשי, 95/15 לאחורי,
+    // 15/95 למשנה). משמש לעטיפת השורות (מדידה=רינדור) ולמיקום האופקי
+    // במקרנים (dom-renderer + legacy-projector — תצוגה=ייצוא).
+    const gateBoxW = (kind, dfltL, dfltR) => {
+      const L = Number(settings[`shaar-${kind}-box-left`]);
+      const R = Number(settings[`shaar-${kind}-box-right`]);
+      const mm = 96 / 25.4;
+      const effL = L > 0 ? L : dfltL;
+      const effR = R > 0 ? R : dfltR;
+      return Math.max(40, GEO.PAGE_W - (effL + effR) * mm);
+    };
+    // **EXT-22 (builder-{kind}-{top,bottom}):** היסט אנכי של בלוק שורות השער —
+    // top מזיז את הבלוק מטה מגובה ברירת המחדל, bottom מעלה (כשקטן מברירת
+    // המחדל). 0=אוטומטי — אין היסט (העוגנים המכוילים נשמרים בדיוק).
+    const gateYShift = (kind, dfltTop, dfltBot) => {
+      const T = Number(settings[`shaar-${kind}-box-top`]);
+      const B = Number(settings[`shaar-${kind}-box-bottom`]);
+      const mm = 96 / 25.4;
+      const dTop = T > 0 ? (T - dfltTop) * mm : 0;
+      const dBot = B > 0 && B < dfltBot ? (dfltBot - B) * mm : 0;
+      return Math.round(dTop - dBot);
+    };
     if (type === 'shaar-main') {
       // **D-89:** צבעי הייחוס — הכותרת/המהדורה/המחבר ב-#0F172A (נמדד בעמ' 1,
       // 46pt/11pt/15pt), הנושא והתיאור ב-#0F1749 (מצוירים שם כקטועים).
       // **S6.3:** גדלים מההגדרות (s-sh-*) + גופן לכל שורה (f-sh-*) + עטיפת
       // הכותרת בגופן שלה (במקור: div עם רוחב התיבה — עוטף אוטומטית).
       const out = [];
-      const mainBoxW = GEO.PAGE_W - 30 * (96 / 25.4);
+      const mainBoxW = gateBoxW('main', 15, 15);
       const titleLines = wrapGate(meta.bookTitle, cfg.shTitle, mainBoxW, shTitleFontApi);
       const lineHOf = (sz) => sz * (96 / 72) * 1.3;
       // **S6.3 (בטיחות עטיפה):** כותרת שנעטפה לשניים דוחפת את הכותרת-המשנה
@@ -1941,6 +1982,12 @@ function legacyTypeset(rawText, settings, env) {
       }));
       out.push({ text: meta.edition || '', sizePt: cfg.shSec, y: pt(558.0), singleOp: true, color: colOf(settings['shaar-sections-color']), font: settings['shaar-sections-font'] || null });
       out.push({ text: meta.author || '', sizePt: cfg.shAuthor, y: pt(713.5), singleOp: true, color: colOf(settings['shaar-author-color']), font: settings['shaar-author-font'] || null });
+      const dyMain = gateYShift('main', 20, 16);
+      if (dyMain) out.forEach(g => { g.y += dyMain; });
+      const dyBack = gateYShift('back', 22, 18);
+      if (dyBack) out.forEach(g => { g.y += dyBack; });
+      const dySub = gateYShift('sub', 20, 20);
+      if (dySub) out.forEach(g => { g.y += dySub; });
       return out.filter(g => g.text);
     }
     if (type === 'shaar-back') {
@@ -1959,7 +2006,7 @@ function legacyTypeset(rawText, settings, env) {
       // העטיפה נמדדת באותו גופן (wrapGate) — המדידה = הרינדור.
       const shBackFontApi = fontApiFor(settings['shaar-back-text-font']);
       const backFont = settings['shaar-back-text-font'] || null;
-      const backBoxW = GEO.PAGE_W - 110 * (96 / 25.4);
+      const backBoxW = gateBoxW('back', 95, 15); // **EXT-22**
       const copyright = cfg.backCopyright || meta.copyright || '';
       const publisher = cfg.backPublishing || meta.publisher || '';
       const contact = cfg.backContact || meta.contact || '';
@@ -1989,7 +2036,7 @@ function legacyTypeset(rawText, settings, env) {
       // ונעטפת לרוחב תיבת השער (378px) כמו ה-div במקור.
       // **S6.3:** גודל הכותרת מההגדרות (s-h1; במקור 50pt) וגופן הרמה
       // (f-h1 ⇒ Lia Sgula); ההמשך ב-f-h1-sub של המקור (David Libre).
-      const subBoxW = GEO.PAGE_W - 110 * (96 / 25.4);
+      const subBoxW = gateBoxW('sub', 15, 95); // **EXT-22**
       const h1Lines = wrapGate(first, cfg.h1Size, subBoxW, h1FontApi);
       const h1LineH = cfg.h1Size * (96 / 72) * 1.3;
       // **S6.3 (בטיחות עטיפה):** כמו בשער הראשי — ההמשך לפחות 25px מתחת
@@ -2073,7 +2120,11 @@ function legacyTypeset(rawText, settings, env) {
           const areaH = spanExempt ? 261.3 : H2_AREA_H;
           if (cfg.autoSimanH2) {
             simanCounter++;
-            pg.bands.push({ kind: 'h2-siman', text: 'סימן ' + toGematria(simanCounter), sizePt: SZ.siman, y: spanExempt ? 284.9 : 307.88, h: 36, tokenId: null });
+            // **EXT-22:** גודל וגופן פס הסימן מההגדרות החיות (s-siman/f-siman
+            // של המקור; ברירות מחדל 20pt/ירושת הכותרות — הקבועים המכוילים).
+            const simanSz = Number(settings['siman-size-pt']) > 0 ? Number(settings['siman-size-pt']) : SZ.siman;
+            const simanFam = settings['siman-font'] ? String(settings['siman-font']) : '';
+            pg.bands.push({ kind: 'h2-siman', text: 'סימן ' + toGematria(simanCounter), sizePt: simanSz, y: spanExempt ? 284.9 : 307.88, h: 36, tokenId: null, ...(simanFam ? { font: simanFam } : {}) });
           }
           const disp = sec.newPage.text.replace(/^סימן\s+[א-ת]+[:\-–—\s]*/i, '').trim();
           // **S4.24 (כותרת-h2 ארוכה מהפס — עטיפה):** נמדד בחי — "בענין הזכרת
@@ -2872,7 +2923,10 @@ function legacyTypeset(rawText, settings, env) {
             // ההתנהגות ההיסטורית ('א' בגודל הגוף).
             fnResetMode === 'siman' ? {
               markerOf: (i) => fnChapterCounter + i + 1,
-              markerSizePt: cfg.fnListingNumSize,
+              // **EXT-22:** מדידת סמן הגוף בגודל הסמן (note-marker-size) —
+              // כמו הרינדור במקרן (projCfg.markerSize); ברירות המחדל זהות (8)
+              // — ה-digest נשמר. בעבר נמדד בגודל הרישום (fnListingNumSize).
+              markerSizePt: cfg.fnMarkerSize,
               markerMeasure: (t, sz) => fnApi.measureTextWidth(t, sz, 0),
               bodySizePt: bodySz,
               bodyMeasure: (t, sz) => (isH0Body && prefaceApi ? prefaceApi : { measureTextWidth: (tt, ss) => brk.w(tt, ss) }).measureTextWidth(t, sz, 0)
@@ -3848,12 +3902,15 @@ function legacyTypeset(rawText, settings, env) {
   // IMUD נותן ערכי פתיחה המשמרים את הפלט המכויל במדויק (רשימות המקור).
   const tocLevelShowS77 = (n) => settings[`toc-level-${n}-show`] === false ? false : true;
   const tocLevelInlineS77 = (n) => settings[`toc-level-${n}-inline`] === true;
-  const genShowRaw = Array.isArray(cfg.gtocShow) ? cfg.gtocShow : [1, 2, 3, 4, 5, 6];
-  const detShowRaw = Array.isArray(cfg.dtocShow) ? cfg.dtocShow : [2, 3, 4, 5, 6];
-  const lvlShown = (rawList, n) => tocLevelShowS77(n) && rawList.includes(n);
-  const genEntries = tokens.filter(t => t.type[0] === 'h' && lvlShown(genShowRaw, t.level))
+  // **EXT-22:** הצגה פר-סוג (gtoc-show/dtoc-show של המקור) — ערך הרישום גובר;
+  // המסכה המשותפת (toc-level-N-show) נשארת כ-AND. ברירות המחדל משחזרות את
+  // הרשימות המקוריות בדיוק (כללי 1–6, מפורט 2–6) — ה-digest נשמר; הדלקת
+  // רמה שמעבר לרשימת המקור (למשל 7) היא בחירה מפורשת של המשתמש.
+  const tocTypeShowS = (kind, n) => settings[(kind === 'det' ? 'toc-dshow-' : 'toc-gshow-') + n] !== false;
+  const lvlShown = (kind, n) => tocLevelShowS77(n) && tocTypeShowS(kind, n);
+  const genEntries = tokens.filter(t => t.type[0] === 'h' && lvlShown('gen', t.level))
     .map(t => ({ tokenId: t.id, level: t.level, text: t.text }));
-  const detEntries = tokens.filter(t => t.type[0] === 'h' && lvlShown(detShowRaw, t.level))
+  const detEntries = tokens.filter(t => t.type[0] === 'h' && lvlShown('det', t.level))
     .map(t => ({ tokenId: t.id, level: t.level, text: t.text }));
 
   // **S6.3:** גדלים נפרדים לכל תוכן-עניינים — s-gtoc-* מול s-dtoc-*
@@ -3906,12 +3963,16 @@ function legacyTypeset(rawText, settings, env) {
       const availW = Math.max(40, (x1 - GEO.TOC_NUM_X - 10) * 0.92);
       const lines = wrapTocRow(e.text, sizePt, availW);
       // **S6.3:** גופן השורה מההגדרות המקוריות (f-gtoc-*/f-dtoc-* ⇒ David
-      // Libre בברירת המחדל) — נקרא ישירות מה-raw (אין מפתח רישום נפרד
-      // לגופן ה-TOC); משפחה ראשונה מהמחסנית. הרינדור ב-dom-renderer לפי
-      // שדה ה-font.
+      // Libre בברירת המחדל). **EXT-22:** הגדרה חיה של הרישום (toc-gfont-N /
+      // toc-dfont-N) גוברת על ה-raw — אותו חוזה כמו שאר הגשר; משפחה ראשונה
+      // מהמחסנית. הרינדור ב-dom-renderer לפי שדה ה-font, וההקרנה ל-PDF לפי
+      // r.font (תצוגה=ייצוא).
       const rawFontKey = (kind === 'toc-detailed' ? 'f-dtoc-' : 'f-gtoc-') + e.level;
+      const liveFontKey = (kind === 'toc-detailed' ? 'toc-dfont-' : 'toc-gfont-') + e.level;
+      const liveFont = settings && settings[liveFontKey] ? String(settings[liveFontKey]) : '';
       const rawFontStack = String(rawSet[rawFontKey] || '');
-      const rawFirst = rawFontStack ? rawFontStack.replace(/'/g, '').split(',')[0].trim() : '';
+      const fontSrc = liveFont || rawFontStack;
+      const rawFirst = fontSrc ? fontSrc.replace(/'/g, '').split(',')[0].trim() : '';
       return {
         ...e, sizePt, x1, lines,
         h: tocRowH(e.level, sizes) + Math.max(0, lines.length - 1) * 26,
@@ -3919,10 +3980,15 @@ function legacyTypeset(rawText, settings, env) {
       };
     });
     // יחידות: h1 בודד; h2 + כל ה-h3..h6 שאחריו עד ה-h2 הבא
+    // **EXT-22:** קיבוץ פר-רמה ופר-סוג (gtoc-grp/dtoc-grp של המקור) — רמה
+    // עם קיבוץ כבוי נפתחת כיחידה עצמאית (break-inside נפרד). ברירת המחדל:
+    // רמות 3+ מקובצות — בדיוק ההתנהגות הקיימת.
+    const grpOf = (lvl) => settings[(kind === 'toc-detailed' ? 'toc-dgrp-' : 'toc-ggrp-') + lvl] !== false;
     const units = [];
     for (const r of rows) {
       if (r.level <= 2 || !units.length) units.push([r]);
-      else units[units.length - 1].push(r);
+      else if (grpOf(r.level)) units[units.length - 1].push(r);
+      else units.push([r]);
     }
     const pagesRows = [];
     let curRows = [], curH = 0, first = true;
@@ -3990,7 +4056,12 @@ function legacyTypeset(rawText, settings, env) {
         rows: pr.rows.map((r, i) => ({
           tokenId: r.tokenId, level: r.level, text: r.text, lines: r.lines, sizePt: r.sizePt, y: rowYs[i],
           folio: '',
-          x1: r.x1 != null ? r.x1 : GEO.TOC_TITLE_X1 - (r.level - 1) * GEO.TOC_STAIR
+          x1: r.x1 != null ? r.x1 : GEO.TOC_TITLE_X1 - (r.level - 1) * GEO.TOC_STAIR,
+          // **EXT-22 (תיקון שורש):** שדה ה-font אבד במיפוי הזה — גופן ה-TOC
+          // (raw מקור f-gtoc-N/f-dtoc-N או ההגדרה החיה toc-{g,d}font-N) מעולם
+          // לא הגיע לרינדור; ה-DOM נפל ל-heading-N-font. כעת מועבר הלאה —
+          // התצוגה והייצוא מציירים את הגופן שנבחר.
+          font: r.font != null ? r.font : null
         }))
       };
       return pg;
@@ -4025,7 +4096,7 @@ function legacyTypeset(rawText, settings, env) {
       setHeader(enPg, cfg.fnTitleText);
       enPg._enFirst = enFirst;
       // **S6.3:** גופן כותרת ההערות מההגדרות (f-note-title ⇒ David Libre).
-      if (enFirst) enPg.bands.push({ kind: 'endnote-title', text: cfg.fnTitleText, sizePt: SZ.h2, y: GEO.FLOW_TOP, h: EN_TITLE_H, tokenId: null, font: settings['endnote-title-font'] || null });
+      if (enFirst) enPg.bands.push({ kind: 'endnote-title', text: cfg.fnTitleText, sizePt: (Number(settings['endnote-title-size-pt']) > 0 ? Number(settings['endnote-title-size-pt']) : SZ.h2), y: GEO.FLOW_TOP, h: EN_TITLE_H, tokenId: null, font: settings['endnote-title-font'] || null });
       enCol = 0; enY = GEO.FLOW_TOP + (enFirst ? EN_TITLE_H : 0);
       endnotePagesBuilt.push(enPg);
     };
@@ -4133,7 +4204,14 @@ function legacyTypeset(rawText, settings, env) {
     // המחדל 1 — כולם נספרים; ההתנהגות ההיסטורית נשמרת במדויק).
     if (pnStartIdx > 1 && (pi + 1) < pnStartIdx) counted = false;
     p.pageNumber = counted ? pn++ : null;
-    const shows = ['toc-general', 'toc-detailed', 'regular', 'sign-open', 'preface'].includes(p.type);
+    const shows = ['toc-general', 'toc-detailed', 'regular', 'sign-open', 'preface'].includes(p.type)
+      // **EXT-22 (main/back/sub-shaar-show-number של המקור):** הצגת הגיליון
+      // על עמודי השערים — כבויה כברירת מחדל (כמו המקור); הדלקה חיה מציגה
+      // את מספר העמוד גם על השער (כשהוא נספר — עמוד שאינו נספר אין לו מספר
+      // ממילא).
+      || (p.type === 'shaar-main' && settings['main-shaar-show-number'] === true)
+      || (p.type === 'shaar-back' && settings['back-shaar-show-number'] === true)
+      || (p.type === 'shaar-sub' && settings['sub-shaar-show-number'] === true);
     // **D-108:** הגיליון המודפס בגימטריה חשופה בלבד — toBareGematria (מקור
     // הפורמט המשותף לשני המנועים), לא toGematria המפריד אלפים בגרש.
     // **EXT-20:** פורמט הגיליון מההגדרה (folioOf) — 'hebrew' = toBareGematria.
@@ -10085,6 +10163,11 @@ const registry = [
   K('page-num-start-idx', 'number', 1, P.GRID, 'inp-page-num-start-idx', ['decoration/folio'], 'fx:folio-start-idx', { min: 1, max: 999, note: 'שוחזר מ‑V1 (REQ-HDR-03): סוד העמוד הנספר שממנו מתחיל התצוגה' }),
   K('count-shaar-pages', 'bool', false, P.GRID, 'chk-count-shaar', ['decoration/folio'], 'fx:count-shaar'),
   K('count-shaar-sub-pages', 'bool', false, P.GRID, 'chk-count-shaar-sub', ['decoration/folio'], 'fx:count-shaar-sub', { note: 'Iteration-003: המקור מונה שערי-משנה בפוליו אך לא את השערים הראשי/אחורי (sub-shaar-count-numbering=true, main/back=false) — בקרה פר-סוג' }),
+  // **EXT-22:** הצגת הגיליון על עמודי השערים (main/back/sub-shaar-show-number
+  // במקור; ברירת המחדל false — השערים אינם מציגים מספר, כמו המקור).
+  K('main-shaar-show-number', 'bool', false, P.GRID, 'chk-main-shaar-show-num', ['layout/legacy-imud-flow'], 'fx:main-shaar-show-num'),
+  K('back-shaar-show-number', 'bool', false, P.GRID, 'chk-back-shaar-show-num', ['layout/legacy-imud-flow'], 'fx:back-shaar-show-num'),
+  K('sub-shaar-show-number', 'bool', false, P.GRID, 'chk-sub-shaar-show-num', ['layout/legacy-imud-flow'], 'fx:sub-shaar-show-num'),
   K('count-toc-pages', 'bool', false, P.GRID, 'chk-count-toc', ['decoration/folio'], 'fx:count-toc'),
   K('count-endnote-pages', 'bool', false, P.GRID, 'chk-count-endnotes', ['decoration/folio', 'core/pipeline'], 'fx:count-endnotes', { note: 'S7.1.1: אם true — עמודי הערות נספרים במספור ומקבלים גיליון' }),
 
@@ -10113,6 +10196,14 @@ const registry = [
   K('heading-0-body-font', 'font', 'Frank Ruhl Libre', P.TYPO, 'sel-h0-body-font', ['layout/legacy-imud-flow'], 'fx:h0-body-font', { note: 'S6.3: גוף ההקדמה — מדידה (prefaceApi) ורינדור באותו גופן' }),
   K('heading-0-body-size-pt', 'number', 11.5, P.TYPO, 'rng-h0-body-size', ['core/pipeline', 'layout/legacy-imud-flow'], 'fx:h0-body-size', { min: 6, max: 40, step: 0.5, note: 'RC-2a (i004): גודל גוף ההקדמה — המקור s-h0-body=11.5; הפיץ׳ 11.5×1.34×4/3 = H0_LINE_H. עד כאן לא מופוה ייבוא ⇒ ההקדמה זרמה ב-12pt' }),
   K('endnote-title-font', 'font', 'David Libre', P.NOTES, 'sel-endnote-title-font', ['layout/legacy-imud-flow'], 'fx:endnote-title-font', { note: 'S6.3: גופן כותרת עמודי הערות' }),
+  // **EXT-22:** גודל כותרת ההערות (s-note-title במקור; ברירת המחדל 17 = הקבוע המכויל
+  // הקיים SZ.h2 — ערך 9 של המקור לא מיובא כדי לשמר את הפלט המכויל; השליטה חיה).
+  K('endnote-title-size-pt', 'number', 17, P.NOTES, 'rng-endnote-title-size', ['layout/legacy-imud-flow'], 'fx:endnote-title-size', { min: 6, max: 40 }),
+  // **EXT-22:** גדלי סמני ההערות והמפריד (EXT-17 קרא מה-raw בלבד; כעת גם שליטה
+  // חיה בפאנל — note-marker-size/note-listing-num-size/note-num-separator במקור).
+  K('note-marker-size', 'number', 8, P.NOTES, 'rng-note-marker-size', ['layout/legacy-imud-flow'], 'fx:note-marker-size', { min: 5, max: 14, note: 'EXT-22: גודל מילת-הסמן בגוף (8 במקור)' }),
+  K('note-listing-num-size', 'number', 8, P.NOTES, 'rng-note-listing-size', ['layout/legacy-imud-flow'], 'fx:note-listing-size', { min: 5, max: 14, note: 'EXT-22: גודל סמן הרישום ברשימת ההערות (8 במקור)' }),
+  K('note-num-separator', 'string', '.', P.NOTES, 'inp-note-num-sep', ['layout/legacy-imud-flow'], 'fx:note-num-sep', { note: 'EXT-22: המפריד אחרי מספר ההערה (. במקור)' }),
   K('body-last-line-align', 'enum', 'center', P.TYPO, 'sel-last-line-align', ['output/dom-renderer'], 'fx:last-line-align', { enum: ['center', 'right', 'stretch'], note: 'wiring מ‑Orange ✓' }),
 
   // ---- כותרות 0–7 (HEADINGS) ----
@@ -10128,6 +10219,17 @@ const registry = [
     K(`heading-${h}-color`, 'color', '#000000', P.HEADINGS, `inp-h${h}-color`, ['output/legacy-projector', 'output/legacy-projector', 'output/dom-renderer'], `fx:h${h}-color`),
     K(`heading-${h}-size-pt`, 'number', [20, 18, 16, 15, 14, 14, 13, 12][h], P.HEADINGS, `rng-h${h}-size`, ['typography/measure-api'], `fx:h${h}-size`, { min: 8, max: 48 }),
   ]),
+  // **EXT-22 (השוואה עם המקור הירוק 25.11):** סימן-הספר והתנהגויות הפתיחה של
+  // המקור שהיו נקראות מה-raw בלבד (ui-state) — כעת שליטה חיה בפאנל. ברירות
+  // המחדל = ההתנהגות המכוילת הקיימת בדיוק (siman 20pt בגופן הכותרות;
+  // odd-h0/h1 דלוקים, odd-h2 כבוי; מספור-סימן אוטומטי ואיפוס לכל פרק דלוקים).
+  K('siman-font', 'font', '', P.HEADINGS, 'sel-siman-font', ['layout/legacy-imud-flow'], 'fx:siman-font', { note: 'EXT-22: גופן פס הסימן (f-siman במקור; ריק = ירושת גופן הכותרות — ברירת המחדל הקיימת)' }),
+  K('siman-size-pt', 'number', 20, P.HEADINGS, 'rng-siman-size', ['layout/legacy-imud-flow'], 'fx:siman-size', { min: 10, max: 36, note: 'EXT-22: גודל פס הסימן (s-siman במקור; 20 = הקבוע המכויל SZ.siman)' }),
+  K('odd-h0', 'bool', true, P.HEADINGS, 'chk-odd-h0', ['layout/legacy-imud-flow'], 'fx:odd-h0', { note: 'EXT-22: פתיחת H0 בעמוד אי-זוגי — עמוד ריק לפני פתיחה בגב (ensureOddPageStart של המקור)' }),
+  K('odd-h1', 'bool', true, P.HEADINGS, 'chk-odd-h1', ['layout/legacy-imud-flow'], 'fx:odd-h1', { note: 'EXT-22: פתיחת H1 בעמוד אי-זוגי (odd-h1 במקור)' }),
+  K('odd-h2', 'bool', false, P.HEADINGS, 'chk-odd-h2', ['layout/legacy-imud-flow'], 'fx:odd-h2', { note: 'EXT-22: פתיחת H2 בעמוד אי-זוגי (odd-h2 במקור; כבוי בברירת המחדל)' }),
+  K('h2-auto-siman', 'bool', true, P.HEADINGS, 'chk-h2-auto-siman', ['layout/legacy-imud-flow'], 'fx:h2-auto-siman', { note: 'EXT-22: מספור סימן אוטומטי א-ב-ג (h2-auto-siman במקור)' }),
+  K('h2-reset-siman', 'bool', true, P.HEADINGS, 'chk-h2-reset-siman', ['layout/legacy-imud-flow'], 'fx:h2-reset-siman', { note: 'EXT-22: איפוס מונה הסימנים לכל פרק (h2-reset-siman במקור)' }),
   // D-45→D-54: h2-orn-scope חזר בסעיף העיטורים להלן עם מנגנום חי (S8).
   K('hdr-h1-title-mode', 'enum', 'main', P.HEADERS, 'sel-hdr-h1-mode', ['decoration/headers-builder'], 'fx:hdr-h1-mode', { enum: ['main', 'full'], note: 'K-8: main כברירת מחדל + toggle' }),
 
@@ -10246,6 +10348,24 @@ const registry = [
     K(`toc-level-${lvl}-show`, 'bool', lvl <= 6, P.TOC, `chk-toc-l${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-l${lvl}`),
     K(`toc-level-${lvl}-inline`, 'bool', false, P.TOC, `chk-toc-l${lvl}-inline`, ['layout/legacy-imud-flow'], `fx:toc-l${lvl}-inline`),
   ]),
+  // **EXT-22 (בדיקת השוואה מול המקור הירוק 25.11 — "לגבי הוספה! לא הורדה!!",
+  // ביחוד לגבי תוכן העניינים):** אפשרויות ה-TOC של המקור שחסרו בלוח —
+  // גופן וגודל פר-רמה לכל תוכן בנפרד (f/s-gtoc-N, f/s-dtoc-N), הצגה פר-סוג
+  // (gtoc-show/dtoc-show) וקיבוץ פר-סוג (gtoc-grp/dtoc-grp). ברירות המחדל =
+  // ההתנהגות המכוילת הקיימת בדיוק (David Libre לכל הרמות; 12/11/10.5×4/8.8;
+  // כללי 1–6, מפורט 2–6; רמות 3+ מקובצות עם ההורה כמו היחידות האטומיות) —
+  // ה-digest נשמר. השליטה המשותפת הקיימת (toc-level-N-show/inline) נשארת
+  // כמסכת AND — שום דבר לא הוסר.
+  ...[1, 2, 3, 4, 5, 6, 7].flatMap(lvl => [
+    K(`toc-gfont-${lvl}`, 'font', 'David Libre', P.TOC, `sel-toc-gfont-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-gfont-${lvl}`, { note: `EXT-22: גופן שורות רמה ${lvl} בתוכן הכללי (f-gtoc-${lvl} במקור)` }),
+    K(`toc-dfont-${lvl}`, 'font', 'David Libre', P.TOC, `sel-toc-dfont-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-dfont-${lvl}`, { note: `EXT-22: גופן שורות רמה ${lvl} בתוכן המפורט (f-dtoc-${lvl} במקור)` }),
+    K(`toc-gsize-${lvl}`, 'number', lvl === 1 ? 12 : lvl === 2 ? 11 : lvl === 7 ? 8.8 : 10.5, P.TOC, `rng-toc-gsize-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-gsize-${lvl}`, { min: 6, max: 30, note: `EXT-22: גודל שורות רמה ${lvl} בתוכן הכללי (s-gtoc-${lvl} במקור)` }),
+    K(`toc-dsize-${lvl}`, 'number', lvl === 1 ? 12 : lvl === 2 ? 11 : lvl === 7 ? 8.8 : 10.5, P.TOC, `rng-toc-dsize-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-dsize-${lvl}`, { min: 6, max: 30, note: `EXT-22: גודל שורות רמה ${lvl} בתוכן המפורט (s-dtoc-${lvl} במקור)` }),
+    K(`toc-gshow-${lvl}`, 'bool', lvl <= 6, P.TOC, `chk-toc-gshow-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-gshow-${lvl}`, { note: `EXT-22: הצגת רמה ${lvl} בתוכן הכללי בלבד (gtoc-show; המסכה המשותפת toc-level-${lvl}-show נשארת)` }),
+    K(`toc-dshow-${lvl}`, 'bool', lvl >= 2 && lvl <= 6, P.TOC, `chk-toc-dshow-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-dshow-${lvl}`, { note: `EXT-22: הצגת רמה ${lvl} בתוכן המפורט בלבד (dtoc-show)` }),
+    K(`toc-ggrp-${lvl}`, 'bool', lvl >= 3, P.TOC, `chk-toc-ggrp-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-ggrp-${lvl}`, { note: `EXT-22: קיבוץ רשומות רמה ${lvl} עם ההורה בתוכן הכללי — break-inside (gtoc-grp)` }),
+    K(`toc-dgrp-${lvl}`, 'bool', lvl >= 3, P.TOC, `chk-toc-dgrp-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-dgrp-${lvl}`, { note: `EXT-22: קיבוץ רשומות רמה ${lvl} עם ההורה בתוכן המפורט (dtoc-grp)` }),
+  ]),
 
   // ---- שערים/נושאים (THEMES) ---- **S8 (D-54): ערכות נושא חיות — הפעלה מלאה (F-10 נעול)**
   K('background-color', 'color', '#ffffff', P.THEMES, 'inp-bg-color', ['output/dom-renderer'], 'fx:bg-color'),
@@ -10255,6 +10375,16 @@ const registry = [
   K('shaar-main-image', 'string', '', P.THEMES, 'inp-shaar-main-img', ['decoration/page-decorations', 'decoration/shaar-boxes'], 'fx:shaar-main-img'),
   K('shaar-sub-image', 'string', '', P.THEMES, 'inp-shaar-sub-img', ['decoration/page-decorations'], 'fx:shaar-sub-img'),
   K('shaar-back-enabled', 'bool', true, P.THEMES, 'chk-shaar-back', ['decoration/page-decorations', 'decoration/shaar-boxes'], 'fx:shaar-back', { note: 'PT-03: 4 מקטעים עצמאיים; כיבוי ראשי מבטל את כולם' }),
+  // **EXT-22 (בוררי תיבות השער של המקור — builder-{main,sub,back}-{top,bottom,right,left}):
+  // תיבת הטקסט של כל שער במ״מ. 0 = אוטומטי (התיבה של העיצוב מהספרייה /
+  // ברירת המחדל המכוילת) — התנהגות ברירת המחדל נשמרת בדיוק; ערך > 0 קובע
+  // שוליים מפורשים לאותו צד של אותו שער (כמו resolveShaarBoxStyle של המקור).
+  ...['main', 'sub', 'back'].flatMap(kind => [
+    K(`shaar-${kind}-box-top`, 'number', 0, P.THEMES, `rng-shaar-${kind}-box-top`, ['output/dom-renderer', 'decoration/shaar-boxes'], `fx:shaar-${kind}-box-top`, { min: 0, max: 130, note: `EXT-22: שוליים עליונים של תיבת שער ${kind === 'main' ? 'ראשי' : kind === 'sub' ? 'משנה' : 'אחורי'} במ״מ (0=אוטומטי; builder-${kind}-top במקור)` }),
+    K(`shaar-${kind}-box-bottom`, 'number', 0, P.THEMES, `rng-shaar-${kind}-box-bottom`, ['output/dom-renderer', 'decoration/shaar-boxes'], `fx:shaar-${kind}-box-bottom`, { min: 0, max: 130, note: `EXT-22: שוליים תחתונים של תיבת שער ${kind === 'main' ? 'ראשי' : kind === 'sub' ? 'משנה' : 'אחורי'} במ״מ (0=אוטומטי; builder-${kind}-bottom במקור)` }),
+    K(`shaar-${kind}-box-right`, 'number', 0, P.THEMES, `rng-shaar-${kind}-box-right`, ['output/dom-renderer', 'decoration/shaar-boxes'], `fx:shaar-${kind}-box-right`, { min: 0, max: 100, note: `EXT-22: שוליים ימניים של תיבת שער ${kind === 'main' ? 'ראשי' : kind === 'sub' ? 'משנה' : 'אחורי'} במ״מ (0=אוטומטי; builder-${kind}-right במקור)` }),
+    K(`shaar-${kind}-box-left`, 'number', 0, P.THEMES, `rng-shaar-${kind}-box-left`, ['output/dom-renderer', 'decoration/shaar-boxes'], `fx:shaar-${kind}-box-left`, { min: 0, max: 100, note: `EXT-22: שוליים שמאליים של תיבת שער ${kind === 'main' ? 'ראשי' : kind === 'sub' ? 'משנה' : 'אחורי'} במ״מ (0=אוטומטי; builder-${kind}-left במקור)` }),
+  ]),
   // REQ-ORN-08: פאנל רקעים מוזג לתוך נושאים — 3 סוגי עמודים + color/texture/image + insets מ"מ
   K('background-page-type', 'enum', 'regular', P.THEMES, 'sel-bg-page-type', ['decoration/page-decorations'], 'fx:bg-page-type', { enum: ['regular', 'preface-open', 'sign-open'], note: 'REQ-ORN-08: מחלקת העמוד שאליה הרקע מיועד (מיזוג פאנל רקע→נושאים)' }),
   K('background-image', 'string', '', P.THEMES, 'inp-bg-image', ['decoration/page-decorations'], 'fx:bg-image'),
@@ -11014,7 +11144,10 @@ function renderPageBackgroundAndShaar(page, settings, doc, metadata) {
     els.push(el);
   }
   // עזר: שער במסך מלא מהפניה פתורה + תיבת כותרת לפי box מהעיצוב (אם נרשם)
-  const fullShaar = (slotName, cssClass, boxClass) => {
+  // **EXT-22:** תיבה מפורשת מההגדרות (shaar-{kind}-box-* במ״מ; 0=אוטומטי —
+  // builder-{kind}-{side} של המקור) גוברת על תיבת העיצוב; לכל שער ה-kind
+  // שלו (בעבר כולם קיבלו את תיבת ה-main).
+  const fullShaar = (slotName, cssClass, boxClass, kind) => {
     const slot = plan.slots.find(s => s.slot === slotName && s.asset);
     if (!slot) return;
     const resolved = resolveAssetRef(slot.asset);
@@ -11024,12 +11157,17 @@ function renderPageBackgroundAndShaar(page, settings, doc, metadata) {
     bg.style.backgroundImage = `url("${uri}")`;
     bg.style.inset = '0';
     els.push(bg);
-    // תיבת כותרת — מה-box של העיצוב ברישום (מ״מ) או מההגדרות; בלי box מהעיצוב —
-    // ה-fallback המסורתי של resolveShaarBox (REQ-ORN-05: התיבה תמיד נבנית על שער עם תמונה)
+    // תיבת כותרת — מפורש מההגדרות (EXT-22) > מה-box של העיצוב ברישום (מ״מ) >
+    // מההגדרות הישנות > ה-fallback המסורתי של resolveShaarBox (REQ-ORN-05).
+    const kk = kind || 'main';
+    const ovr = (side) => { const v = Number(settings[`shaar-${kk}-box-${side}`]); return v > 0 ? v : null; };
+    const explicit = (ovr('top') || ovr('bottom') || ovr('right') || ovr('left'))
+      ? { top: ovr('top') != null ? ovr('top') : 40, bottom: ovr('bottom') != null ? ovr('bottom') : 40, right: ovr('right') != null ? ovr('right') : 30, left: ovr('left') != null ? ovr('left') : 30 }
+      : null;
     const designBox = resolved.item && resolved.item.box ? resolved.item.box : null;
-    const boxRef = designBox || settings['shaar-main-box'] || null;
+    const boxRef = explicit || designBox || settings['shaar-main-box'] || null;
     {
-      const { box } = resolveShaarBox('main', settings['theme-set-id'] || 'default', { box: boxRef }, null, { top: 40, bottom: 40, right: 30, left: 30 });
+      const { box } = resolveShaarBox(kk, settings['theme-set-id'] || 'default', { box: boxRef }, null, { top: 40, bottom: 40, right: 30, left: 30 });
       const tb = doc.createElement('div');
       tb.className = boxClass;
       tb.dir = 'rtl';
@@ -11043,9 +11181,9 @@ function renderPageBackgroundAndShaar(page, settings, doc, metadata) {
       els.push(tb);
     }
   };
-  fullShaar('shaar-main', 'deco deco--shaar-main', 'shaar-main-box');
-  fullShaar('shaar-sub', 'deco deco--shaar-sub', 'shaar-sub-box');
-  fullShaar('shaar-back-frame', 'deco deco--shaar-back', 'shaar-back-box');
+  fullShaar('shaar-main', 'deco deco--shaar-main', 'shaar-main-box', 'main');
+  fullShaar('shaar-sub', 'deco deco--shaar-sub', 'shaar-sub-box', 'sub');
+  fullShaar('shaar-back-frame', 'deco deco--shaar-back', 'shaar-back-box', 'back');
   return els;
 }
 
@@ -11343,7 +11481,15 @@ function renderLegacyPage(pg, settings, doc) {
       'shaar-back': { x: 95 * MMpx, w: 377.98 },
       'shaar-sub': { x: 15 * MMpx, w: GEO.PAGE_W - 110 * MMpx }
     };
-    const gbox = GATE_BOX[pg.type] || { x: BAND_X, w: BAND_W };
+    // **EXT-22 (builder-{kind}-{left,right}):** שוליים מפורשים במ״מ (0=אוטומטי)
+    // גוברים על הקבועים המכוילים — כמו המקרן ל-PDF (תצוגה=ייצוא).
+    const gbBase = GATE_BOX[pg.type] || { x: BAND_X, w: BAND_W };
+    const gateKind = pg.type === 'shaar-main' ? 'main' : pg.type === 'shaar-sub' ? 'sub' : 'back';
+    const govL = Number(settings[`shaar-${gateKind}-box-left`]);
+    const govR = Number(settings[`shaar-${gateKind}-box-right`]);
+    const geffL = govL > 0 ? Math.round(govL * MMpx) : gbBase.x;
+    const geffR = govR > 0 ? Math.round(govR * MMpx) : Math.max(0, GEO.PAGE_W - gbBase.x - gbBase.w);
+    const gbox = (govL > 0 || govR > 0) ? { x: geffL, w: Math.max(40, GEO.PAGE_W - geffL - geffR) } : gbBase;
     for (const g of (pg.gateLines || [])) {
       const el = mkLine(g.text, g.sizePt, 'center', pt2px(g.sizePt) * 1.3);
       el.className += ' band band--gate';
@@ -13629,19 +13775,29 @@ __modules["src/engine/output/shaar-content.js"] = function (require, module, exp
 const MM_TO_PX = 96 / 25.4;
 const PT = (v) => v * (96 / 72); // "mm-ish" units of the legacy calibration → px
 
-/** תיבת השער לפי הסוג — מיקומי המקור (מ"מ → פיקסלים). */
+/** תיבת השער לפי הסוג — מיקומי המקור (מ"מ → פיקסלים).
+ * **EXT-22:** שוליים מפורשים מההגדרות (shaar-{kind}-box-{side} במ״מ; 0=אוטומטי
+ * — builder-{kind}-{side} של המקור הירוק) גוברים על המיקומים המקוריים;
+ * ברירות המחדל (0) משמרות את התיבות המכוילות בדיוק. */
 function shaarBoxOf(type, settings) {
   const imudProf = !!(settings && (settings['_layout-profile'] === 'imud' || settings._imudRaw));
   const mode = imudProf ? 'fixed' : null;
   const mm = (v) => Math.round(v * MM_TO_PX);
+  let box;
   if (type === 'shaar-main') {
-    return { top: mm(20), bottom: mm(16), right: mm(15), left: mm(15), mode: mode || 'between' };
+    box = { top: mm(20), bottom: mm(16), right: mm(15), left: mm(15), mode: mode || 'between' };
+  } else if (type === 'shaar-sub') {
+    box = { top: mm(20), bottom: mm(20), right: mm(95), left: mm(15), mode: mode || 'center' };
+  } else {
+    // shaar-back
+    box = { top: mm(22), bottom: mm(18), right: mm(15), left: mm(95), mode: mode || 'center' };
   }
-  if (type === 'shaar-sub') {
-    return { top: mm(20), bottom: mm(20), right: mm(95), left: mm(15), mode: mode || 'center' };
+  const kind = type === 'shaar-main' ? 'main' : type === 'shaar-sub' ? 'sub' : 'back';
+  for (const side of ['top', 'bottom', 'right', 'left']) {
+    const v = Number(settings && settings[`shaar-${kind}-box-${side}`]);
+    if (v > 0) box[side] = mm(v);
   }
-  // shaar-back
-  return { top: mm(22), bottom: mm(18), right: mm(15), left: mm(95), mode: mode || 'center' };
+  return box;
 }
 
 /** פיצול מקף של כותרת חלק (renderSubShaar המקורי): main=לפני, sub=אחרי. */
@@ -15252,10 +15408,16 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
   };
   // **EXT-17:** גדלי סמני ההערות מהגדרות המקור (ברירות המחדל: 8/8). ההגדרות
   // של פרופיל IMUD מגיעות ב-_imudRaw (כמו readConfig של העימוד עצמו).
+  // **EXT-22:** ההגדרה החיה של הרישום גוברת על ה-raw (שליטה מהפאנל).
   const imudSet = (settings && settings._imudRaw) || settings || {};
+  const liveOrRaw = (key, dflt) => {
+    const live = Number(settings && settings[key]);
+    if (live > 0) return live;
+    return Number(imudSet[key]) || dflt;
+  };
   const projCfg = {
-    markerSize: Number(imudSet['note-marker-size']) || 8,
-    listingSize: Number(imudSet['note-listing-num-size']) || 8
+    markerSize: liveOrRaw('note-marker-size', 8),
+    listingSize: liveOrRaw('note-listing-num-size', 8)
   };
   const ascent = api.ascentEm();
   const descent = api.descentEm(); // **S5.1:** המטריקה האמיתית — לא 0.2 מוקשה
@@ -15300,10 +15462,13 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
     // בגופן heading-N-font של הרמה; המקרן צייר הכול ב-DavidLibre קבוע.
     // נפילה ל-hApi (התנהגות קודמת) כשהמשפחה אינה רשומה.
     const bLvl = HEADING_LEVEL_OF_BAND_LEGACY[b.kind];
-    const bFam = bLvl != null ? (settings[`heading-${bLvl}-font`] || 'DavidLibre-Bold') : null;
-    const bApi = (bLvl != null && apiFor(bFam)) || hApi;
+    // **EXT-22:** גופן מפורש על הפס (siman-font/endnote-title-font — מהמודל)
+    // גובר; בלי — גופן הרמה מההגדרות כמו קודם. ברירות המחדל נופלות ל-hApi
+    // (DavidLibre-Bold) — אותה התנהגות בדיוק.
+    const bFam = b.font ? String(b.font) : (bLvl != null ? (settings[`heading-${bLvl}-font`] || 'DavidLibre-Bold') : null);
+    const bApi = (b.font && apiFor(bFam)) || (bLvl != null && apiFor(bFam)) || hApi;
     const words = placeWords(b.text.split(' '), bApi, bandLeft, bandW, b.sizePt, 'center', baseY);
-    const bKey = (bLvl != null && apiFor(bFam)) ? fontKeyOf(bFam) : 'heading';
+    const bKey = (bApi !== hApi && apiFor(bFam)) ? fontKeyOf(bFam) : 'heading';
     // **S73:** צבע הפס מההגדרות (כותרת הערות ⇒ endnote-title-color; רמה ⇒ heading-N-color)
     const bColor = bandColorOf(b);
     for (const w of words) { w.fontKey = bKey; if (bColor) w.color = bColor; }
@@ -15327,7 +15492,15 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
     'shaar-back': { x: 95 * MMpx, w: 377.98 },
     'shaar-sub': { x: 15 * MMpx, w: GEO.PAGE_W - 110 * MMpx }
   };
-  const gbox = GATE_BOX[pg.type] || { x: bandLeft, w: bandW };
+  // **EXT-22 (builder-{main,sub,back}-{left,right} של המקור):** שוליים מפורשים
+  // במ״מ גוברים על הקבועים המכוילים (0=אוטומטי — ההתנהגות הקיימת בדיוק).
+  const gbBase = GATE_BOX[pg.type] || { x: bandLeft, w: bandW };
+  const gateKind = pg.type === 'shaar-main' ? 'main' : pg.type === 'shaar-sub' ? 'sub' : 'back';
+  const ovL = Number(settings[`shaar-${gateKind}-box-left`]);
+  const ovR = Number(settings[`shaar-${gateKind}-box-right`]);
+  const effL = ovL > 0 ? Math.round(ovL * MMpx) : gbBase.x;
+  const effR = ovR > 0 ? Math.round(ovR * MMpx) : Math.max(0, GEO.PAGE_W - gbBase.x - gbBase.w);
+  const gbox = (ovL > 0 || ovR > 0) ? { x: effL, w: Math.max(40, GEO.PAGE_W - effL - effR) } : gbBase;
   for (const g of (pg.gateLines || [])) {
     const h = g.sizePt * (96 / 72) * 1.3;
     const baseY = baselineOf(g.y, h, g.sizePt, ascent, descent);
@@ -15663,10 +15836,11 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
       rowLines.forEach((rowText, rli) => {
         const lineY = r.y + rli * 26;
         const baseY = baselineOf(lineY, 26, r.sizePt, ascent, descent);
-      // כותרת מימין (במדרגות לפי רמה), מספר משמאל; **S5.1:** גופן הרמה
-      // מההגדרות (כמו ה-DOM — heading-N-font), נפילה ל-hApi כשאינה רשומה.
+      // כותרת מימין (במדרגות לפי רמה), מספר משמאל; **S5.1+EXT-22:** גופן הרמה
+      // מהמודל (r.font — ההגדרה החיה toc-gfont-N/toc-dfont-N מקובעת שם;
+      // תצוגה=ייצוא), נפילה ל-heading-N-font ואז ל-hApi כשאינה רשומה.
       const rLvl = r.level != null ? r.level : 2;
-      const rFam = settings[`heading-${rLvl}-font`] || 'DavidLibre-Bold';
+      const rFam = r.font ? String(r.font) : (settings[`heading-${rLvl}-font`] || 'DavidLibre-Bold');
       const rFamApi = apiFor(rFam);
       const rApi = rFamApi || hApi;
       // **S73:** צבע שורת ה-TOC — heading-N-color של הרמה (כמו ה-DOM)

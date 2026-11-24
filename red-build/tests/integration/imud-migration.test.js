@@ -143,9 +143,19 @@ describe('S4.20 — EXT-15/16/17/19 בפרופיל ה-legacy (פתיחה אי-ז
     return typeset(text || 'ספר - מקום בינה\n\nכותרת 2 - סימן א\nפסקה ראשונה [הערה ראשונה] לבדיקה.\nעוד פסקה עם עוד מילים רבות מאוד למילוי עמודים.\n\nכותרת 2 - סימן ב\nפסקה שניה.', settings);
   }
 
-  it('EXT-15/16/17/19: הערכים נשמרים ונצרכים (ui-state — דרך _imudRaw של פרופיל ה-legacy)', () => {
+  it('EXT-15/16/17/19 + EXT-22: הערכים נשמרים ונצרכים (mapped חי או ui-state מתועד)', () => {
+    // **EXT-22 (השוואה עם המקור הירוק — להוספה בלבד):** מפתחות אלה קיבלו
+    // שליטה חיה בפאנל — ה-disposition שלהם הומר מ-ui-state ל-mapped
+    // (ערכי המקור זהים לברירות המחדל המכוילות ⇒ ה-digest נשמר; ההקרנה
+    // לרישום בדיקה ב-cross-check ירוקה).
     for (const k of ['odd-h0', 'odd-h1', 'odd-h2', 'h2-auto-siman', 'h2-reset-siman',
-      'note-marker-size', 'note-listing-num-size', 'note-num-separator', 'hdr-title-split', 'hdr-alternating']) {
+      'note-marker-size', 'note-listing-num-size', 'note-num-separator']) {
+      const d = dispositionOf(k);
+      assertEq(d.kind, 'mapped', `${k} → mapped (שליטה חיה — EXT-22)`);
+      assert(d.reason && /EXT-22/.test(d.reason), `${k}: מתועד כ-EXT-22`);
+    }
+    // נותרו ui-state מתועדים (מיושמים בהרכבת ה-legacy; טרם קיבלו מפתח רישום)
+    for (const k of ['hdr-title-split', 'hdr-alternating']) {
       const d = dispositionOf(k);
       assertEq(d.kind, 'ui-state', `${k} → ui-state (נשמר; לא removed)`);
       assert(d.reason && /S4\.20/.test(d.reason), `${k}: מתועד כמיושם`);

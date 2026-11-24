@@ -60,6 +60,11 @@ const registry = [
   K('page-num-start-idx', 'number', 1, P.GRID, 'inp-page-num-start-idx', ['decoration/folio'], 'fx:folio-start-idx', { min: 1, max: 999, note: 'שוחזר מ‑V1 (REQ-HDR-03): סוד העמוד הנספר שממנו מתחיל התצוגה' }),
   K('count-shaar-pages', 'bool', false, P.GRID, 'chk-count-shaar', ['decoration/folio'], 'fx:count-shaar'),
   K('count-shaar-sub-pages', 'bool', false, P.GRID, 'chk-count-shaar-sub', ['decoration/folio'], 'fx:count-shaar-sub', { note: 'Iteration-003: המקור מונה שערי-משנה בפוליו אך לא את השערים הראשי/אחורי (sub-shaar-count-numbering=true, main/back=false) — בקרה פר-סוג' }),
+  // **EXT-22:** הצגת הגיליון על עמודי השערים (main/back/sub-shaar-show-number
+  // במקור; ברירת המחדל false — השערים אינם מציגים מספר, כמו המקור).
+  K('main-shaar-show-number', 'bool', false, P.GRID, 'chk-main-shaar-show-num', ['layout/legacy-imud-flow'], 'fx:main-shaar-show-num'),
+  K('back-shaar-show-number', 'bool', false, P.GRID, 'chk-back-shaar-show-num', ['layout/legacy-imud-flow'], 'fx:back-shaar-show-num'),
+  K('sub-shaar-show-number', 'bool', false, P.GRID, 'chk-sub-shaar-show-num', ['layout/legacy-imud-flow'], 'fx:sub-shaar-show-num'),
   K('count-toc-pages', 'bool', false, P.GRID, 'chk-count-toc', ['decoration/folio'], 'fx:count-toc'),
   K('count-endnote-pages', 'bool', false, P.GRID, 'chk-count-endnotes', ['decoration/folio', 'core/pipeline'], 'fx:count-endnotes', { note: 'S7.1.1: אם true — עמודי הערות נספרים במספור ומקבלים גיליון' }),
 
@@ -88,6 +93,14 @@ const registry = [
   K('heading-0-body-font', 'font', 'Frank Ruhl Libre', P.TYPO, 'sel-h0-body-font', ['layout/legacy-imud-flow'], 'fx:h0-body-font', { note: 'S6.3: גוף ההקדמה — מדידה (prefaceApi) ורינדור באותו גופן' }),
   K('heading-0-body-size-pt', 'number', 11.5, P.TYPO, 'rng-h0-body-size', ['core/pipeline', 'layout/legacy-imud-flow'], 'fx:h0-body-size', { min: 6, max: 40, step: 0.5, note: 'RC-2a (i004): גודל גוף ההקדמה — המקור s-h0-body=11.5; הפיץ׳ 11.5×1.34×4/3 = H0_LINE_H. עד כאן לא מופוה ייבוא ⇒ ההקדמה זרמה ב-12pt' }),
   K('endnote-title-font', 'font', 'David Libre', P.NOTES, 'sel-endnote-title-font', ['layout/legacy-imud-flow'], 'fx:endnote-title-font', { note: 'S6.3: גופן כותרת עמודי הערות' }),
+  // **EXT-22:** גודל כותרת ההערות (s-note-title במקור; ברירת המחדל 17 = הקבוע המכויל
+  // הקיים SZ.h2 — ערך 9 של המקור לא מיובא כדי לשמר את הפלט המכויל; השליטה חיה).
+  K('endnote-title-size-pt', 'number', 17, P.NOTES, 'rng-endnote-title-size', ['layout/legacy-imud-flow'], 'fx:endnote-title-size', { min: 6, max: 40 }),
+  // **EXT-22:** גדלי סמני ההערות והמפריד (EXT-17 קרא מה-raw בלבד; כעת גם שליטה
+  // חיה בפאנל — note-marker-size/note-listing-num-size/note-num-separator במקור).
+  K('note-marker-size', 'number', 8, P.NOTES, 'rng-note-marker-size', ['layout/legacy-imud-flow'], 'fx:note-marker-size', { min: 5, max: 14, note: 'EXT-22: גודל מילת-הסמן בגוף (8 במקור)' }),
+  K('note-listing-num-size', 'number', 8, P.NOTES, 'rng-note-listing-size', ['layout/legacy-imud-flow'], 'fx:note-listing-size', { min: 5, max: 14, note: 'EXT-22: גודל סמן הרישום ברשימת ההערות (8 במקור)' }),
+  K('note-num-separator', 'string', '.', P.NOTES, 'inp-note-num-sep', ['layout/legacy-imud-flow'], 'fx:note-num-sep', { note: 'EXT-22: המפריד אחרי מספר ההערה (. במקור)' }),
   K('body-last-line-align', 'enum', 'center', P.TYPO, 'sel-last-line-align', ['output/dom-renderer'], 'fx:last-line-align', { enum: ['center', 'right', 'stretch'], note: 'wiring מ‑Orange ✓' }),
 
   // ---- כותרות 0–7 (HEADINGS) ----
@@ -103,6 +116,17 @@ const registry = [
     K(`heading-${h}-color`, 'color', '#000000', P.HEADINGS, `inp-h${h}-color`, ['output/legacy-projector', 'output/legacy-projector', 'output/dom-renderer'], `fx:h${h}-color`),
     K(`heading-${h}-size-pt`, 'number', [20, 18, 16, 15, 14, 14, 13, 12][h], P.HEADINGS, `rng-h${h}-size`, ['typography/measure-api'], `fx:h${h}-size`, { min: 8, max: 48 }),
   ]),
+  // **EXT-22 (השוואה עם המקור הירוק 25.11):** סימן-הספר והתנהגויות הפתיחה של
+  // המקור שהיו נקראות מה-raw בלבד (ui-state) — כעת שליטה חיה בפאנל. ברירות
+  // המחדל = ההתנהגות המכוילת הקיימת בדיוק (siman 20pt בגופן הכותרות;
+  // odd-h0/h1 דלוקים, odd-h2 כבוי; מספור-סימן אוטומטי ואיפוס לכל פרק דלוקים).
+  K('siman-font', 'font', '', P.HEADINGS, 'sel-siman-font', ['layout/legacy-imud-flow'], 'fx:siman-font', { note: 'EXT-22: גופן פס הסימן (f-siman במקור; ריק = ירושת גופן הכותרות — ברירת המחדל הקיימת)' }),
+  K('siman-size-pt', 'number', 20, P.HEADINGS, 'rng-siman-size', ['layout/legacy-imud-flow'], 'fx:siman-size', { min: 10, max: 36, note: 'EXT-22: גודל פס הסימן (s-siman במקור; 20 = הקבוע המכויל SZ.siman)' }),
+  K('odd-h0', 'bool', true, P.HEADINGS, 'chk-odd-h0', ['layout/legacy-imud-flow'], 'fx:odd-h0', { note: 'EXT-22: פתיחת H0 בעמוד אי-זוגי — עמוד ריק לפני פתיחה בגב (ensureOddPageStart של המקור)' }),
+  K('odd-h1', 'bool', true, P.HEADINGS, 'chk-odd-h1', ['layout/legacy-imud-flow'], 'fx:odd-h1', { note: 'EXT-22: פתיחת H1 בעמוד אי-זוגי (odd-h1 במקור)' }),
+  K('odd-h2', 'bool', false, P.HEADINGS, 'chk-odd-h2', ['layout/legacy-imud-flow'], 'fx:odd-h2', { note: 'EXT-22: פתיחת H2 בעמוד אי-זוגי (odd-h2 במקור; כבוי בברירת המחדל)' }),
+  K('h2-auto-siman', 'bool', true, P.HEADINGS, 'chk-h2-auto-siman', ['layout/legacy-imud-flow'], 'fx:h2-auto-siman', { note: 'EXT-22: מספור סימן אוטומטי א-ב-ג (h2-auto-siman במקור)' }),
+  K('h2-reset-siman', 'bool', true, P.HEADINGS, 'chk-h2-reset-siman', ['layout/legacy-imud-flow'], 'fx:h2-reset-siman', { note: 'EXT-22: איפוס מונה הסימנים לכל פרק (h2-reset-siman במקור)' }),
   // D-45→D-54: h2-orn-scope חזר בסעיף העיטורים להלן עם מנגנום חי (S8).
   K('hdr-h1-title-mode', 'enum', 'main', P.HEADERS, 'sel-hdr-h1-mode', ['decoration/headers-builder'], 'fx:hdr-h1-mode', { enum: ['main', 'full'], note: 'K-8: main כברירת מחדל + toggle' }),
 
@@ -221,6 +245,24 @@ const registry = [
     K(`toc-level-${lvl}-show`, 'bool', lvl <= 6, P.TOC, `chk-toc-l${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-l${lvl}`),
     K(`toc-level-${lvl}-inline`, 'bool', false, P.TOC, `chk-toc-l${lvl}-inline`, ['layout/legacy-imud-flow'], `fx:toc-l${lvl}-inline`),
   ]),
+  // **EXT-22 (בדיקת השוואה מול המקור הירוק 25.11 — "לגבי הוספה! לא הורדה!!",
+  // ביחוד לגבי תוכן העניינים):** אפשרויות ה-TOC של המקור שחסרו בלוח —
+  // גופן וגודל פר-רמה לכל תוכן בנפרד (f/s-gtoc-N, f/s-dtoc-N), הצגה פר-סוג
+  // (gtoc-show/dtoc-show) וקיבוץ פר-סוג (gtoc-grp/dtoc-grp). ברירות המחדל =
+  // ההתנהגות המכוילת הקיימת בדיוק (David Libre לכל הרמות; 12/11/10.5×4/8.8;
+  // כללי 1–6, מפורט 2–6; רמות 3+ מקובצות עם ההורה כמו היחידות האטומיות) —
+  // ה-digest נשמר. השליטה המשותפת הקיימת (toc-level-N-show/inline) נשארת
+  // כמסכת AND — שום דבר לא הוסר.
+  ...[1, 2, 3, 4, 5, 6, 7].flatMap(lvl => [
+    K(`toc-gfont-${lvl}`, 'font', 'David Libre', P.TOC, `sel-toc-gfont-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-gfont-${lvl}`, { note: `EXT-22: גופן שורות רמה ${lvl} בתוכן הכללי (f-gtoc-${lvl} במקור)` }),
+    K(`toc-dfont-${lvl}`, 'font', 'David Libre', P.TOC, `sel-toc-dfont-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-dfont-${lvl}`, { note: `EXT-22: גופן שורות רמה ${lvl} בתוכן המפורט (f-dtoc-${lvl} במקור)` }),
+    K(`toc-gsize-${lvl}`, 'number', lvl === 1 ? 12 : lvl === 2 ? 11 : lvl === 7 ? 8.8 : 10.5, P.TOC, `rng-toc-gsize-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-gsize-${lvl}`, { min: 6, max: 30, note: `EXT-22: גודל שורות רמה ${lvl} בתוכן הכללי (s-gtoc-${lvl} במקור)` }),
+    K(`toc-dsize-${lvl}`, 'number', lvl === 1 ? 12 : lvl === 2 ? 11 : lvl === 7 ? 8.8 : 10.5, P.TOC, `rng-toc-dsize-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-dsize-${lvl}`, { min: 6, max: 30, note: `EXT-22: גודל שורות רמה ${lvl} בתוכן המפורט (s-dtoc-${lvl} במקור)` }),
+    K(`toc-gshow-${lvl}`, 'bool', lvl <= 6, P.TOC, `chk-toc-gshow-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-gshow-${lvl}`, { note: `EXT-22: הצגת רמה ${lvl} בתוכן הכללי בלבד (gtoc-show; המסכה המשותפת toc-level-${lvl}-show נשארת)` }),
+    K(`toc-dshow-${lvl}`, 'bool', lvl >= 2 && lvl <= 6, P.TOC, `chk-toc-dshow-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-dshow-${lvl}`, { note: `EXT-22: הצגת רמה ${lvl} בתוכן המפורט בלבד (dtoc-show)` }),
+    K(`toc-ggrp-${lvl}`, 'bool', lvl >= 3, P.TOC, `chk-toc-ggrp-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-ggrp-${lvl}`, { note: `EXT-22: קיבוץ רשומות רמה ${lvl} עם ההורה בתוכן הכללי — break-inside (gtoc-grp)` }),
+    K(`toc-dgrp-${lvl}`, 'bool', lvl >= 3, P.TOC, `chk-toc-dgrp-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-dgrp-${lvl}`, { note: `EXT-22: קיבוץ רשומות רמה ${lvl} עם ההורה בתוכן המפורט (dtoc-grp)` }),
+  ]),
 
   // ---- שערים/נושאים (THEMES) ---- **S8 (D-54): ערכות נושא חיות — הפעלה מלאה (F-10 נעול)**
   K('background-color', 'color', '#ffffff', P.THEMES, 'inp-bg-color', ['output/dom-renderer'], 'fx:bg-color'),
@@ -230,6 +272,16 @@ const registry = [
   K('shaar-main-image', 'string', '', P.THEMES, 'inp-shaar-main-img', ['decoration/page-decorations', 'decoration/shaar-boxes'], 'fx:shaar-main-img'),
   K('shaar-sub-image', 'string', '', P.THEMES, 'inp-shaar-sub-img', ['decoration/page-decorations'], 'fx:shaar-sub-img'),
   K('shaar-back-enabled', 'bool', true, P.THEMES, 'chk-shaar-back', ['decoration/page-decorations', 'decoration/shaar-boxes'], 'fx:shaar-back', { note: 'PT-03: 4 מקטעים עצמאיים; כיבוי ראשי מבטל את כולם' }),
+  // **EXT-22 (בוררי תיבות השער של המקור — builder-{main,sub,back}-{top,bottom,right,left}):
+  // תיבת הטקסט של כל שער במ״מ. 0 = אוטומטי (התיבה של העיצוב מהספרייה /
+  // ברירת המחדל המכוילת) — התנהגות ברירת המחדל נשמרת בדיוק; ערך > 0 קובע
+  // שוליים מפורשים לאותו צד של אותו שער (כמו resolveShaarBoxStyle של המקור).
+  ...['main', 'sub', 'back'].flatMap(kind => [
+    K(`shaar-${kind}-box-top`, 'number', 0, P.THEMES, `rng-shaar-${kind}-box-top`, ['output/dom-renderer', 'decoration/shaar-boxes'], `fx:shaar-${kind}-box-top`, { min: 0, max: 130, note: `EXT-22: שוליים עליונים של תיבת שער ${kind === 'main' ? 'ראשי' : kind === 'sub' ? 'משנה' : 'אחורי'} במ״מ (0=אוטומטי; builder-${kind}-top במקור)` }),
+    K(`shaar-${kind}-box-bottom`, 'number', 0, P.THEMES, `rng-shaar-${kind}-box-bottom`, ['output/dom-renderer', 'decoration/shaar-boxes'], `fx:shaar-${kind}-box-bottom`, { min: 0, max: 130, note: `EXT-22: שוליים תחתונים של תיבת שער ${kind === 'main' ? 'ראשי' : kind === 'sub' ? 'משנה' : 'אחורי'} במ״מ (0=אוטומטי; builder-${kind}-bottom במקור)` }),
+    K(`shaar-${kind}-box-right`, 'number', 0, P.THEMES, `rng-shaar-${kind}-box-right`, ['output/dom-renderer', 'decoration/shaar-boxes'], `fx:shaar-${kind}-box-right`, { min: 0, max: 100, note: `EXT-22: שוליים ימניים של תיבת שער ${kind === 'main' ? 'ראשי' : kind === 'sub' ? 'משנה' : 'אחורי'} במ״מ (0=אוטומטי; builder-${kind}-right במקור)` }),
+    K(`shaar-${kind}-box-left`, 'number', 0, P.THEMES, `rng-shaar-${kind}-box-left`, ['output/dom-renderer', 'decoration/shaar-boxes'], `fx:shaar-${kind}-box-left`, { min: 0, max: 100, note: `EXT-22: שוליים שמאליים של תיבת שער ${kind === 'main' ? 'ראשי' : kind === 'sub' ? 'משנה' : 'אחורי'} במ״מ (0=אוטומטי; builder-${kind}-left במקור)` }),
+  ]),
   // REQ-ORN-08: פאנל רקעים מוזג לתוך נושאים — 3 סוגי עמודים + color/texture/image + insets מ"מ
   K('background-page-type', 'enum', 'regular', P.THEMES, 'sel-bg-page-type', ['decoration/page-decorations'], 'fx:bg-page-type', { enum: ['regular', 'preface-open', 'sign-open'], note: 'REQ-ORN-08: מחלקת העמוד שאליה הרקע מיועד (מיזוג פאנל רקע→נושאים)' }),
   K('background-image', 'string', '', P.THEMES, 'inp-bg-image', ['decoration/page-decorations'], 'fx:bg-image'),
