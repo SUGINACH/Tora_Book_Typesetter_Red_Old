@@ -1,0 +1,63 @@
+name: font-catalog-audit
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/font-catalog-audit.yml'
+      - 'tools/audit_font_catalog.py'
+      - 'tools/prove_font_conversion.py'
+      - 'tools/stress_prove_cff_conversion.py'
+      - 'tools/test_raw_glyf_bounds.py'
+      - 'red-build/ui/assets/imud/imud-fonts.json'
+      - 'red-build/ui/assets/imud/fonts-extended.json'
+      - 'red-build/ui/assets/imud/fonts/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    name: Audit all embedded IMUD font assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact branch commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up Node for production parser/subsetter validation
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install font decoding and inspection libraries
+        run: python -m pip install --disable-pip-version-check fonttools==4.63.0 brotli==1.2.0 cairosvg==2.8.2
+      - name: Compile font audit scripts before execution
+        run: python -m py_compile tools/audit_font_catalog.py tools/prove_font_conversion.py tools/stress_prove_cff_conversion.py tools/test_raw_glyf_bounds.py
+      - name: Verify raw glyf bounds regression (off-curve control point / LSB)
+        run: python tools/test_raw_glyf_bounds.py
+      - name: Audit core and extended catalogs
+        run: python tools/audit_font_catalog.py --output "$GITHUB_WORKSPACE/artifacts/font-catalog-audit/report.json"
+      - name: Prove WOFF2, CFF and variable-font conversion against production parser/subsetter
+        run: python tools/prove_font_conversion.py --output "$GITHUB_WORKSPACE/artifacts/font-conversion-proof/report.json"
+      - name: Stress-prove all CFF catalog conversions
+        run: python tools/stress_prove_cff_conversion.py --output "$GITHUB_WORKSPACE/artifacts/cff-conversion-stress/report.json"
+      - name: Upload complete font audit and conversion proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: imud-font-catalog-audit-${{ github.sha }}
+          path: |
+            artifacts/font-catalog-audit/report.json
+            artifacts/font-conversion-proof/report.json
+            artifacts/font-conversion-proof/visuals/
+            artifacts/cff-conversion-stress/report.json
+            artifacts/cff-conversion-stress/visuals/
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,92 @@
+name: CI
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # **S5.2 (P-11):** תקרה מפורשת — בלי זה job תקוע מחזיק ראנר עד 360 דק'
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        node: [ 18, 20, 22 ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # **תיקון CI (ביקורת 03.11):** בדיקות הקבלה (S13) והייצוא (S12) מאמתות מול
+      # האמת בכלים חיצוניים (pdfinfo/pdftotext/pdftoppm — poppler) ומייצאות PDF
+      # עם גופן DejaVu. בלעדיהם הריצה האחרונה נכשלה (ENOENT ב-pdftotext) וכל
+      # שרשרת npm test נעצרה. החלטת המשתמש: להתקין, לא לוותר.
+      - name: Install Poppler (pdfinfo/pdftotext/pdftoppm) + DejaVu font
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils fonts-dejavu-core
+      - name: Verify external tools are present (fail fast with clear message)
+        run: |
+          for t in pdfinfo pdftotext pdftoppm; do
+            command -v "$t" >/dev/null 2>&1 || { echo "MISSING: $t (expected after poppler-utils install)"; exit 1; }
+          done
+          test -f /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf || { echo "MISSING: DejaVuSans.ttf (expected after fonts-dejavu-core install)"; exit 1; }
+      # **S5.3:** הסוויטות של S5.2 (s52-dp/s52-ui/audit-sensitivity) נוספו לשרשרת —
+      # עד כאן היו קיימות בעץ אך לא הורצו בשום workflow (מוקש שנתפס בסקירת S5.3).
+      # **שלב 5 פרוסה 2 (דיוק דיווח — §3.3 בביקורת):** התווית מתעדכנת למספרים
+      # בפועל בכל שינוי מהותי במספר הבדיקות (נכון לשלב 7: 1146 בדיקות ·
+      # 67 קבצי סוויטה + scan-control-triggers; הקודם ציין 1130/66 — פרוסה 2).
+      - name: Run full test suite (legacy engine · 27 suite files + scan-control-triggers, zero deps)
+        run: cd red-build && npm test
+      - name: Determinism check
+        run: cd red-build && npm run test:determinism
+      # **S71 (הצלבה שיטתית מקומי↔CI↔חי):** אותן נעילות, אותו כלי, אותה פקודה —
+      # מקומית (node tools/cross-check.js) וב-CI. קורפוסים מול נעילות (קנוני 80f9ed6c,
+      # very_long DP 77d5d5d3 (נעילת S72), מורשת run-ours=corpus-invariants) + sha256 באנדלים.
+      # ההשוואה מול האתר החי נשארת ב-gh-pages-audit (דפדפן) וכאן רק ההצלבה המקומית.
+      - name: Cross-check (corpora vs locks + bundles; the same command as local runs)
+        run: node tools/cross-check.js
+
+  # **03.11(ד) — אודיט עימוד בדפדפן אמיתי (שקיפות עימוד מהקוד):** בדיקות ה-Node
+  # מאמתות את המודל, אבל דיווח משתמש 3 הוכיח שהן לא תופסות ניתוקים בנתיב החי
+  # (header שלא הועבר, CSS חסוב, גופן שלא נטען). ה-job הזה מריץ את האפליקציה
+  # בדפדפן headless אמיתי, טוען את ספר המבחן, ומודד גיאומטריה בפועל:
+  # חפיפות שורות, גלישות מטור, כותרות עליונות, שערים, יישור וגופנים.
+  #
+  # **S4.11 (בקשת המשתמש: "כל הבדיקות צריכות להיעשות על הקובץ ה'גדול מאוד'"):**
+  # ריצה כפולה — (1) ה-fixture הקטן כעשן-רגרסיה מהיר; (2) הקורפוס הגדול מאוד
+  # (audits/very_long_test_text.txt — 3.4MB, 849 עמודים בדפדפן) כבדיקה הקובעת.
+  # האודיט מודע-וירטואליזציה: התצוגה מרנדרת חלון חי בלבד מעל 60 עמודים, והאודיט
+  # סורק את הספר בגלילה ומבקר כל עמוד כשהוא חי — עם בדיקת כיסוי מלא (COVERAGE).
+  layout-audit:
+    runs-on: ubuntu-latest
+    # **S5.2 (P-11):** תקרה מפורשת — הסריקה הכפולה (עשן + הקורפוס הגדול) עם
+    # דפדפן חי ו-virtualization-sweep עשויה להיות איטית; 90 דק' תקרה נדיבה.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # **S5.2 (P-11):** נעילת גרסה — 0.41.2 היא הגרסה האחרונה ב-npm (אין 1.x);
+      # שדרוג לא מבוקר של ה-CLI יכול לשבור את חוזה ה-eval/פלט של האודיט.
+      - name: Install agent-browser + headless browser
+        run: |
+          npm install -g agent-browser@0.41.2
+          agent-browser install --with-deps
+      - name: Layout audit — smoke (small fixture, fail fast)
+        run: bash tools/layout-audit/run.sh
+      - name: Layout audit — the very large corpus (849 pages, virtualization sweep)
+        run: |
+          LAYOUT_AUDIT_FIXTURE="$PWD/audits/very_long_test_text.txt" \
+          LAYOUT_AUDIT_OUT=/tmp/layout-audit-report-very-long.json \
+          LAYOUT_AUDIT_READY_TIMEOUT_MS=480000 \
+            bash tools/layout-audit/run.sh
+      - name: Upload layout reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: layout-audit-report
+          path: |
+            /tmp/layout-audit-report.json
+            /tmp/layout-audit-report-very-long.json
+          if-no-files-found: ignore
+

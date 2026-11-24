@@ -1,0 +1,365 @@
+// src/engine/core/settings-registry.js — Three-layer settings contract (REQ-GOV-04, D-07)
+// מקור־האמת היחיד: פקד ↔ מפתח ↔ מנגנון ↔ בדיקה. נבו from this file: default_settings.json + HTML bindings + docs.
+'use strict';
+
+const P = {
+  THEMES: 'ערכות נושא, שערים ורקעים',
+  // **S6.2 (בקשת משתמש — "למה אני לא רואה אפשרות לבחור בהם?"):** שם
+  // הפאנל נותן עכשיו תשובה מפורשת — זו ספריית העיצובים של הפרויקט המקורי
+  // (שערים/עיטורים/מפרידים + ברירות המחדל). בעבר נקרא "בונה ערכות נושא
+  // (SVG Builder)" — שם שהסתיר את תוכן הפאנל והמשתמש לא מצא את הבוררים.
+  BUILDER: 'ספריית העיצובים של המקור — שערים, עיטורים, מפרידים וגופנים',
+  IMPORTS: 'ייבוא תוספים',
+  NOTES: 'הערות שוליים וסיום',
+  QUALITY: 'איכות עימוד',
+  TYPO: 'טיפוגרפיה וגוף הטקסט',
+  HEADINGS: 'כותרות 0–7',
+  ORNAMENTS: 'עיטורים וגרפיקה',
+  HEADERS: 'כותרות עליונות',
+  TOC: 'תוכן העניינים',
+  GRID: 'רשת העמוד ומספור',
+  EXPORT: 'ייצוא (HTML/PDF/ZIP) ומדידה',
+  ADVANCED: 'מתקדם/מנוע'
+};
+
+// T = types; C = consumers (mechanism ids); X = effect-test id
+const K = (id, type, dflt, panel, control, consumers, testId, extra = {}) =>
+  ({ id, type, default: dflt, panel, control, consumers, effect_test: testId, ...extra });
+
+// **S9 (D-61):** מקורות כותרת עליונה — כולל book-name-rest (החלק שאחרי המקף) ופורט
+// fillHeaderFirstLastWords המאוחד (first-last-words). משותף ל‑6 סלוטים + 3 סלוטי פתיחה.
+// **S65 (SRS §12.2):** book-name-split — חצי שם הספר לפי הצד הפיזי: ראשון ב‑Recto, שני ב‑Verso.
+const HDR_SOURCES = ['none', 'book-name', 'book-name-rest', 'book-name-split', 'book-name-first-half', 'book-name-second-half', 'h1', 'h2', 'page-num', 'first-word', 'last-word', 'first-last-words', 'custom'];
+
+const registry = [
+  // ---- רשת העמוד ומספור (GRID) ----
+  K('page-size', 'enum', 'A4', P.GRID, 'sel-page-size', ['layout/page-templates'], 'fx:page-size', { enum: ['A4', 'A5', '16x16', 'custom'] }),
+  K('grid-col-width-pct', 'number', 40, P.GRID, 'rng-col-width', ['layout/page-templates'], 'fx:col-width', { min: 20, max: 60 }),
+  K('grid-margin-side-pct', 'number', 7.5, P.GRID, 'rng-margin-side', ['layout/page-templates'], 'fx:margin-side', { min: 2, max: 20 }),
+  K('grid-gutter-pct', 'number', 2, P.GRID, 'rng-gutter', ['layout/page-templates'], 'fx:gutter', { min: 0.5, max: 8 }),
+  K('grid-block-gap-pct', 'number', 2, P.GRID, 'rng-block-gap', ['layout/legacy-imud-flow'], 'fx:block-gap', { min: 0, max: 8 }),
+  K('margin-top-px', 'number', 20, P.GRID, 'rng-margin-top', ['layout/page-templates'], 'fx:margin-top'),
+  K('margin-bottom-px', 'number', 20, P.GRID, 'rng-margin-bottom', ['layout/page-templates'], 'fx:margin-bottom'),
+  K('binding-offset-px', 'number', 0, P.GRID, 'rng-binding-offset', ['layout/page-templates'], 'fx:binding', { note: 'שולי תפירה א־סימטריים recto/verso' }),
+  K('h2-top-offset', 'number', 33, P.GRID, 'rng-h2-top-offset', ['layout/page-templates'], 'fx:h2-top-offset', { note: 'PT-05: מרחק עליון נפרד H2' }),
+  K('column-divider-style', 'enum', 'none', P.GRID, 'sel-col-divider', ['core/legacy-settings-map'], 'fx:col-divider', { enum: ['none', 'thin', 'dashed', 'double'], note: 'גובה = Math.min(שני הטורים) − 8px' }),
+  K('page-num-format', 'enum', 'hebrew', P.GRID, 'sel-page-num-format', ['decoration/folio'], 'fx:folio-format', { enum: ['hebrew', 'decimal', 'daf-hebrew'] }),
+  // **S9 (D-61):** square/circle = מסגרות CSS (badge); parenthesis/squares = סוגריים טקסטואליים —
+  // הפרדה נאמנה ל־V1 (page-num-frame-box/circle CSS) ול־Mapping פנייה 2 (parens/squares טקסט).
+  K('page-num-frame', 'enum', 'none', P.GRID, 'sel-page-num-frame', ['decoration/folio'], 'fx:folio-frame', { enum: ['none', 'circle', 'square', 'parenthesis', 'squares', 'floral', 'diamond'] }),
+  K('page-num-position', 'enum', 'bottom-center', P.GRID, 'sel-page-num-position', ['decoration/folio'], 'fx:folio-pos', { enum: ['bottom-center', 'outer-left', 'outer-right', 'outer', 'top', 'in-header', 'none'] }),
+  K('page-num-initial-value', 'number', 1, P.GRID, 'inp-page-num-initial', ['decoration/folio'], 'fx:folio-initial', { note: 'שוחזר מ‑V1 (REQ-HDR-03)' }),
+  // **S73 (בקשת משתמש — "הוסף בחירת גופן וגודל למספר העמוד"):** גופן/גודל/צבע
+  // לגיליון. ברירת המחדל משמרת את ההתנהגות הקודמת: גופן ריק = ירושת גוף
+  // הטקסט, גודל 10pt, שחור. התצוגה (dom-renderer) והמקרנים קוראים אותם כאחד.
+  K('page-num-font', 'font', 'ליבורנה מודגש', P.GRID, 'sel-page-num-font', ['output/legacy-projector', 'output/legacy-projector', 'output/dom-renderer'], 'fx:page-num-font', { note: "S75 (בקשה 2, 12.11): ברירת המחדל גופן הייחוס — Livorna-Bold 11pt (נמדד בייחוס עמ' ט-יא: הגיליון ב'ליבורנה מודגש'); ריק = גוף הטקסט. עד S74 היתה ברירת המחדל ריקה (גוף הטקסט) 10pt" }),
+  K('page-num-size-pt', 'number', 11, P.GRID, 'rng-page-num-size', ['output/legacy-projector', 'output/legacy-projector', 'output/dom-renderer'], 'fx:page-num-size', { min: 6, max: 20, note: "S75 (בקשה 2, 12.11): 11pt כמדידת הייחוס (עמ' ט-יא); עד S74 היה 10" }),
+  K('page-num-color', 'color', '#000000', P.GRID, 'inp-page-num-color', ['output/legacy-projector', 'output/legacy-projector', 'output/dom-renderer'], 'fx:page-num-color', { note: 'S73: צבע הגיליון — ברירת מחדל שחורה (כמו כל הגופנים)' }),
+  // **S9 (D-61):** page-num-start-idx — שחזור V1 מלא (REQ-HDR-03): מספור מוצג רק מסוד ה‑counted
+  // הזה ואילך; הערך האפקטיבי = סוד − start‑idx + initial‑value (נוסחת V1 formatPageNumberDisplay).
+  K('page-num-start-idx', 'number', 1, P.GRID, 'inp-page-num-start-idx', ['decoration/folio'], 'fx:folio-start-idx', { min: 1, max: 999, note: 'שוחזר מ‑V1 (REQ-HDR-03): סוד העמוד הנספר שממנו מתחיל התצוגה' }),
+  K('count-shaar-pages', 'bool', false, P.GRID, 'chk-count-shaar', ['decoration/folio'], 'fx:count-shaar'),
+  K('count-shaar-sub-pages', 'bool', false, P.GRID, 'chk-count-shaar-sub', ['decoration/folio'], 'fx:count-shaar-sub', { note: 'Iteration-003: המקור מונה שערי-משנה בפוליו אך לא את השערים הראשי/אחורי (sub-shaar-count-numbering=true, main/back=false) — בקרה פר-סוג' }),
+  K('count-toc-pages', 'bool', false, P.GRID, 'chk-count-toc', ['decoration/folio'], 'fx:count-toc'),
+  K('count-endnote-pages', 'bool', false, P.GRID, 'chk-count-endnotes', ['decoration/folio', 'core/pipeline'], 'fx:count-endnotes', { note: 'S7.1.1: אם true — עמודי הערות נספרים במספור ומקבלים גיליון' }),
+
+  // ---- טיפוגרפיה (TYPO) ----
+  K('body-font', 'font', 'Frank Ruhl Libre', P.TYPO, 'sel-body-font', ['typography/measure-api'], 'fx:body-font', { note: 'font-picker preserve-missing-value (IMUD port)' }),
+  // **S73 (בקשת משתמש — "לכל גופן הניתן לבחירה יש להוסיף גם בחירת צבע"):**
+  // צבע פר-גופן; ברירת המחדל של כולם — ללא יוצא מן הכלל — שחורה (#000000).
+  // נצרכים במקרנים (מילים מצוירות ב-PDF) וב-dom-renderer (תצוגה חיה).
+  K('body-color', 'color', '#000000', P.TYPO, 'inp-body-color', ['output/dom-renderer', 'output/legacy-projector', 'output/legacy-projector'], 'fx:body-color', { note: 'S73: צבע גוף הטקסט — שחור כברירת מחדל' }),
+  K('body-font-size-pt', 'number', 14, P.TYPO, 'rng-body-size', ['typography/measure-api'], 'fx:body-size', { min: 9, max: 24 }),
+  K('body-line-height', 'number', 1.4, P.TYPO, 'rng-body-lh', ['typography/kp-linebreak'], 'fx:body-lh', { min: 1.2, max: 1.6, note: 'פלפול 1.25 / קריאה 1.45' }),
+  // D-42 (P1-2): קדם־פאס סוגריים לפני מדידה — REQ-PAR-ST-02. סקאלה 1.0 = כבוי (ברירת מחדל, לא משנה hash).
+  K('paren-style-scale', 'number', 1, P.TYPO, 'rng-paren-scale', ['core/pipeline', 'output/dom-renderer'], 'fx:paren-scale', { min: 0.8, max: 1, step: 0.01, note: 'מילים בתוך (...) נמדדות בסקאלה זו לפני שבירת שורות ומרונדרות במחלקת w--paren; 1.0 = כבוי' }),
+  K('first-word-mode', 'enum', 'drop', P.TYPO, 'sel-first-word-mode', ['layout/legacy-imud-flow'], 'fx:fw-mode', { enum: ['drop', 'inline', 'bold', 'none'] }),
+  K('first-word-length', 'number', 1, P.TYPO, 'sel-first-word-len', ['layout/legacy-imud-flow'], 'fx:fw-len', { enum: [1, 2] }),
+  K('first-word-threshold-lines', 'number', 3, P.TYPO, 'rng-fw-threshold', ['layout/legacy-imud-flow'], 'fx:fw-threshold', { min: 2, max: 6 }),
+  K('first-word-align-cap-top', 'bool', true, P.TYPO, 'chk-fw-cap-align', ['layout/legacy-imud-flow'], 'fx:fw-cap', { note: 'REQ-LB-05: קצה עליון לקו בסיס גוף — לא baseline' }),
+  K('first-word-size-em', 'number', 2, P.TYPO, 'rng-fw-size-em', ['layout/legacy-imud-flow'], 'fx:fw-size-em', { min: 1, max: 4, step: 0.1, note: 'S4.5: גודל המילה הראשונה ב-em (המקור: size-first-word=1.5; בעבר היה כפול 2 מוקשה)' }),
+  K('first-word-font', 'font', '', P.TYPO, 'sel-fw-font', ['layout/legacy-imud-flow'], 'fx:fw-font', { note: 'S4.5: גופן נפרד למילה הראשונה (המקור: font-first-word=FrankReal); ריק = גופן הגוף' }),
+  K('first-word-color', 'color', '#000000', P.TYPO, 'inp-fw-color', ['output/legacy-projector', 'output/dom-renderer'], 'fx:fw-color', { note: 'S73: צבע המילה הראשונה/מילת-החלון — שחור כברירת מחדל' }),
+  K('dh-auto-detect', 'bool', true, P.TYPO, 'chk-dh-detect', ['core/legacy-settings-map'], 'fx:dh-detect', { note: 'דיבור המתחיל עד נקודה/מקף' }),
+  K('dh-font', 'font', 'David HB', P.TYPO, 'sel-dh-font', ['typography/measure-api'], 'fx:dh-font'),
+  K('dh-color', 'color', '#000000', P.TYPO, 'inp-dh-color', ['core/pipeline'], 'fx:dh-color', { note: 'S73: צבע דיבור-המתחיל — שחור כברירת מחדל (מוצמד למודל כמו dh-font)' }),
+  // **S6.3 (חיבור הגדרות):** גוף ההקדמה (f-h0-body במקור — Frank Ruhl
+  // Libre 11.5pt) וכותרת עמודי ההערות (f-note-title — David Libre).
+  K('heading-0-body-font', 'font', 'Frank Ruhl Libre', P.TYPO, 'sel-h0-body-font', ['layout/legacy-imud-flow'], 'fx:h0-body-font', { note: 'S6.3: גוף ההקדמה — מדידה (prefaceApi) ורינדור באותו גופן' }),
+  K('heading-0-body-size-pt', 'number', 11.5, P.TYPO, 'rng-h0-body-size', ['core/pipeline', 'layout/legacy-imud-flow'], 'fx:h0-body-size', { min: 6, max: 40, step: 0.5, note: 'RC-2a (i004): גודל גוף ההקדמה — המקור s-h0-body=11.5; הפיץ׳ 11.5×1.34×4/3 = H0_LINE_H. עד כאן לא מופוה ייבוא ⇒ ההקדמה זרמה ב-12pt' }),
+  K('endnote-title-font', 'font', 'David Libre', P.NOTES, 'sel-endnote-title-font', ['layout/legacy-imud-flow'], 'fx:endnote-title-font', { note: 'S6.3: גופן כותרת עמודי הערות' }),
+  K('body-last-line-align', 'enum', 'center', P.TYPO, 'sel-last-line-align', ['output/dom-renderer'], 'fx:last-line-align', { enum: ['center', 'right', 'stretch'], note: 'wiring מ‑Orange ✓' }),
+
+  // ---- כותרות 0–7 (HEADINGS) ----
+  // **03.11(ד):** ברירות המחדל של המצבים נאמנות למקור: h3=span_1col ⇒ full-width
+  // (פס חוצה־טורים), h4–h6=inline_2col ⇒ regular (בתוך הטור — שם נשתלים עיטורי
+  // הצד והמפרידים), h7=side_note ⇒ side-note. בעבר כולן full-width — ואז כותרת
+  // שנמדדה ב-674px הוצבה בטור 270px (גלישה/חפיפה — דיווח משתמש 3).
+  ...[0, 1, 2, 3, 4, 5, 6, 7].flatMap(h => [
+    K(`heading-${h}-mode`, 'enum', h === 7 ? 'side-note' : h >= 4 ? 'regular' : 'full-width', P.HEADINGS, `sel-h${h}-mode`, ['layout/legacy-imud-flow'], `fx:h${h}-mode`, { enum: ['full-width', 'regular', 'side-note', 'new-page'] }),
+    K(`heading-${h}-font`, 'font', 'David HB', P.HEADINGS, `sel-h${h}-font`, ['typography/measure-api'], `fx:h${h}-font`),
+    // **S73 (צבע פר-גופן):** צבע כל רמת כותרת — ברירת מחדל שחורה ללא יוצא
+    // מן הכלל (בקשת משתמש). נצרך בשני המקרנים וב-dom-renderer (תצוגה=ייצוא).
+    K(`heading-${h}-color`, 'color', '#000000', P.HEADINGS, `inp-h${h}-color`, ['output/legacy-projector', 'output/legacy-projector', 'output/dom-renderer'], `fx:h${h}-color`),
+    K(`heading-${h}-size-pt`, 'number', [20, 18, 16, 15, 14, 14, 13, 12][h], P.HEADINGS, `rng-h${h}-size`, ['typography/measure-api'], `fx:h${h}-size`, { min: 8, max: 48 }),
+  ]),
+  // D-45→D-54: h2-orn-scope חזר בסעיף העיטורים להלן עם מנגנום חי (S8).
+  K('hdr-h1-title-mode', 'enum', 'main', P.HEADERS, 'sel-hdr-h1-mode', ['decoration/headers-builder'], 'fx:hdr-h1-mode', { enum: ['main', 'full'], note: 'K-8: main כברירת מחדל + toggle' }),
+
+  // ---- כותרות עליונות (HEADERS) ----
+  // **S9 (D-61):** עצמאות מלאה 3×2 (REQ-HDR-01) — לכל סלוט: מקור/יישור/גופן/גודל/רוחב%/טקסט־מותאם.
+  // תיקון bc7892f (IMUD) נעול: לסלוט המרכזי בו־ורסו יש גופן/גודל/טקסט משלו — לא יורש מה־recto.
+  K('header-enabled', 'bool', true, P.HEADERS, 'chk-header-enabled', ['decoration/headers-builder'], 'fx:header-on'),
+  K('header-recto-right-source', 'enum', 'book-name', P.HEADERS, 'sel-hr-right', ['decoration/headers-builder'], 'fx:hr-right', { enum: HDR_SOURCES }),
+  K('header-recto-center-source', 'enum', 'h2', P.HEADERS, 'sel-hr-center', ['decoration/headers-builder'], 'fx:hr-center', { enum: HDR_SOURCES }),
+  K('header-recto-left-source', 'enum', 'h1', P.HEADERS, 'sel-hr-left', ['decoration/headers-builder'], 'fx:hr-left', { enum: HDR_SOURCES }),
+  K('header-verso-right-source', 'enum', 'h1', P.HEADERS, 'sel-hv-right', ['decoration/headers-builder'], 'fx:hv-right', { enum: HDR_SOURCES }),
+  K('header-verso-center-source', 'enum', 'h2', P.HEADERS, 'sel-hv-center', ['decoration/headers-builder'], 'fx:hv-center', { enum: HDR_SOURCES }),
+  K('header-verso-left-source', 'enum', 'book-name', P.HEADERS, 'sel-hv-left', ['decoration/headers-builder'], 'fx:hv-left', { enum: HDR_SOURCES }),
+  K('header-verso-same-as-recto', 'bool', false, P.HEADERS, 'chk-hv-same', ['decoration/headers-builder'], 'fx:hv-same', { note: 'same_as_even + גידוע מעגליות (Orange c49b79e) — resolveSameAs עם seen-set' }),
+  // **S65 (SRS-12-2):** פיצול שם הספר בין העמודים — החצי הראשון בעמוד ימין (Recto),
+  // השני בעמוד שמאל (Verso). כשהמתג פעיל הוא דורס אפשרויות כותרת דינמיות סותרות:
+  // סלוטים שמקורם book-name/book-name-rest מציגים את החצי לפי הצד הפיזי בלבד,
+  // וירושת verso-same-as-recto אינה חלה עליהם (הפיצול נשמר גם בעמודי verso).
+  K('split-book-title', 'bool', false, P.HEADERS, 'chk-split-title', ['decoration/headers-builder'], 'fx:split-title', { note: 'SRS §12.2: חציו הראשון של שם הספר ב-Recto, שניו ב-Verso; דורס מקורות שם-ספר סותרים' }),
+  K('header-separator-line', 'enum', 'gray', P.HEADERS, 'sel-header-sep', ['decoration/headers-builder'], 'fx:header-sep', { enum: ['none', 'gray', 'black'] }),
+  // **S9 (REQ-HDR-02):** כותרת ייעודית לעמודים הפותחים בכותרת H2/H3 — סלוטי מקור נפרדים
+  // (יישור/רוחב/גופן/גודל יורשים מהצד הפיזי של העמוד — D-61).
+  K('header-opening-dedicated', 'bool', false, P.HEADERS, 'chk-hdr-opening', ['decoration/headers-builder'], 'fx:hdr-opening', { note: 'REQ-HDR-02: עמוד הנפתח בכותרת H2/H3 מקבל את שלושת סלוטי הפתיחה שלהלן' }),
+  K('header-opening-right-source', 'enum', 'none', P.HEADERS, 'sel-ho-right', ['decoration/headers-builder'], 'fx:ho-right', { enum: HDR_SOURCES }),
+  K('header-opening-center-source', 'enum', 'book-name', P.HEADERS, 'sel-ho-center', ['decoration/headers-builder'], 'fx:ho-center', { enum: HDR_SOURCES }),
+  K('header-opening-left-source', 'enum', 'none', P.HEADERS, 'sel-ho-left', ['decoration/headers-builder'], 'fx:ho-left', { enum: HDR_SOURCES }),
+  ...['recto', 'verso'].flatMap(side => ['right', 'center', 'left'].flatMap(pos => [
+    K(`header-${side}-${pos}-align`, 'enum', pos === 'right' ? 'right' : pos === 'left' ? 'left' : 'center', P.HEADERS, `sel-h${side[0]}${pos}-align`, ['decoration/headers-builder'], `fx:${side}-${pos}-align`, { enum: ['right', 'center', 'left'] }),
+    K(`header-${side}-${pos}-width-pct`, 'number', 33, P.HEADERS, `rng-h${side[0]}${pos}-width`, ['decoration/headers-builder'], `fx:${side}-${pos}-width`, { min: 5, max: 90 }),
+    // **S9 (D-61):** גופן/גודל/טקסט מותאם לכל סלוט — עצמאות מלאה (bc7892f locked forever)
+    K(`header-${side}-${pos}-font`, 'font', 'David HB', P.HEADERS, `sel-h${side[0]}${pos}-font`, ['decoration/headers-builder'], `fx:${side}-${pos}-font`),
+    // **S73 (צבע פר-סלוט):** ברירת מחדל שחורה — בקשת משתמש מפורשת
+    K(`header-${side}-${pos}-color`, 'color', '#000000', P.HEADERS, `inp-h${side[0]}${pos}-color`, ['decoration/headers-builder', 'output/dom-renderer'], `fx:${side}-${pos}-color`),
+    K(`header-${side}-${pos}-size-pt`, 'number', 11, P.HEADERS, `rng-h${side[0]}${pos}-size`, ['decoration/headers-builder'], `fx:${side}-${pos}-size`, { min: 6, max: 28 }),
+    K(`header-${side}-${pos}-custom-text`, 'string', '', P.HEADERS, `inp-h${side[0]}${pos}-custom`, ['decoration/headers-builder'], `fx:${side}-${pos}-custom`),
+  ])),
+
+  // ---- הערות (NOTES) ----
+  K('note-placement-mode', 'enum', 'footnotes', P.NOTES, 'sel-note-mode', ['core/pipeline', 'layout/legacy-imud-flow', 'layout/legacy-imud-flow'], 'fx:note-mode', { enum: ['footnotes', 'endnotes', 'inline'] }),
+  K('footnotes-enabled', 'bool', true, P.NOTES, 'chk-fn-enabled', ['layout/legacy-imud-flow', 'core/pipeline'], 'fx:fn-on', { note: 'D-39: קלט משתמש מפורש גובר על נגזרות; mode=footnotes + false ⇒ ההערות בגוף כplaceholder' }),
+  K('footnote-marker-style', 'enum', 'hebrew-geresh', P.NOTES, 'sel-fn-marker', ['notes/markers'], 'fx:fn-marker', { enum: ['hebrew', 'hebrew-geresh', 'parenthesis', 'asterisk', 'decimal'], note: "Iteration-003: 'hebrew' = גימטריה+מפריד (כמו המקור — markerWord); 'hebrew-geresh' = מוסכמת הגיליון (בחירה מפורשת)" }),
+  K('footnote-reset-policy', 'enum', 'section', P.NOTES, 'sel-fn-reset', ['notes/markers'], 'fx:fn-reset', { enum: ['continuous', 'page', 'section', 'part'], note: 'S4.26 (דיווח משתמש 05.11): ברירת המחדל איפוס פר-פרק (section/siman) — לא פר-עמוד' }),
+  K('footnote-columns', 'number', 1, P.NOTES, 'sel-fn-cols', ['layout/legacy-imud-flow'], 'fx:fn-cols', { enum: [1, 2] }),
+  K('footnote-separator-rule', 'enum', 'regular', P.NOTES, 'sel-fn-rule', ['output/dom-renderer'], 'fx:fn-rule', { enum: ['none', 'regular', 'circles', 'sparkle', 'star', 'diamond'] }),
+  K('fn-layout-mode', 'enum', 'continuous', P.NOTES, 'sel-fn-layout', ['layout/legacy-imud-flow', 'output/dom-renderer'], 'fx:fn-layout', { enum: ['block', 'continuous'], note: 'S4.26 (דיווח משתמש 05.11): ברירת המחדל זרימה רציפה — הערה הבאה פותחת באותה שורה שבה הסתיימה קודמתה; block=כל הערה בלוק משלה' }),
+  // **S75 (בקשה 1 — 12.11, בחירת מנגנון הצבת ההערות):** ברירת המחדל = המנגנון
+  // החדש (body-first): הגוף ממלא את אזור הטקסט העיקרי תמיד; המרזב נכנס
+  // בחלל שמתחת לגוף עד תקרה יחסית (50% מגובה הזרימה בברירת המחדל); הערה
+  // שאינה נכנסת מוצבת חלקית כפי יכולת ההכלה והמשכה זורם לעמוד הבא;
+  // המשך אינו מקבל מספר. legacy = מנגנון S74 (שער תקציב + קיבולת מלאה).
+  K('fn-placement-mode', 'enum', 'body-first', P.NOTES, 'sel-fn-placement', ['layout/legacy-imud-flow'], 'fx:fn-placement', { enum: ['body-first', 'legacy'], note: 'S75 (בקשה 1): body-first (ברירת המחדל) — הגוף ממלא את העמוד; ההערות נכנסות בחלל שמתחת לגוף (תקרה 50% מגובה הזרימה); הערה שאינה נכנסת מוצבת חלקית והמשכה בעמוד הבא; legacy = מנגנון S74 הקודם (שער תקציב-ההערות + קיבולת עמוד מלאה)' }),
+  K('endnotes-enabled', 'bool', false, P.NOTES, 'chk-endnotes', ['layout/legacy-imud-flow'], 'fx:endnotes-on', { note: 'נגזר מ‑note-placement-mode=endnotes (D-39); קלט ישן true ממופה ל‑mode=endnotes בהגירה (project-io)' }),
+  K('endnote-title-text', 'string', 'הערות', P.NOTES, 'inp-endnote-title', ['layout/legacy-imud-flow'], 'fx:endnote-title'),
+  K('endnote-columns', 'number', 1, P.NOTES, 'sel-en-cols', ['layout/legacy-imud-flow'], 'fx:en-cols', { enum: [1, 2], note: 'S7.1.1: טור אחד או שניים בעמודי הערות' }),
+  K('f-note-body-font', 'font', 'אסיסטנט קל מאוד', P.NOTES, 'sel-fnote-body-font', ['layout/legacy-imud-flow', 'layout/legacy-imud-flow'], 'fx:fnote-body-font', { note: 'S74 (בעיה 5): ברירת המחדל של הרינדור בפועל של הגרסה הישנה — Assistant ExtraLight 8.5pt (נמדד בייחוס עמ׳ 31/37: כל שורות גוף ההערה; הסמן בלבד FRL 8pt). הגדרת f-note-body הישנה (FRL) לא חוברה לרינדור בפועל במקור' }),
+  K('s-note-body-font', 'font', 'Frank Ruhl Libre', P.NOTES, 'sel-snote-body-font', ['layout/legacy-imud-flow'], 'fx:snote-body-font'),
+  // **S73 (צבע פר-גופן — הערות):** ברירת מחדל שחורה (בקשת משתמש מפורשת:
+  // "ברירת המחדל של כל הגופנים ללא יוצא מן הכלל = שחור"). האפור הקבוע
+  // (#404040) של הערות-הצד הוחלף בהגדרה.
+  K('f-note-body-color', 'color', '#000000', P.NOTES, 'inp-fnote-body-color', ['output/legacy-projector', 'output/legacy-projector', 'output/dom-renderer'], 'fx:fnote-body-color'),
+  K('s-note-body-color', 'color', '#000000', P.NOTES, 'inp-snote-body-color', ['output/legacy-projector', 'output/dom-renderer'], 'fx:snote-body-color'),
+  K('fn-bar-max-height-px', 'number', 0, P.NOTES, 'rng-fn-bar-max', ['layout/legacy-imud-flow'], 'fx:fn-bar-max', { min: 0, max: 1000, note: 'S4.26 (דיווח משתמש 05.11): 0=קיבולת העמוד המלאה (ברירת המחדל — הערה ארוכה ממלאת את העמוד לפני חיתוך); ערך חיובי נחתם לקיבולת' }),
+  K('long-footnote-policy', 'enum', 'split', P.NOTES, 'sel-long-fn', ['layout/legacy-imud-flow'], 'fx:long-fn', { enum: ['split', 'move-whole', 'reject-to-body'], note: 'REQ-FN-02; split=המשך במרזב העמוד הבא עם סימון המשך; reject-to-body=השבה מלאה לגוף (BRZ-15)' }),
+
+  // ---- איכות עימוד (QUALITY) ----
+  K('prevent-widows-top', 'bool', true, P.QUALITY, 'chk-widow-top', ['layout/legacy-imud-flow'], 'fx:widow-top', { note: 'טוגל נפרד לתחילת עמוד (Mapping #4)' }),
+  K('prevent-widows-bottom', 'bool', true, P.QUALITY, 'chk-widow-bottom', ['layout/legacy-imud-flow'], 'fx:widow-bottom'),
+  K('prevent-orphans-top', 'bool', true, P.QUALITY, 'chk-orphan-top', ['layout/legacy-imud-flow'], 'fx:orphan-top'),
+  K('prevent-orphans-bottom', 'bool', true, P.QUALITY, 'chk-orphan-bottom', ['layout/legacy-imud-flow'], 'fx:orphan-bottom'),
+  K('widow-strictness', 'enum', 'normal', P.QUALITY, 'sel-widow-strict', ['layout/legacy-imud-flow'], 'fx:widow-strict', { enum: ['relaxed', 'normal', 'strict'] }),
+  K('runt-min-width-pct', 'number', 50, P.QUALITY, 'rng-runt-min', ['layout/legacy-imud-flow'], 'fx:runt-min', { min: 20, max: 80 }),
+  K('balance-chapter-end', 'enum', 'balance', P.QUALITY, 'sel-balance-chapter', ['layout/legacy-imud-flow', 'core/pipeline'], 'fx:balance-chapter', { enum: ['balance', 'stretch', 'natural'], note: 'REQUIRE: מנגנון מלא (שוחזר מ‑Green, REQ-BAL-03); נצרך בפועל ב‑pipeline בסוף כל חלק' }),
+  K('allow-terminal-residual-fallback', 'bool', true, P.QUALITY, 'chk-terminal-residual', ['layout/legacy-imud-flow'], 'fx:terminal-residual', { note: 'שוחזר מ‑Green (REQ-BAL-04)' }),
+  K('imbalance-max-delta-px', 'number', 5, P.QUALITY, 'rng-imbalance-max', ['layout/legacy-imud-flow'], 'fx:imbalance-max'),
+  K('aq-enabled', 'bool', false, P.QUALITY, 'chk-aq', ['layout/legacy-imud-flow', 'core/pipeline'], 'fx:aq-on', { note: 'AutoQuality מ‑Gold — שלוש שכבות יחד (REQ-BAL-06); נקרא בפועל מהpipeline (תיקון P1-1)' }),
+  K('aq-word-spacing-min', 'number', 0.95, P.QUALITY, 'rng-aq-ws-min', ['layout/legacy-imud-flow'], 'fx:aq-ws-min', { min: 0.8, max: 1 }),
+  K('aq-word-spacing-max', 'number', 1.05, P.QUALITY, 'rng-aq-ws-max', ['layout/legacy-imud-flow'], 'fx:aq-ws-max', { min: 1, max: 1.2 }),
+  K('aq-letter-spacing-min', 'number', 0.97, P.QUALITY, 'rng-aq-ls-min', ['layout/legacy-imud-flow'], 'fx:aq-ls-min'),
+  K('aq-letter-spacing-max', 'number', 1.03, P.QUALITY, 'rng-aq-ls-max', ['layout/legacy-imud-flow'], 'fx:aq-ls-max'),
+  K('aq-heading-spacing-min', 'number', 0.95, P.QUALITY, 'rng-aq-hs-min', ['layout/legacy-imud-flow'], 'fx:aq-hs-min'),
+  K('aq-heading-spacing-max', 'number', 1.05, P.QUALITY, 'rng-aq-hs-max', ['layout/legacy-imud-flow'], 'fx:aq-hs-max'),
+  K('aq-shared-load', 'bool', true, P.QUALITY, 'chk-aq-shared', ['layout/legacy-imud-flow'], 'fx:aq-shared'),
+  K('aq-stretch-to-bottom', 'bool', true, P.QUALITY, 'chk-aq-stretch', ['layout/legacy-imud-flow'], 'fx:aq-stretch', { note: 'clamp overshoot 20px (REQ-BAL-07)' }),
+  K('aq-overshoot-clamp-px', 'number', 20, P.QUALITY, 'rng-aq-clamp', ['layout/legacy-imud-flow'], 'fx:aq-clamp', { min: 0, max: 60 }),
+  K('aq-compress-first', 'bool', true, P.QUALITY, 'chk-aq-compress', ['layout/legacy-imud-flow'], 'fx:aq-compress'),
+
+  // ---- עיטורים (ORNAMENTS) ---- **S8 (D-54): מפתחות העיטורים חוזרים עם מנגנון חי + בדיקת אפקט**
+  // (D-45 הסיר אותם עד שיהיה מנגנום; כעת כל אחד נצרך בפועל בפאס העיטורים L5).
+  K('h2-orn-scope', 'enum', 'both', P.ORNAMENTS, 'sel-h2-orn-scope', ['decoration/ornament-fit'], 'fx:h2-orn-scope', { enum: ['none', 'sign', 'title', 'both'], note: 'REQ-ORN-02: סימן בלבד / כותרת בלבד / שניהם / כלום. **S4.6 (ביקורת 3):** none נוסף — במקור IMUD h2-title-orn-mode=none היה מומר ל-both (היפוך הגדרת המשתמש); ornament-fit כבר תומך (scope-off)' }),
+  K('h2-orn-top', 'enum', 'none', P.ORNAMENTS, 'sel-h2-orn-top', ['decoration/ornament-fit'], 'fx:h2-orn-top', { enum: ['none', 'pyramid', 'lance', 'shoshanta', 'scroll', 'image'], note: 'עיטור עליון לסימן (V4: מצבים עצמאיים). עיטורים מעוצבים מהמקור (302 עיצובים) — בפאנל "ספריית העיצובים של המקור"' }),
+  K('h2-orn-bottom', 'enum', 'none', P.ORNAMENTS, 'sel-h2-orn-bottom', ['decoration/ornament-fit'], 'fx:h2-orn-bottom', { enum: ['none', 'pyramid', 'lance', 'shoshanta', 'scroll', 'image'], note: 'עיטור תחתון לסימן. עיטורים מעוצבים מהמקור — בפאנל "ספריית העיצובים של המקור"' }),
+  K('h2-orn-side', 'enum', 'none', P.ORNAMENTS, 'sel-h2-orn-side', ['decoration/ornament-fit'], 'fx:h2-orn-side', { enum: ['none', 'pyramid', 'lance', 'shoshanta', 'scroll', 'image'], note: 'עיטור צדדי לכותרת (V4)' }),
+  K('h2-orn-fit-to-text', 'bool', true, P.ORNAMENTS, 'chk-h2-orn-fit', ['decoration/ornament-fit'], 'fx:h2-orn-fit', { note: 'REQ-ORN-01: התאמת רוחב לטקסט במדידת JS — CSS fit-content נכשל (V3/V4); המידות נקבעות בהזמנת הפריסה (F-08)' }),
+  K('h3-side-orn', 'enum', 'none', P.ORNAMENTS, 'sel-h3-side-orn', ['decoration/legacy-ornaments'], 'fx:h3-side-orn', { enum: ['none', 'pyramid', 'lance', 'shoshanta', 'scroll'], note: 'REQ-ORN-01: עיטורי צד H3 — התאמת גובה לשורה' }),
+  K('h3-side-orn-height-em', 'number', 1, P.ORNAMENTS, 'rng-h3-side-orn-h', ['decoration/legacy-ornaments'], 'fx:h3-side-orn-h', { min: 0.5, max: 2, step: 0.1, note: 'גובה ב־em; מקור שליטה יחיד — אין !important מול inline (F-09)' }),
+  K('chapter-end-ornament', 'enum', 'none', P.ORNAMENTS, 'sel-chapter-end-orn', ['decoration/legacy-ornaments'], 'fx:chapter-end-orn', { enum: ['none', 'pyramid', 'lance', 'shoshanta', 'scroll', 'image'], note: 'REQ-ORN-03: פירמידת וילנא/רומח/שושנתא/סלסול/תמונה — התאמה לתקציב הפנוי; לעולם לא דוחף תוכן. עיטורי סיום מעוצבים מהמקור — בפאנל "ספריית העיצובים של המקור"' }),
+  K('chapter-end-ornament-w-em', 'number', 4, P.ORNAMENTS, 'rng-chapter-end-w', ['decoration/legacy-ornaments'], 'fx:chapter-end-w', { min: 1, max: 12 }),
+  K('chapter-end-ornament-h-em', 'number', 1.2, P.ORNAMENTS, 'rng-chapter-end-h', ['decoration/legacy-ornaments'], 'fx:chapter-end-h', { min: 0.3, max: 4 }),
+  K('heading-dividers-h3-h6', 'bool', false, P.ORNAMENTS, 'chk-hdr-dividers', ['core/legacy-settings-map', 'decoration/legacy-ornaments'], 'fx:hdr-dividers', { note: 'REQ-ORN-04: fits() נמדד בכל אתרי ההוספה; בלי עיטור בראש טור/עמוד ריק; rollback-aware (Orange)' }),
+  K('shaar-main-divider', 'enum', 'none', P.ORNAMENTS, 'sel-shaar-main-div', ['core/legacy-settings-map'], 'fx:shaar-main-div', { enum: ['none', 'thin', 'dashed', 'double'], note: 'REQ-ORN-04: קו מפריד בשער ראשי (PT-01)' }),
+  K('shaar-sub-divider', 'enum', 'none', P.ORNAMENTS, 'sel-shaar-sub-div', ['core/legacy-settings-map'], 'fx:shaar-sub-div', { enum: ['none', 'thin', 'dashed', 'double'], note: 'REQ-ORN-04: קו מפריד בשער משנה (PT-02)' }),
+
+  // ---- TOC ----
+  // **S9 (D-62):** מיומנות מספור TOC מלאה (Orange eb21383 — 4 מפתחות; הרביעי כבר קיים):
+  // count = מספור שורות תוכן־העניינים עצמן; show = האם עמודי התוכן מציגים גיליון משלהם (כשנספרים).
+  K('toc-general-enabled', 'bool', true, P.TOC, 'chk-toc-general', ['layout/legacy-imud-flow'], 'fx:toc-gen'),
+  // **D-107 (9b.2):** תוכן כללי ומפורט פעילים בברירת המחדל; כללי = רמות 1–6,
+  // מפורט = 2–6, רמה 7 מוסתרת בשניהם; inline grouping כבוי בכל הרמות.
+  K('toc-detail-enabled', 'bool', true, P.TOC, 'chk-toc-detail', ['layout/legacy-imud-flow'], 'fx:toc-det'),
+  K('general-toc-count-numbering', 'bool', true, P.TOC, 'chk-toc-count', ['layout/legacy-imud-flow'], 'fx:toc-count', { note: 'שוחזר מ‑V1/V2 (REQ-HDR-03/HDR-05)' }),
+  K('detailed-toc-count-numbering', 'bool', true, P.TOC, 'chk-dtoc-count', ['layout/legacy-imud-flow'], 'fx:dtoc-count', { note: 'S9: מספור שורות בתוכן־עניינים המפורט (Orange eb21383 — הושלם)' }),
+  K('general-toc-show-numbering', 'bool', true, P.TOC, 'chk-gtoc-show', ['layout/legacy-imud-flow'], 'fx:gtoc-show', { note: 'S9: עמודי תוכן־עניינים כלליים מציגים גיליון כשהם נספרים (count-toc-pages=true)' }),
+  K('toc-count-row-numbers', 'bool', false, P.TOC, 'chk-toc-row-nums', ['layout/legacy-imud-flow'], 'fx:toc-row-nums', { note: 'Iteration-003: מספור סידורי לשורות התוכן — כבוי כמו המקור (המקור מציג תווית גימטריה בלבד; count-numbering של המקור = מניית עמודים)' }),
+  K('detailed-toc-show-numbering', 'bool', true, P.TOC, 'chk-dtoc-show', ['layout/legacy-imud-flow'], 'fx:dtoc-show', { note: 'S9: עמודי תוכן־עניינים מפורטים מציגים גיליון כשהם נספרים' }),
+  ...[1, 2, 3, 4, 5, 6, 7].flatMap(lvl => [
+    K(`toc-level-${lvl}-show`, 'bool', lvl <= 6, P.TOC, `chk-toc-l${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-l${lvl}`),
+    K(`toc-level-${lvl}-inline`, 'bool', false, P.TOC, `chk-toc-l${lvl}-inline`, ['layout/legacy-imud-flow'], `fx:toc-l${lvl}-inline`),
+  ]),
+
+  // ---- שערים/נושאים (THEMES) ---- **S8 (D-54): ערכות נושא חיות — הפעלה מלאה (F-10 נעול)**
+  K('background-color', 'color', '#ffffff', P.THEMES, 'inp-bg-color', ['output/dom-renderer'], 'fx:bg-color'),
+  K('background-opacity', 'number', 1, P.THEMES, 'rng-bg-opacity', ['output/dom-renderer'], 'fx:bg-opacity', { min: 0, max: 1, step: 0.05, note: 'נצרך בפועל: rgba() על background-color (תיקון P0-5 — בעבר נכתב לתכונת CSS בלתי קיימת)' }),
+  K('theme-set-id', 'string', 'default', P.THEMES, 'sel-theme-set', ['decoration/page-decorations', 'decoration/shaar-boxes'], 'fx:theme-set', { note: 'REQ-ORN-06: הפעלת ערכה מפעילה את שלושת השערים (F-10) דרך theme-sets.activateThemeSet' }),
+  K('show-shaar-sub', 'bool', false, P.THEMES, 'chk-show-shaar-sub', ['decoration/shaar-boxes', 'decoration/shaar-boxes'], 'fx:show-shaar-sub', { note: 'U-C2: "הצג שער משנה" — עמודי שער־משנה לפני כל פתיחת חלק' }),
+  K('shaar-main-image', 'string', '', P.THEMES, 'inp-shaar-main-img', ['decoration/page-decorations', 'decoration/shaar-boxes'], 'fx:shaar-main-img'),
+  K('shaar-sub-image', 'string', '', P.THEMES, 'inp-shaar-sub-img', ['decoration/page-decorations'], 'fx:shaar-sub-img'),
+  K('shaar-back-enabled', 'bool', true, P.THEMES, 'chk-shaar-back', ['decoration/page-decorations', 'decoration/shaar-boxes'], 'fx:shaar-back', { note: 'PT-03: 4 מקטעים עצמאיים; כיבוי ראשי מבטל את כולם' }),
+  // REQ-ORN-08: פאנל רקעים מוזג לתוך נושאים — 3 סוגי עמודים + color/texture/image + insets מ"מ
+  K('background-page-type', 'enum', 'regular', P.THEMES, 'sel-bg-page-type', ['decoration/page-decorations'], 'fx:bg-page-type', { enum: ['regular', 'preface-open', 'sign-open'], note: 'REQ-ORN-08: מחלקת העמוד שאליה הרקע מיועד (מיזוג פאנל רקע→נושאים)' }),
+  K('background-image', 'string', '', P.THEMES, 'inp-bg-image', ['decoration/page-decorations'], 'fx:bg-image'),
+  K('background-texture', 'string', '', P.THEMES, 'inp-bg-texture', ['decoration/page-decorations'], 'fx:bg-texture', { note: 'טקסטורה חוזרת (שכבת תשתית — פטורה מחפיפות באודיט)' }),
+  K('background-inset-mm', 'number', 0, P.THEMES, 'rng-bg-inset', ['decoration/page-decorations'], 'fx:bg-inset', { min: 0, max: 30, note: 'שקיעת הרקע משולי העמוד במ״מ' }),
+
+  // ---- נכסי הפרויקט המקורי IMUD_TORANI (03.11, EXT-14 — הטמעה) ----
+  // הערכים הם הפניות 'imud:<collection>:<id>' — נפתרות בזמן רינדור דרך asset-registry.
+  // הפיקרים (בחירת עיצוב מהספרייה) חיים ב-UI (imud-decorations.js); המפתחות כאן
+  // משמרים את הבחירה בתבניות/חבילות פרויקט ומזרימים אותה למנוע.
+  K('imud-shaar-main', 'string', '', P.THEMES, 'inp-imud-shaar-main', ['decoration/page-decorations'], 'fx:imud-shaar-main', { note: 'עיצוב שער ראשי מספריית IMUD (הפניה imud:shaar-main:<id>) — מפעיל את עמודי השער' }),
+  K('imud-shaar-sub', 'string', '', P.THEMES, 'inp-imud-shaar-sub', ['decoration/page-decorations'], 'fx:imud-shaar-sub', { note: 'עיצוב שער משנה מספריית IMUD (imud:shaar-sub:<id>)' }),
+  K('imud-shaar-back', 'string', '', P.THEMES, 'inp-imud-shaar-back', ['decoration/page-decorations'], 'fx:imud-shaar-back', { note: 'עיצוב שער אחורי מספריית IMUD (imud:shaar-back:<id>)' }),
+  K('imud-orn-top', 'string', '', P.ORNAMENTS, 'inp-imud-orn-top', ['decoration/legacy-ornaments'], 'fx:imud-orn-top', { note: 'עיטור עליון לסימן H2 — עיצוב IMUD; דורש h2-orn-top=image' }),
+  K('imud-orn-bottom', 'string', '', P.ORNAMENTS, 'inp-imud-orn-bottom', ['decoration/legacy-ornaments'], 'fx:imud-orn-bottom', { note: 'עיטור תחתון לסימן H2 — עיצוב IMUD; דורש h2-orn-bottom=image' }),
+  K('imud-orn-side', 'string', '', P.ORNAMENTS, 'inp-imud-orn-side', ['decoration/legacy-ornaments'], 'fx:imud-orn-side', { note: 'עיטור צדדי (H2/H3) — עיצורי IMUD; דורש h2-orn-side/h3-side-orn=image' }),
+  K('imud-chapter-end', 'string', '', P.ORNAMENTS, 'inp-imud-chapter-end', ['decoration/legacy-ornaments'], 'fx:imud-chapter-end', { note: 'עיטור סיום־פרק — עיצוב IMUD; דורש chapter-end-ornament=image' }),
+  K('imud-divider', 'string', '', P.ORNAMENTS, 'inp-imud-divider', ['decoration/legacy-ornaments'], 'fx:imud-divider', { note: 'מפריד סעיפים מעוצב (323 עיצובים) — משמש מפרידי שער/כותרות במצב תמונה' }),
+  K('imud-book-title', 'string', '', P.THEMES, 'inp-imud-book-title', ['output/dom-renderer'], 'fx:imud-book-title', { note: 'כותרת הספר בשער (עקיפת מטא-נתוני המסמך אם הוגדר)' }),
+  K('imud-book-subtitle', 'string', '', P.THEMES, 'inp-imud-book-subtitle', ['output/dom-renderer'], 'fx:imud-book-subtitle', { note: 'כותרת־משנה בשער' }),
+  // **9b.5 (D-107 + F-9a-8):** ארבעת מקטעי השער האחורי — שדות בעלי משמעות עם
+  // שמות הניתנים להתאמה. מקור: שדה הפאנל (ייבוא inp-book-back-*) גובר; נפילה
+  // למטא המסמך. בלי ערך — אין מקטע (אין המצאת ערכים; כמו במקור שהופורט).
+  K('imud-book-back-copyright', 'string', '', P.THEMES, 'inp-book-back-copyright', ['output/shaar-content'], 'fx:imud-book-back-copyright', { note: 'זכויות יוצרים בשער האחורי (D-107; עקיפת מטא-נתוני המסמך אם הוגדר)' }),
+  K('imud-book-back-publishing', 'string', '', P.THEMES, 'inp-book-back-publishing', ['output/shaar-content'], 'fx:imud-book-back-publishing', { note: 'פרטי הוצאה לאור בשער האחורי (D-107)' }),
+  K('imud-book-back-contact', 'string', '', P.THEMES, 'inp-book-back-contact', ['output/shaar-content'], 'fx:imud-book-back-contact', { note: 'פרטי קשר בשער האחורי (D-107)' }),
+  K('imud-book-back-extra', 'string', '', P.THEMES, 'inp-book-back-extra', ['output/shaar-content'], 'fx:imud-book-back-extra', { note: 'פרטים נוספים בשער האחורי (D-107)' }),
+  // **03.11(ד) — דיווח משתמש 3 ("אין עמודי שער, אין כותרות עליונות, שום דבר מהגדרות
+  // ברירת המחדל אינו קיים"): המקור (IMUD_TORANI default_settings.json) מחזיק
+  // show-main-shaar=true / show-sub-shaar=true / show-back-shaar=true כברירת מחדל —
+  // השערים חלק ממבנה הספר, לא אופציה. מפתחות המתגים המפורשים משחזרים זאת.
+  K('shaar-main-enabled', 'bool', true, P.THEMES, 'chk-shaar-main', ['decoration/shaar-boxes'], 'fx:shaar-main', { note: '03.11(ד): שער ראשי כברירת מחדל — כמקור (show-main-shaar=true). מתג שער-העיצוב/ערכת-הנושא מוסיף רקע מעוצב, לא מחליף את המתג' }),
+  K('shaar-sub-enabled', 'bool', true, P.THEMES, 'chk-shaar-sub', ['decoration/shaar-boxes'], 'fx:shaar-sub', { note: '03.11(ד): שער־משנה לכל פתיחת חלק — כמקור (show-sub-shaar=true); show-shaar-sub הישן נשמר כמתג נוסף (או)' }),
+  // **03.11(ד): תוכן מובנה של עמודי השער (פורט renderMainShaar/renderSubShaar/renderBackShaar
+  // של המקור): גופנים/גדלים לכל רכיב. ברירות המחדל = ערכי המקור אחרי הסרת המשפחות
+  // שאינן זמינות (Lia Sgula/Livorna/Alpha* אינן בספרייה — המקור עצמו נפל ל-Bellefair/
+  // David Libre/Frank Ruhl Libre דרך ה-fallbacks, ואלה מוטמעים כעת בנכסים).
+  K('shaar-title-font', 'font', 'Bellefair', P.THEMES, 'sel-shaar-title-font', ['output/shaar-content', 'output/dom-renderer'], 'fx:shaar-title-font', { note: "מקור: f-sh-title=\"'Lia Sgula', 'Bellefair', serif\" — Lia Sgula אינה זמינה; Bellefair המוטמע" }),
+  K('shaar-title-color', 'color', '#000000', P.THEMES, 'inp-shaar-title-color', ['layout/legacy-imud-flow', 'output/legacy-projector', 'output/dom-renderer'], 'fx:shaar-title-color', { note: 'S73: צבע כותרת הספר בשער — שחור כברירת מחדל' }),
+  K('shaar-title-size-pt', 'number', 46, P.THEMES, 'rng-shaar-title-size', ['output/shaar-content', 'output/dom-renderer'], 'fx:shaar-title-size', { min: 20, max: 90, note: 'מקור: s-sh-title=46' }),
+  K('shaar-subtitle-font', 'font', 'David Libre', P.THEMES, 'sel-shaar-subtitle-font', ['output/shaar-content', 'output/dom-renderer'], 'fx:shaar-subtitle-font', { note: "מקור: f-sh-sub=\"'Livorna', 'David Libre', serif\"" }),
+  K('shaar-subtitle-color', 'color', '#000000', P.THEMES, 'inp-shaar-subtitle-color', ['layout/legacy-imud-flow', 'output/legacy-projector', 'output/dom-renderer'], 'fx:shaar-subtitle-color', { note: 'S73: צבע כותרת-המשנה בשער — שחור כברירת מחדל' }),
+  K('shaar-subtitle-size-pt', 'number', 21, P.THEMES, 'rng-shaar-subtitle-size', ['output/shaar-content', 'output/dom-renderer'], 'fx:shaar-subtitle-size', { min: 10, max: 40, note: 'מקור: s-sh-sub=21' }),
+  K('shaar-desc-font', 'font', 'Frank Ruhl Libre', P.THEMES, 'sel-shaar-desc-font', ['output/shaar-content', 'output/dom-renderer'], 'fx:shaar-desc-font', { note: "מקור: f-sh-desc=\"'Livorna', 'Frank Ruhl Libre', serif\"" }),
+  K('shaar-desc-color', 'color', '#000000', P.THEMES, 'inp-shaar-desc-color', ['layout/legacy-imud-flow', 'output/legacy-projector', 'output/dom-renderer'], 'fx:shaar-desc-color', { note: 'S73: צבע התיאור בשער — שחור כברירת מחדל' }),
+  K('shaar-desc-size-pt', 'number', 12, P.THEMES, 'rng-shaar-desc-size', ['output/shaar-content', 'output/dom-renderer'], 'fx:shaar-desc-size', { min: 8, max: 20, note: 'מקור: s-sh-desc=12' }),
+  K('shaar-sections-font', 'font', 'David Libre', P.THEMES, 'sel-shaar-sections-font', ['output/shaar-content', 'output/dom-renderer'], 'fx:shaar-sections-font', { note: "מקור: f-sh-sec=\"'David Libre', serif\"" }),
+  K('shaar-sections-color', 'color', '#000000', P.THEMES, 'inp-shaar-sections-color', ['layout/legacy-imud-flow', 'output/legacy-projector', 'output/dom-renderer'], 'fx:shaar-sections-color', { note: 'S73: צבע פרטי המהדורה בשער — שחור כברירת מחדל' }),
+  K('shaar-sections-size-pt', 'number', 11.5, P.THEMES, 'rng-shaar-sections-size', ['output/shaar-content', 'output/dom-renderer'], 'fx:shaar-sections-size', { min: 8, max: 20, note: 'מקור: s-sh-sec=11.5' }),
+  K('shaar-author-font', 'font', 'David Libre', P.THEMES, 'sel-shaar-author-font', ['output/shaar-content', 'output/dom-renderer'], 'fx:shaar-author-font', { note: "מקור: f-sh-author=\"'David Libre', serif\"" }),
+  K('shaar-author-color', 'color', '#000000', P.THEMES, 'inp-shaar-author-color', ['layout/legacy-imud-flow', 'output/legacy-projector', 'output/dom-renderer'], 'fx:shaar-author-color', { note: 'S73: צבע שם המחבר בשער — שחור כברירת מחדל' }),
+  K('shaar-author-size-pt', 'number', 15, P.THEMES, 'rng-shaar-author-size', ['output/shaar-content', 'output/dom-renderer'], 'fx:shaar-author-size', { min: 8, max: 24, note: 'מקור: s-sh-author=15' }),
+  K('shaar-year-font', 'font', 'David Libre', P.THEMES, 'sel-shaar-year-font', ['output/shaar-content', 'output/dom-renderer'], 'fx:shaar-year-font', { note: "מקור: f-sh-year=\"'David Libre', serif\"" }),
+  K('shaar-year-color', 'color', '#000000', P.THEMES, 'inp-shaar-year-color', ['layout/legacy-imud-flow', 'output/legacy-projector', 'output/dom-renderer'], 'fx:shaar-year-color', { note: 'S73: צבע בס״ד/מקום-ושנה בשער — שחור כברירת מחדל' }),
+  K('shaar-year-size-pt', 'number', 12, P.THEMES, 'rng-shaar-year-size', ['output/shaar-content', 'output/dom-renderer'], 'fx:shaar-year-size', { min: 8, max: 20, note: 'מקור: s-sh-year=12' }),
+  K('shaar-back-text-font', 'font', 'אסיסטנט קל מאוד', P.THEMES, 'sel-shaar-back-text-font', ['output/shaar-content', 'output/dom-renderer', 'layout/legacy-imud-flow'], 'fx:shaar-back-text-font', { note: 'S74 (בעיה 5): כל שורות השער האחורי ב-Assistant ExtraLight — ברירת המחדל של הגרסה הישנה בפועל (נמדד בייחוס עמ׳ 2: חמש השורות Assistant-ExtraLight 13.5/10/11/10/9.5pt). עד S74 ירשו את גוף המסמך' }),
+  K('shaar-back-text-color', 'color', '#000000', P.THEMES, 'inp-shaar-back-text-color', ['layout/legacy-imud-flow', 'output/legacy-projector', 'output/dom-renderer'], 'fx:shaar-back-text-color', { note: 'S73: צבע טקסט השער האחורי — שחור כברירת מחדל' }),
+  // נתוני הספר לשערים — ממופים מ-inp-book-* של המקור; בלי ערך — נופלים למטא-נתוני המסמך
+  K('imud-book-desc', 'string', '', P.THEMES, 'inp-imud-book-desc', ['output/dom-renderer'], 'fx:imud-book-desc', { note: 'תיאור בשער הראשי (מקור: inp-book-desc ← «נושא מפורט»)' }),
+  K('imud-book-sections', 'string', '', P.THEMES, 'inp-imud-book-sections', ['output/dom-renderer'], 'fx:imud-book-sections', { note: 'פרטי מהדורא בשער הראשי (מקור: inp-book-sections ← «פרטי מהדורא»)' }),
+  K('imud-book-author', 'string', '', P.THEMES, 'inp-imud-book-author', ['output/dom-renderer'], 'fx:imud-book-author', { note: 'שם המחבר בשערים (מקור: inp-book-author ← «שם המחבר»)' }),
+  K('imud-book-year', 'string', '', P.THEMES, 'inp-imud-book-year', ['output/dom-renderer'], 'fx:imud-book-year', { note: 'מקום ושנת הוצאה בשערים (מקור: inp-book-year ← «מקום ושנת הוצאה»)' }),
+  K('shaar-back-text', 'string', '', P.THEMES, 'inp-shaar-back-text', ['output/dom-renderer'], 'fx:shaar-back-text', { note: 'טקסט השער האחורי (מקור: inp-back-shaar-text; ברירת מחדל בזמן ריצה: «שמירת זכויות» מהמטא או ״כל הזכויות שמורות למחבר.״)' }),
+
+  // ---- מזהי טקסט מוגדרים (S4.5 — chat-v20.3 היסטורי; ברירות מחדל = המקור) ----
+  K('en-line-prefix', 'string', 'הערת סיום -', P.NOTES, 'inp-en-line-prefix', ['parser/dfa-lexer', 'core/legacy-settings-map'], 'fx:en-prefix', { note: 'שורה המתחילה בקידומת ⇒ הערת סיום (הקידומת אינה מופיעה בפלט). ריק = ביטול הזיהוי. הוראת כותרת עמודי ההערות — רק בצורת הרבים «הערות סיום - כותרת»' }),
+  K('fn-delim-open', 'string', '[', P.NOTES, 'inp-fn-delim-open', ['core/legacy-settings-map', 'core/legacy-settings-map'], 'fx:fn-open', { note: 'תוחם פתיחת הערת שוליים; ריק = ביטול' }),
+  K('fn-delim-close', 'string', ']', P.NOTES, 'inp-fn-delim-close', ['core/legacy-settings-map', 'core/legacy-settings-map'], 'fx:fn-close', { note: 'תוחם סגירת הערת שוליים (בברירת המחדל נתמכת גם הצורה ]ם); ריק = ביטול' }),
+
+  // ---- מתקדם/מנוע (ADVANCED) ----
+  K('trace-verbosity', 'enum', 'standard', P.ADVANCED, 'sel-trace-verb', ['core/events', 'core/pipeline'], 'fx:trace-verb', { enum: ['off', 'minimal', 'standard', 'full'] }),
+  // D-43 (P1-4): diagnostics-enabled אינו רשאי לדכא רישום ממצאים ("לא להשבית אבחון").
+  // הוא שולט ברמת הפירוט בדוח בלבד (buildReport compact) — לעולם לא ברישום עצמו.
+  K('diagnostics-enabled', 'bool', true, P.ADVANCED, 'chk-diag', ['audit/report-schema'], 'fx:diag-on'),
+  // **S1-ח (gap-Gold-V21, תוכנית האב §2.2/§2.5):** צילומי-מצב של מודל הפריסה
+  // ב-4 נקודות הביקורת + delta ביניהן + הקשר-עמוד לממצאים (§2.4) + מיפוי
+  // סיבתי מלא מול Gold V21 (§2.3). אופט-אין: כבוי בברירת מחדל — אפס תקורה
+  // בריצה רגילה; טהור (קריאה בלבד) — לא משנה hash פריסה (מוכח בבדיקה).
+  K('audit-stage-snapshots', 'bool', false, P.ADVANCED, 'chk-audit-stage-snapshots', ['audit/stage-snapshots'], 'fx:stage-snapshots', { note: 'אבחון: צילומי-מצב בנקודות הביקורת (cp3-dp→cp5-final) + delta + הקשר-עמוד לממצאים — שקוף לפריסה; מיועד לריצות אודיט' }),
+  K('offline-guard', 'bool', true, P.ADVANCED, 'chk-offline-guard', ['output/html-export'], 'fx:offline-guard', { note: 'exit 7 על בקשה חיצונית (Orange ✓)' }),
+  // **S10 — סגירת הבטחת D-44:** debounce-light-change-ms חוזר עם צרכן אמיתי —
+  // ui/retypeset-policy קורא אותו בפועל (רענון קל מרוכז; בדיקת אפקט fx:debounce ב־s10).
+  K('debounce-light-change-ms', 'number', 350, P.ADVANCED, 'rng-debounce-ms', ['ui/retypeset-policy'], 'fx:debounce', { min: 50, max: 2000, step: 50, note: 'REQ-UI-02: ריכוז שינויים קלים (רקע/נושא/שער) לפני רינדור מחדש — 350–400ms לפי Spec §5.3' }),
+
+  // ---- ייצוא ומדידה (EXPORT — S12; REQ-EXP-01..04, REQ-LB-01 impl B, D-18) ----
+  K('measure-impl', 'enum', 'table', P.ADVANCED, 'sel-measure-impl', ['typography/measure-api', 'core/pipeline'], 'fx:measure-impl', { enum: ['table', 'font-metrics'], note: 'S12 D-72: מימוש מדידה — table = טבלאות מכוילות (ברירת מחדל); font-metrics = טבלאות אמת מגופן רשום (hmtx/cmap/kern/GPOS). שקילות שבירות מוכחת על הקורפוס הקנוני לפני החלפת ברירת מחדל.' }),
+  K('pdf-crop-marks', 'bool', false, P.ADVANCED, 'chk-crop-marks', ['output/pdf-writer'], 'fx:crop-marks', { note: 'REQ-EXP-03: סימני חיתוך מחוץ לתבנית החיתוך (TrimBox) בייצוא PDF' }),
+  K('export-bleed-mm', 'number', 3, P.ADVANCED, 'rng-bleed-mm', ['output/pdf-writer'], 'fx:bleed-mm', { min: 0, max: 6, note: 'REQ-EXP-03: דם הדפסה (BleedBox) במ״מ סביב החיתוך' }),
+  K('export-html-page-rules', 'bool', true, P.EXPORT, 'chk-html-page-rules', ['output/html-export'], 'fx:html-page-rules', { note: 'REQ-EXP-02: כללי @page (גודל עמוד מהרישום) בייצוא HTML עצמאי — מדפיס מדויק' }),
+];
+
+// ---- אימות פנימי: אין כפילויות id/control ----
+(function validateSelf() {
+  const ids = new Set(), controls = new Set();
+  for (const r of registry) {
+    if (ids.has(r.id)) throw new Error(`duplicate key ${r.id}`);
+    if (controls.has(r.control)) throw new Error(`duplicate control ${r.control}`);
+    ids.add(r.id); controls.add(r.control);
+  }
+})();
+
+function getSettingDefs() { return registry.slice(); }
+function getDefaultSettings() {
+  const o = {};
+  for (const r of registry) o[r.id] = r.default;
+  return derivePlacementFlags({ settings_version: 2, ...o });
+}
+function findKey(id) { return registry.find(r => r.id === id) || null; }
+
+/**
+ * D-39 (תיקון P0-4): מקור־האמת הוא note-placement-mode; **קלט משתמש מפורש גובר
+ * על נגזרות**. בעבר הענף הדיפולטי דרס בשקט footnotes-enabled=false — הפקד היה
+ * קיים, המפתח קיים, המנגנון קיים, והגזירה ביטלה את רצון המשתמש (מחלת S4).
+ * מצב סותר אמיתי (mode=endnotes + footnotes-enabled=true) נפתר לטובת המצב
+ * (המצב הוא שכבת האמת) ומדווח ע"י mergeWithDefaults — לא בשקט מוחלט.
+ * - 'footnotes' ⇒ מרזב לפי footnotes-enabled (true=מרזב; false=ההערות בגוף כplaceholder).
+ * - 'endnotes'  ⇒ אין מרזב; ההערות זורמות לעמודי 'הערות'; endnotes-enabled=true לצרכנים ישירים.
+ * - 'inline'    ⇒ ההערות בגוף כplaceholder מלא.
+ */
+function derivePlacementFlags(s) {
+  if (!s) return s;
+  if (s['note-placement-mode'] === 'endnotes') {
+    s['endnotes-enabled'] = true;   // לצרכנים ישירים (endnote-pages builder)
+    s['footnotes-enabled'] = false; // אין מרזב במצב endnotes — המצב גובר (מדווח בגירה)
+  } else {
+    s['endnotes-enabled'] = false;
+    // footnotes-enabled: **ערך המשתמש עומד** — אין דריסה. mode=footnotes + false
+    // ⇒ ההערות מוצגות בגוף כplaceholder מלא (BRZ-15) — לא מצב סותר.
+  }
+  return s;
+}
+
+module.exports = { getSettingDefs, getDefaultSettings, findKey, derivePlacementFlags, PANELS: P, registry };

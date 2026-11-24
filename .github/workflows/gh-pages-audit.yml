@@ -1,0 +1,100 @@
+# .github/workflows/gh-pages-audit.yml — אודיט חי מיד אחרי פריסת Pages (S5.2)
+#
+# **S5.2 (פריסה מיושנת — סגירת החלון העיוור):** הפריסה ל-GitHub Pages רצה
+# בענף gh-pages; עד S5.2 האודיט החי הלילי (full-math-audit.yml) היה יכול
+# לפספס חלון של שעות שבו האתר פרוס אך שבור/מיושן. כאן: כל בניית Pages
+# ממתינה להשלמתה ומיד מריצה את אותו אודיט מתמטי מלא מול האתר החי — כולל
+# אימות sha256 של הבאנדלים הפרוסים מול הענף (run-full-math.js נכשל אם
+# הפריסה מיושנת).
+#
+# **S5.3 (תיקון טריגר — מוקש שנתפס באימות):** שני הטריגרים הקודמים לא עבדו
+# בפועל: ‏(א) ‏on:push ל-gh-pages לא יירה לעולם (ענף orphan בלי קובצי
+# workflow — תוקן ב-S5.2-ב); ‏(ב) ‏workflow_run על "pages build and
+# deployment" — הוכח אמפירית שלא נורה (0 ריצות 8+ דק' אחרי בניית Pages
+# מוצלחת של ‏?v=s5.3): ‏ה-workflow הדינמי של Pages לא מפיק אירועי
+# workflow_run בתצורת legacy-build. **האירוע המובנה והמתועד לבניית Pages
+# הוא `page_build`** (docs: Events that trigger workflows) — והוא הטריגר
+# הראשי כאן. ‏workflow_run נשאר כגיבוי למקרה שיתממש בעתיד, ויש גם הפעלה
+# ידנית. תנאי ההצלחה מטופל ב-if המשולב (page_build: ‏build.status=='built';
+# ‏workflow_run: ‏conclusion=='success').
+name: gh-pages-audit
+
+on:
+  page_build:
+  workflow_run:
+    workflows: [ pages build and deployment, deploy-pages ]
+    types: [ completed ]
+  workflow_dispatch:
+
+# **S5.3-ג (מוקש 6):** ‏/pages/builds/latest דורש אימות (ללא טוקן ⇒ ‏404,
+# גם בריפו פומבי — נבדק) — ה-poll בגרסה הקודמת רץ ללא אימות והיה
+# נכשל בכל ריצה בתום 10 דק' למרות בנייה מוצלחת. כאן: ‏GITHUB_TOKEN
+# המובנה עם הרשאת pages:read; ובתום-זמן — להמשיך לאודיט במקום להיכשל
+# (שומר האמת הוא בדיקת ה-sha256 של הבאנדלים הפרוסים באודיט עצמו;
+# פריסה מיושנת/שבורה נכשלת שם בקול רם).
+permissions:
+  contents: read
+  pages: read
+
+jobs:
+  live-audit-after-deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'page_build' && github.event.build.status == 'built') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    # **S5.2 (P-11):** תקרה מפורשת — המתנה ל-Pages (עד 10 דק') + האודיט החי
+    # (עימוד ~700 עמודים דרך הרשת + דטרמיניזם כפול); 45 דק' כמו הלילי.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # **S5.2 (P-11):** נעילת גרסה — 0.41.2 (אין 1.x ב-npm) — כמו ב-local.
+      - name: Install agent-browser + headless browser
+        run: |
+          npm install -g agent-browser@0.41.2
+          agent-browser install --with-deps
+
+      # **S5.3-ג (מוקש 6):** ‏/pages/builds/latest דורש אימות — ללא טוקן
+      # מתקבל 404 גם בריפו פומבי (נבדק), וה-poll הקודם (ללא אימות) היה
+      # נכשל בכל ריצה בתום 10 דק' למרות בנייה מוצלחת. כאן: ‏GITHUB_TOKEN
+      # המובנה (הרשאת pages:read — ראה permissions למעלה). ‏page_build נורה
+      # כבר אחרי השלמת הבנייה, ולכן ה-poll הוא אימות-על בלבד: כשל בנייה
+      # (error) ⇒ כשל מיידי; תום-זמן/לא-ידוע ⇒ אזהרה והמשך לאודיט —
+      # שומר האמת הוא בדיקת ה-sha256 של הבאנדלים הפרוסים באודיט עצמו
+      # (פריסה מיושנת/שבורה נכשלת שם בקול רם).
+      - name: Wait for GitHub Pages build to be visible as built (poll up to 10 min)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          deadline=$((SECONDS + 600))
+          while true; do
+            resp=$(curl -sf -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/SUGINACH/Tora_Book_Typesetter_Red/pages/builds/latest" || true)
+            status=$(printf '%s' "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",""))' 2>/dev/null || echo "")
+            echo "pages build status: ${status:-unknown}"
+            if [ "$status" = "built" ]; then echo "✓ Pages build completed"; exit 0; fi
+            if [ "$status" = "error" ]; then echo "✗ בניית ה-Pages נכשלה (status=error) — אין טען לבדוק אתר מיושן"; exit 1; fi
+            if [ "$SECONDS" -ge "$deadline" ]; then echo "⚠ תום-זמן באימות ה-API (status=${status:-unknown}) — ממשיכים לאודיט; אם הפריסה מיושנת, בדיקת ה-sha256 באודיט תיכשל בקול רם"; exit 0; fi
+            sleep 30
+          done
+
+      # בדיוק כמו ה-job הלילי (live) ב-full-math-audit.yml: האודיט זקוק
+      # ל-checkout (לחישוב sha256 של הבאנדלים מול הפריסה + ה-fixture), אך
+      # בודק את ה-URL החי — לא שרת מקומי.
+      - name: Full math audit — LIVE site right after deploy (fixture injected via base64)
+        run: |
+          node tools/layout-audit/run-full-math.js --tag live \
+            --url https://suginach.github.io/Tora_Book_Typesetter_Red_Work_2/ \
+            --fixture audits/very_long_test_text.txt
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-math-audit-gh-pages
+          path: red-build/tests/artifacts/full-math-audit/
+          if-no-files-found: ignore

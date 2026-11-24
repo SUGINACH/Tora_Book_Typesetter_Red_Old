@@ -1,0 +1,37 @@
+{
+  "tool": "cross-check",
+  "schema": 1,
+  "started": "2026-11-24T12:59:40.141Z",
+  "commit": "933e6c5",
+  "node": "v24.22.3",
+  "corpora": [
+    {
+      "name": "very_long (legacy, run-ours = corpus-invariants CI)",
+      "file": "audits/very_long_test_text.txt",
+      "legacy": true,
+      "profile": "imud-legacy",
+      "pages": 695,
+      "layoutHash": "legacy-28f52",
+      "lockHash": "legacy-28f52",
+      "contentPreserved": true,
+      "hashOk": true,
+      "ms": 5376
+    }
+  ],
+  "bundles": [
+    {
+      "file": "red-build/ui/app.bundle.js",
+      "sha256": "8b386bff363c788b",
+      "bytes": 1295739
+    },
+    {
+      "file": "red-build/ui/engine-worker.bundle.js",
+      "sha256": "dc5001922410f197",
+      "bytes": 987938
+    }
+  ],
+  "live": null,
+  "causality": null,
+  "ok": true,
+  "failures": []
+}

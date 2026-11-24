@@ -1,0 +1,19 @@
+{
+  "_comment": "נעילות ההצלבה — מאגר המנוע הישן בלבד. נעילת very_long מורשת (legacy-28f52) מאומתת בכל cross-check דרך run-ours.js (זהה ל-workflow corpus-invariants). נעילות ה-DP (89a0eb42/a5aaa431) הוסרו עם המנוע המאוחד וממשיכות לחיות במאגר המרכזי Tora_Book_Typesetter_Red_Work_2.",
+  "corpora": [
+    {
+      "name": "very_long (legacy, run-ours = corpus-invariants CI)",
+      "file": "audits/very_long_test_text.txt",
+      "legacy": true,
+      "lockHash": "legacy-28f52"
+    }
+  ],
+  "bundles": [
+    {
+      "file": "red-build/ui/app.bundle.js"
+    },
+    {
+      "file": "red-build/ui/engine-worker.bundle.js"
+    }
+  ]
+}

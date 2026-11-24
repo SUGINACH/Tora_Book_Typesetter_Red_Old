@@ -1,0 +1,1647 @@
+// src/engine/output/dom-renderer.js — DOM render (browser) + PUA scrub invariant (REQ-PAR-05, BRZ-13)
+'use strict';
+
+/**
+ * רנדור עמודים ל‑DOM. כללי יסוד:
+ * - U+E000/U+E101 חייבים להיעלם מה‑DOM הסופי (scrub לפני render; נשמרים רק לשלב המדידה).
+ * - כיווניות RTL מלאה; no !important על inline של עיטורים (F-09 — מקור שליטה יחיד).
+ * - מיפוי סוג עמוד → מחלקת CSS: regular/shaar/preface/sign-open/endnotes/toc/filler.
+ *
+ * **עדכוני סגירת S7:**
+ *  - סמני הערות מ‑notes/markers (מקור אחיד — P1-3); מקטעי פיצול הערה ארוכה
+ *    מסומנים class fn--continuation עם תוספת "(המשך)".
+ *  - background-opacity ⇒ rgba() אמיתי (בעבר נכתב לתכונת CSS בלתי קיימת — P0-5).
+ *  - paren-style-scale ⇒ מילים בתוך סוגריים ב‑span.w--paren (D-42).
+ *  - column-divider-style ⇒ חוט מפריד בין הטורים, גובה Math.min−8px (overlay — geometry-neutral).
+ *  - עמודי הערות: כותרת + רשימת הערות (S7.1.1).
+ *  - הערות צד: מיקום מוחלט לפי yTop/x מה‑placement (S7.1.2).
+ */
+
+const PT_CLASS = {
+  'regular': 'page page--regular',
+  'shaar-main': 'page page--shaar page--shaar-main',
+  'shaar-sub': 'page page--shaar page--shaar-sub',
+  'shaar-back': 'page page--shaar page--shaar-back',
+  'preface': 'page page--preface',
+  'sign-open': 'page page--sign-open',
+  'h3-spread': 'page page--h3-spread',
+  'endnotes': 'page page--endnotes',
+  'toc-general': 'page page--toc page--toc-general',
+  'toc-detail': 'page page--toc page--toc-detail',
+  'custom': 'page page--custom',
+  'filler': 'page page--filler',
+  // **Iteration-006 (RC-B1 — עמודי מילוי ריקים בפרופיל המאוחד):** המודל
+  // המאוחד מייצר עמודי blank (מילוי לפני שער-משנה שחייב recto — נמדד:
+  // 8 עמודים כאלה ב-very_long, תמיד צמודים ל-shaar-sub). בלי המיפוי הם
+  // קיבלו className='page' בלי page--* ⇒ TYPE_UNKNOWN באודיט החי (סיווג
+  // העמוד לא זיהה אף מחלקה). אותה מחלקה בדיוק כמו LEGACY_PT_CLASS.
+  'blank': 'page page--blank'
+};
+
+// **S4.10:** סוגי עמודי מנוע המורשת (legacy-imud-flow) — מיפוי למחלקות ה-CSS.
+// 'toc-detailed' אצלנו (בייחוס toc-detail) ו-'blank' ייחודי למורשת.
+const LEGACY_PT_CLASS = {
+  'toc-detailed': 'page page--toc page--toc-detail',
+  'blank': 'page page--blank',
+  'sign-open': 'page page--sign-open'
+};
+
+// **שלב 8 פרוסה 1-ביקורת (§3.1):** scrubPUAText עבר למודול הניטרלי core/pua-text —
+// הליבה (materialize) כבר אינה מייבאת מהרנדרר. כאן נצרך מהמקור היחיד ומיוצא
+// הלאה לצרכנים קיימים (חוזה המודול נשמר: scrubPUAText ב-export).
+const { scrubPUAText } = require('../core/pua-text');
+
+/** rgba() אמיתי מ‑background-color + background-opacity (תיקון P0-5). */
+function bgRgba(color, opacity) {
+  const hex = String(color || '#ffffff');
+  const m = hex.match(/^#([0-9a-f]{6})$/i);
+  const op = Number.isFinite(opacity) ? Math.max(0, Math.min(1, opacity)) : 1;
+  if (!m) return hex; // שם־צבע/תבנית אחרת — כמו שהוא
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return `rgba(${r}, ${g}, ${b}, ${op})`;
+}
+
+/**
+ * S7 — צריכת footnote-marker-style (enum) דרך מקור אחיד: notes/markers.
+ * (בעבר היה כאן ממיר מקומי שני — אי־עקביות מספור, P1-3.)
+ */
+const { markerForSettings } = require('../notes/markers');
+const { planDecorations } = require('../decoration/page-decorations');
+const { resolveShaarBox } = require('../decoration/shaar-boxes');
+const { columnDividerHeightPx } = require('../decoration/ornament-fit');const { folioGeometry } = require('../layout/furniture-geometry'); // **שלב 6:** גיאומטריית הגיליון — מקור יחיד עם הפרויקטור ל-PDF
+
+const { resolveAssetRef } = require('../decoration/asset-registry');
+const { ornamentInk } = require('../decoration/ornament-ink'); // **03.11:** imud: → data-URI
+const { MM_TO_PX } = require('../layout/page-templates');
+const { isCssFrame } = require('../decoration/folio'); // **S9:** מסגרות גיליון CSS (circle/square)
+const { assignFootnoteLanes } = require('../layout/footnote-lanes'); // **שלב 5:** מקור-אמת יחיד לחלוקת נתיבי המרזב
+const { lineFontSizePt, lineFontFamily, ptToPx } = require('./line-font');
+const { buildShaarBlocks, shaarFontOf } = require('./shaar-content'); // **03.11(ד)** // **03.11(ג):** מקור יחיד לגופן/גודל שורה
+
+/** S9 — body-last-line-align (center|right|stretch): יישור שורה אחרונה של פסקה. */
+function lastLineClass(ln, settings) {
+  if (!ln.isLast) return '';
+  const mode = settings['body-last-line-align'] || 'center';
+  if (mode === 'right') return ' line--last-right';
+  if (mode === 'stretch') return ' line--last-stretch';
+  return ' line--last-center';
+}
+
+/** **03.11(ד):** מחסנית גופן — תומכת גם בערך מרובה־משפחות ("'A', 'B', serif"
+ * מהמקור). גרשיים מנוטרלים (הזרקה בטוחה ל-CSS), משפחות גנריות (serif/sans-serif)
+ * עוברות כמו שהן, ופולבאקים עבריים נוספים רק אם אינם כבר ברשימה. */
+function fontStack(family) {
+  // ניקוי לפי משפחה: גרשיים מוסרים, ותווים מסוכנים להזרקת CSS (; : { } / וכו')
+  // נפסלים — נשארים אותיות (לטיניות ועבריות), ספרות, רווחים ומקפים בלבד.
+  const safe = (x) => String(x || '').replace(/'/g, '').replace(/[^\w\u0590-\u05FF\uFB1D-\uFB4F\s-]/g, '').trim();
+  const parts = String(family || '').split(',').map(safe).filter(Boolean);
+  if (!parts.length) return '';
+  const out = [];
+  const GENERIC = /^(serif|sans-serif|monospace|cursive|fantasy|system-ui)$/i;
+  for (const p of parts) {
+    out.push(GENERIC.test(p) ? p : `'${p}'`);
+  }
+  for (const fb of ['Frank Ruhl Libre', 'David', 'serif']) {
+    const plain = `'${fb}'`;
+    if (!out.includes(plain) && !out.includes(fb)) out.push(GENERIC.test(fb) ? fb : plain);
+  }
+  return out.join(', ');
+}
+
+function renderLine(ln, doc, settings = {}) {
+  const el = doc.createElement('div');
+  el.className = 'line' + (ln.isLast ? ' line--last' + lastLineClass(ln, settings) : '');
+  el.setAttribute('dir', 'rtl');
+  // **03.11(ג) (תיקון "החלפת גופן לא עושה כלום"):** גודל/גופן השורה מההגדרות —
+  // אותו מקור (line-font) כמו הפרויקטור. בלי זה התצוגה מציגה הכול בגודל/גופן
+  // שורש המסמך והתצוגה אינה מגיבה לשינויי גופן/גודל.
+  const lnPt = lineFontSizePt(ln, settings);
+  if (Number.isFinite(lnPt) && lnPt > 0) el.style.fontSize = `${ptToPx(lnPt)}px`;
+  const lnFont = lineFontFamily(ln, settings);
+  if (lnFont) el.style.fontFamily = fontStack(lnFont);
+  // **S73 (צבע פר-גופן — נתיב DP):** כותרת ⇒ heading-N-color; גוף ⇒ body-color.
+  // שחור ⇒ אין style (ירושת ברירת המחדל) — תצוגה=ייצוא (אפס אופרטורי rg ב-PDF).
+  if (ln.kind === 'heading' && ln.level != null) {
+    const hc = nonBlack(settings[`heading-${ln.level}-color`]);
+    if (hc) el.style.color = hc;
+  } else {
+    const bc = nonBlack(settings['body-color']);
+    if (bc) el.style.color = bc;
+  }
+  // **EXT-20 (AQ אנכי אמיתי):** מקדם ה-AQ הוא מקדם גובה-שורה — כאן הוא
+  // מיושם כ-line-height מפורש (px) כמו בפרויקטור וב-PDF. בעבר הוחל כאן
+  // wordSpacing אופקי (‏(factor−1)×4px) — שלושה נתיבים, שלוש פרשנויות,
+  // והגובה מעולם לא השתנה. כעת: שדה אחד, משמעות אחת.
+  // **S6.0 (R4-C1):** line-height מהמודל ל**כל** שורה — לא רק ב-AQ. בלי
+  // זה הדפדפן משתמש ב-normal (~1.15–1.25em) והטור נערם בפיץ שונה מהמודל
+  // ומה-PDF (~4–5px לשורה, עד ~120px בתחתית הטור) — תצוגה≠ייצוא בכל עמוד DP
+  // (תיקון S5.1 הוחל בנתיב המורשת בלבד ולא כאן).
+  if (Number.isFinite(ln.heightPx)) {
+    el.style.lineHeight = `${Math.round(ln.heightPx * (ln.aqStretch || 1) * 100) / 100}px`;
+  }
+  // **FX-6 (פרוסה 2 — הפער מהחוזה הגיאומטרי):** פער הבלוקים מוקרן מהחותמת
+  // שנקבעה בתכנון (gapBeforePx) — מקור יחיד; המקרין קורא ואינו מוסיף כלום
+  // מעצמו. margin-top (ולא גובה שורה) — הפער אינו מערבב בין גובה השורה
+  // למרווח הבלוק; זהה ביט-לביט להתקדמות ה-y של הפרויקטור ל-PDF.
+  if (ln.gapBeforePx > 0) {
+    el.style.marginTop = `${Math.round(ln.gapBeforePx * 100) / 100}px`;
+  }
+  // **S8 (F-08):** הזמנת עיטורי H2 בתוך תיבת השורה — הטקסט יורד/עולה ב־padding;
+  // הגובה כבר תוקצב בפריסה, הרנדור רק מצייר בתוך התיבה (מקור יחיד — F-09).
+  if (ln.h2OrnPadTop) el.style.paddingTop = `${ln.h2OrnPadTop}px`;
+  if (ln.h2OrnPadBottom) el.style.paddingBottom = `${ln.h2OrnPadBottom}px`;
+  // **S11 (REQ-PAR-06):** הזמנת עיטורים מקושרים של סגנון מותאם — אותו דפוס (F-08).
+  if (ln.csOrnPadTop) el.style.paddingTop = `${ln.csOrnPadTop}px`;
+  if (ln.csOrnPadBottom) el.style.paddingBottom = `${ln.csOrnPadBottom}px`;
+  // **S11 (REQ-PAR-06):** סגנון ברמת הבלוק — class + סגנון מובנה + מונה גלוי בשורה הראשונה.
+  if (ln.customStyle) {
+    el.className += ' custom-style';
+    el.dataset.style = ln.customStyle.id || '';
+    applyCustomStyleSpec(el, ln.customStyle.styleSpec, doc);
+    if (ln.csCounterMark) {
+      const cm = doc.createElement('span');
+      cm.className = 'cs-counter';
+      cm.textContent = ln.csCounterMark;
+      prependChild(el, cm);
+    }
+  }
+  // **D-42:** מילים בתוך סוגריים — span.w--paren עם font-size בסקאלה (geometry-neutral).
+  // מילים רגילות — span.w אחיד (מיצג גם ב‑DOM אמיתי וגם ב‑shim של הבדיקות).
+  // **S11:** טווחי inline מסגנון מותאך — span.w--custom עם data-style (גודל מוחל כבר במדידה).
+  const parenScale = Number(settings['paren-style-scale']) || 1;
+  const words = (ln.words || []).map(w => scrubPUAText(w));
+  const spans = ln.parenSpans || [];
+  const customs = ln.customSpans || [];
+  if ((spans.length && parenScale !== 1) || customs.length) {
+    for (let i = 0; i < words.length; i++) {
+      const span = doc.createElement('span');
+      const cIdx = customs.findIndex(c => c.wi === i);
+      if (cIdx >= 0) {
+        span.className = 'w w--custom';
+        span.dataset.style = customs[cIdx].styleId;
+      } else if (spans.includes(i)) {
+        span.className = 'w w--paren';
+        span.style.fontSize = `${Math.round(parenScale * 100)}%`;
+      } else {
+        span.className = 'w';
+      }
+      span.textContent = words[i];
+      el.appendChild(span);
+    }
+  } else {
+    el.textContent = words.join(' ');
+  }
+  const tok = ln.tokenId != null ? ln.tokenId : (ln.meta && ln.meta.tokenId);
+  if (tok) el.dataset.token = tok;
+  return el;
+}
+
+/** **S11:** הכנסת ילד ראשון — insertBefore כשיש; fallback ל־unshift (תאימות ל־shims של הבדיקות). */
+function prependChild(el, node) {
+  if (typeof el.insertBefore === 'function') el.insertBefore(node, el.firstChild || null);
+  else { (el.children || (el.children = [])).unshift(node); node.parentNode = el; }
+}
+
+/** **S11 (REQ-PAR-06):** החלת סגנון מותאם על יסוד DOM — מקור יחיד לכל מוצרי הדגל. */
+function applyCustomStyleSpec(el, spec, doc) {
+  void doc;
+  if (!spec || typeof spec !== 'object') return;
+  if (spec.fontSizePt) el.style.fontSize = `${spec.fontSizePt}pt`;
+  if (spec.bold) el.style.fontWeight = '700';
+  if (spec.italic) el.style.fontStyle = 'italic';
+  if (spec.color) el.style.color = spec.color;
+  if (spec.background) el.style.background = spec.background;
+  if (spec.border) el.style.borderRight = `3px solid ${typeof spec.border === 'string' ? spec.border : '#1a1a1a'}`;
+  if (spec.indentEm) { el.style.paddingRight = `${spec.indentEm}em`; el.style.marginRight = `${spec.indentEm}em`; }
+  if (spec.align) el.style.textAlign = spec.align === 'stretch' ? 'justify' : spec.align;
+  if (spec.letterSpacingEm) el.style.letterSpacing = `${spec.letterSpacingEm}em`;
+  if (spec.textTransform === 'small-caps') el.style.fontVariant = 'small-caps';
+}
+
+function renderFootnoteArea(page, settings, doc) {
+  if (!settings['footnotes-enabled'] || !page.footnotes.length) return null;
+  const area = doc.createElement('div');
+  area.className = `footnotes footnotes--${settings['fn-layout-mode']}`;
+  // **S5.4 (P-5 — תצוגה=ייצוא):** מיקום המרזב לפי המודל — הרצועה השמורה מעל
+  // תחתית תיבת התוכן, בדיוק כמו שהפרויקטור מקרין ל-PDF. בעבר: bottom:8px
+  // קבוע מה-CSS — התצוגה הציגה את המרזב בשוליים התחתונים בזמן שה-PDF צייר
+  // אותו ברצועה השמורה (פער תצוגה≠ייצוא בפרופיל DP).
+  const tpl = page.template;
+  if (tpl && tpl.contentBox && page.fnReservedHeightPx > 0) {
+    const colsX = (tpl.columns || []).map(c => c.x);
+    const colsR = (tpl.columns || []).map(c => c.x + c.w);
+    const left = colsX.length ? Math.min(...colsX) : 12;
+    const right = colsR.length ? Math.max(...colsR) : (tpl.width - 12);
+    area.style.bottom = 'auto';
+    area.style.top = `${Math.round(tpl.contentBox.bottom - page.fnReservedHeightPx)}px`;
+    area.style.left = `${Math.round(left)}px`;
+    area.style.right = `${Math.max(0, Math.round(tpl.width - right))}px`;
+  }
+  if (settings['footnote-separator-rule'] !== 'none') {
+    const rule = doc.createElement('div');
+    rule.className = `fn-rule fn-rule--${settings['footnote-separator-rule']}`;
+    area.appendChild(rule);
+  }
+  // **שלב 6 פרוסה 2 (§9 — הקרנה מהחותמת):** גוף ההערה מוקרן משורות החותמת
+  // (noteRows/noteWords/lineH מ-notes-model) — תיבת-שורה מפורשת לכל שורה:
+  // פיץ' אנכי מדויק מהמודל (בעבר line-height יחידת-יחס מה-CSS סטה ~0.4px/שורה
+  // מהתקציב ⇒ הערות נחתכו/חפפו בין שורות בתצוגה בעוד ה-PDF והתקציב הסכימו),
+  // והמילים של כל שורה — ממש כפי שנמדדו. הדפדפן משלים את הזרימה האופקית
+  // בתוך תיבת השורה (white-space:nowrap — אין שבירה מחדש של הדפדפן).
+  // חותמה חסרה ⇒ data-stamp-missing + נפילת טקסט חירום (התוכן לעולם לא אובד) —
+  // לא מדידה חלופית שקטה (§9.8).
+  const mkRows = (n) => {
+    const rows = [];
+    const isCont = n.isContinuation === true || n.mode === 'split-rest';
+    for (let li = 0; li < (n.noteRows || []).length; li++) {
+      const row = n.noteRows[li];
+      const div = doc.createElement('div');
+      div.className = 'fn-row';
+      div.style.whiteSpace = 'nowrap';
+      if (Number(n.lineH) > 0) {
+        div.style.lineHeight = `${n.lineH}px`;
+        div.style.height = `${n.lineH}px`;
+      }
+      const parts = [];
+      if (li === 0) {
+        if (isCont) parts.push('(המשך)');
+        if (n.marker != null && String(n.marker) !== '') parts.push(`${n.marker}\u200F`);
+      }
+      for (let i = row.wFrom; i < row.wTo; i++) parts.push(scrubPUAText(String(n.noteWords[i])));
+      div.textContent = parts.join(' ');
+      rows.push(div);
+    }
+    return rows;
+  };
+  const hasStamp = (n) => Array.isArray(n.noteRows) && n.noteRows.length > 0 && Array.isArray(n.noteWords) && Number(n.lineH) > 0;
+  // סמן אחיד (notes/markers) + סימון המשך למקטעי פיצול (S7.1.3 long-note policy)
+  const mkNote = (n) => {
+    const marker = n.marker || markerForSettings(Number.isInteger(n.docIndex) ? n.docIndex : (n.markerNum || 1), settings);
+    const el = doc.createElement('div');
+    const cont = n.isContinuation || n.mode === 'split-rest';
+    el.className = 'footnote' + (cont ? ' fn--continuation' : '') + (n.customStyle ? ' footnote--custom' : '');
+    if (n.customStyle) el.dataset.style = n.customStyle;
+    el.dir = 'rtl';
+    if (hasStamp(n)) {
+      el.style.margin = '0'; // התקציב אינו כולל שוליים — תצוגה=ייצוא=תקציב
+      for (const r of mkRows(n)) el.appendChild(r);
+    } else {
+      el.dataset.stampMissing = '1'; // diagnostic גלוי — בלי מדידה חלופית שקטה
+      el.textContent = `${cont ? '(המשך) ' : ''}${marker}\u200F ${scrubPUAText(n.text || n)}`;
+    }
+    return el;
+  };
+  // **S70 (fn-continuous ב-DP — סגירת שארית S5.4):** גרסת inline של ההערה —
+  // לזרימה רציפה: הערה הבאה פותחת באותה שורה שבה הסתיימה קודמתה (רווח-
+  // כפול בין הערות — כמו המורשת). המודל כבר תיקצב במצב זה בלי הצמדת
+  // תקרה פר-הערה (D-34); התצוגה משלימה את החזות בלבד — הגיאומטריה לא זזה.
+  // **פרוסה 2:** פיץ' השורה גם כאן מהחותמת (px מפורש) — אותו פיץ' של ה-PDF.
+  const mkNoteInline = (n) => {
+    const marker = n.marker || markerForSettings(Number.isInteger(n.docIndex) ? n.docIndex : (n.markerNum || 1), settings);
+    const el = doc.createElement('span');
+    const cont = n.isContinuation || n.mode === 'split-rest';
+    el.className = 'footnote fn--inline' + (cont ? ' fn--continuation' : '') + (n.customStyle ? ' footnote--custom' : '');
+    if (n.customStyle) el.dataset.style = n.customStyle;
+    el.textContent = `${cont ? '(המשך) ' : ''}${marker}\u200F ${scrubPUAText(n.text || n)}`;
+    return el;
+  };
+  const continuous = settings['fn-layout-mode'] === 'continuous';
+  const flowOf = (notes) => {
+    const flow = doc.createElement('div');
+    flow.className = 'footnotes-flow';
+    flow.dir = 'rtl';
+    const firstStamped = notes.find(hasStamp);
+    if (firstStamped) flow.style.lineHeight = `${firstStamped.lineH}px`; // פיץ' מהחותמת — תצוגה=ייצוא
+    notes.forEach((n, i) => {
+      if (i > 0) flow.appendChild(doc.createTextNode('\u00A0 ')); // רווח-כפול בין הערות
+      flow.appendChild(mkNoteInline(n));
+    });
+    return flow;
+  };
+  // **S5.4 (תצוגה=ייצוא):** שני נתיבים לפי footnote-columns — חלוקת הערות
+  // זהה לתקציב/פרויקטור (LPT דטרמיניסטית) — התצוגה וה-PDF מציגים את אותן
+  // הערות באותם נתיבים. הנתיב הראשון מימין (RTL).
+  const twoLanes = settings['footnote-columns'] === 2
+    && tpl && Array.isArray(tpl.columns) && tpl.columns.length >= 2
+    && page.fnReservedHeightPx > 0;
+  if (twoLanes) {
+    // **שלב 5 (חילוץ שורש מ-#16):** חלוקת הנתיבים — מקור יחיד (footnote-lanes).
+    // שקול מתמטית ל-LPT המקומי הקודם — נעול בבדיקת שקילות; תקציב/הקרנה/תצוגה
+    // משתפים את אותה חלוקה ממקור אחד.
+    const { lanes: idxLanes } = assignFootnoteLanes(page.footnotes);
+    const lanes = [[], []];
+    for (const li of [0, 1]) lanes[li] = idxLanes[li].map(i => page.footnotes[i]);
+    const row = doc.createElement('div');
+    row.style.display = 'flex';
+    row.style.flexDirection = 'row-reverse'; // RTL — הנתיב הראשון מימין
+    row.style.gap = `${Math.round(tpl.gutter || 0)}px`;
+    for (const lane of lanes) {
+      const laneEl = doc.createElement('div');
+      laneEl.className = 'footnotes-lane';
+      laneEl.style.flex = '1 1 0';
+      laneEl.style.minWidth = '0';
+      // **S70:** זרימה רציפה בתוך כל נתיב (עצמאית פר-נתיב — כמו התקציב)
+      if (continuous) laneEl.appendChild(flowOf(lane));
+      else for (const n of lane) laneEl.appendChild(mkNote(n));
+      row.appendChild(laneEl);
+    }
+    area.appendChild(row);
+  } else if (continuous) {
+    // **S70 (fn-continuous ב-DP):** כל הערות העמוד זורמות בבלוק אחד — במקום
+    // בלוקים נפרדים. הזרימה צפופה מסכום הבלוקים ⇒ הרצועה השמורה נשארת
+    // חוקית (שמרנית); שום שורת גוף אינה זזה.
+    area.appendChild(flowOf(page.footnotes));
+  } else {
+    for (const n of page.footnotes) area.appendChild(mkNote(n));
+  }
+  return area;
+}
+
+/** **S9 (D-61):** גיליון עמוד — מקור יחיד לכל סוגי העמודים (בעבר 4 העתקים).
+ * מסגרות CSS (circle/square) מרונדרות כ‑badge עם מחלקה; הטקסטואליות כבר בתוך התצוגה.
+ * **S73:** גופן/גודל/צבע הגיליון מההגדרות (page-num-font/size/color) — כמו המקרנים. */
+function renderFolio(page, settings, doc) {
+  if (!page.folioDisplay || settings['page-num-position'] === 'none') return null;
+  const folio = doc.createElement('footer');
+  folio.className = `folio folio--${settings['page-num-position']} folio--frame-${settings['page-num-frame']}`;
+  // **S73:** גופן/גודל/צבע מההגדרות — ריק/10/שחור = ההתנהגות הקודמת
+  const pnFont = settings['page-num-font'] || '';
+  if (pnFont) folio.style.fontFamily = fontStack(pnFont);
+  const pnSize = Number(settings['page-num-size-pt']);
+  if (Number.isFinite(pnSize) && pnSize > 0) folio.style.fontSize = `${Math.round(pnSize * (96 / 72) * 100) / 100}px`;
+  const pnColor = settings['page-num-color'];
+  if (pnColor && pnColor !== '#000000') folio.style.color = pnColor;
+  if (isCssFrame(settings['page-num-frame'])) {
+    const badge = doc.createElement('span');
+    badge.className = `page-num-badge page-num-frame-${settings['page-num-frame'] === 'circle' ? 'circle' : 'box'}`;
+    badge.textContent = page.folioDisplay;
+    folio.appendChild(badge);
+  } else {
+    folio.textContent = page.folioDisplay;
+  }
+  // **שלב 6 פרוסה 1 (§8 בהוראה — "אין לחשב מיקומם בנפרד ב-DOM וב-PDF"):**
+  // המיקום המפורש מגיע מאותו מקור יחיד של הפרויקטור ל-PDF
+  // (layout/furniture-geometry). ה-class נשאר אחראי לעור בלבד (מסגרת/צבע);
+  // הגיאומטריה — top/line-height מפורשים מהמודל, לא מהתנהגות CSS משוערת.
+  // המדידה בגופן הגיליון כשרשום — אותו אינסטנס שהפרויקטור בונה.
+  const pnFontGeo = settings['page-num-font'] || '';
+  const folioMeasure = pnFontGeo
+    ? new (require('../typography/measure-api').MeasureAPI)({ ...settings, 'body-font': pnFontGeo }, 'font-metrics')
+    : null;
+  if (folioMeasure) {
+    const geo = folioGeometry(page, settings, folioMeasure);
+    if (geo) {
+      folio.style.top = `${Math.round(geo.y * 100) / 100}px`;
+      folio.style.lineHeight = `${geo.lineHeightPx}px`;
+      folio.style.bottom = 'auto';
+    }
+  }
+  return folio;
+}
+
+function renderHeader(header, doc) {
+  if (!header) return null;
+  const el = doc.createElement('div');
+  el.className = `running-head head--sep-${header.separator}`;
+  el.dir = 'rtl';
+  // **S9 (D-61):** צורה חדשה {slots} עם עצמאות מלאה לכל סלוט (מקור/יישור/גופן/גודל/רוחב);
+  // תאימות לאחור לצורה הישנה ({right,center,left}) לבדיקות ≤S8.
+  const slots = header.slots || { right: header.right, center: header.center, left: header.left };
+  for (const pos of ['right', 'center', 'left']) {
+    const s = slots[pos];
+    if (!s) continue;
+    const slot = doc.createElement('span');
+    slot.className = `head-slot head-slot--${pos} align-${s.align}`;
+    slot.style.width = `${s.widthPct}%`;
+    if (s.font) slot.style.fontFamily = s.font;
+    if (s.sizePt) slot.style.fontSize = `${Math.round(s.sizePt * (96 / 72) * 100) / 100}px`;
+    // **S73:** צבע הסלוט מהמודל (headers-builder — מההגדרות; שחור כברירת מחדל)
+    if (s.color) slot.style.color = s.color;
+    slot.textContent = scrubPUAText(s.text || '');
+    el.appendChild(slot);
+  }
+  return el;
+}
+
+/** **S9 (REQ-HDR-05):** תוכן עמוד תוכן־עניינים — שורות עם נקודות מובילות, תווית
+ * גיליון בפורמט המספור, וקישורי עוגן לחיצים (#page‑N; יעדי PDF ייבנו ב‑S12). */
+function renderTocPageContent(page, doc) {
+  const els = [];
+  const t = page.toc || {};
+  if (t.title) {
+    const el = doc.createElement('h2');
+    el.className = 'toc-page-title';
+    el.dir = 'rtl';
+    el.textContent = scrubPUAText(t.title);
+    els.push(el);
+  }
+  const wrap = doc.createElement('div');
+  wrap.className = 'toc-rows';
+  wrap.dir = 'rtl';
+  for (const r of (t.rows || [])) {
+    if (r.kind === 'group') {
+      // קבוצה (inline רצוף): "כותרת – עמוד | כותרת – עמוד" בשורה אחת (IMUD grp-item/grp-sep)
+      const g = doc.createElement('div');
+      g.className = `toc-row toc-row--group toc-lvl-${r.items[0] ? r.items[0].level : 1}`;
+      for (const it of r.items) {
+        const a = doc.createElement('a');
+        a.className = `toc-item toc-lvl-${it.level}`;
+        if (it.targetPage != null) a.setAttribute('href', `#page-${it.targetPage}`);
+        a.setAttribute('data-anchor', it.anchorId || '');
+        const txt = doc.createElement('span'); txt.className = 'grp-title';
+        txt.textContent = scrubPUAText(it.text);
+        const lab = doc.createElement('span'); lab.className = 'grp-page';
+        lab.textContent = it.label || '';
+        a.appendChild(txt); a.appendChild(lab);
+        g.appendChild(a);
+      }
+      wrap.appendChild(g);
+    } else {
+      const a = doc.createElement('a');
+      a.className = `toc-row toc-lvl-${r.level}` + (r.inline ? ' toc-row--inline' : '');
+      if (r.targetPage != null) a.setAttribute('href', `#page-${r.targetPage}`);
+      a.setAttribute('data-anchor', r.anchorId || '');
+      if (r.rowNum != null) {
+        const n = doc.createElement('span'); n.className = 'toc-num'; n.textContent = String(r.rowNum);
+        a.appendChild(n);
+      }
+      const title = doc.createElement('span');
+      title.className = 'toc-title';
+      title.textContent = scrubPUAText(r.wrapped && r.wrapped.length ? r.wrapped.join(' ') : r.text);
+      const dots = doc.createElement('span'); dots.className = 'toc-dots';
+      const label = doc.createElement('span'); label.className = 'toc-label';
+      label.textContent = r.label || '';
+      a.appendChild(title); a.appendChild(dots); a.appendChild(label);
+      wrap.appendChild(a);
+    }
+  }
+  els.push(wrap);
+  return els;
+}
+
+/** חוט מפריד בין טורים (overlay; גובה Math.min −8px — כלל V4; geometry-neutral).
+ * גובה החישוב מקור יחיד: ornament-fit.columnDividerHeightPx (F-09 — לא עותק מקומי). */
+function renderColumnDivider(page, settings, doc) {
+  const style = settings['column-divider-style'];
+  if (!style || style === 'none' || page.columns.length < 2) return null;
+  // **FX-6 (פרוסה 2):** הגובה כולל את פערי הבלוקים — אותה סמנטיקה כמו
+  // usedHeight של האיזון וכמו הפרויקטור ל-PDF (תצוגה = ייצוא).
+  const used = page.columns.map(col => col.reduce((s, ln) => s + (ln.heightPx || 0) * (ln.aqStretch || 1) + (ln.gapBeforePx || 0), 0));
+  // **S6.0 (R4-M5):** גובה המפריד כולל aqStretch — כמו הפרויקטור/PDF
+  // (בעבר ה-DOM חישב גובה ללא המתיחה ⇒ מפריד באורך שונה בין תצוגה לייצוא).
+  const h = columnDividerHeightPx(used);
+  if (h <= 0) return null;
+  const el = doc.createElement('div');
+  el.className = `col-divider col-divider--${style}`;
+  const c0 = page.template.columns[0], c1 = page.template.columns[1];
+  el.style.left = `${Math.round(c1.x + c1.w + (page.template.gutter || 0) / 2)}px`;
+  el.style.top = `${page.template.contentBox.top}px`;
+  el.style.height = `${h}px`;
+  return el;
+}
+
+/**
+ * **S8 (FWD-1):** פס כותרת חוצה־טורים — שורות הכותרת שנמדדו ברוחב מלא,
+ * מרונדרות בפס עליון חוצה־טורים מעל שני הטורים.
+ */
+function renderSpanningBand(page, settings, doc) {
+  if (!page.spanning || !page.spanning.lines.length) return null;
+  const band = doc.createElement('div');
+  band.className = 'spanning-band';
+  band.dir = 'rtl';
+  // **S11 (REQ-PAR-06):** פס callout מסגנון מותאם — class + סגנון מובנה (full-width).
+  if (page.spanning.customStyle) {
+    band.className += ' custom-style';
+    band.dataset.style = page.spanning.customStyle.id || '';
+    applyCustomStyleSpec(band, page.spanning.customStyle.styleSpec, doc);
+    if (page.spanning.customStyle.counterMark) {
+      const cm = doc.createElement('span');
+      cm.className = 'cs-counter';
+      cm.textContent = page.spanning.customStyle.counterMark;
+      prependChild(band, cm);
+    }
+  }
+  const spanTop = page.template.contentBox.top;
+  band.style.top = `${spanTop}px`;
+  band.style.height = `${page.spanning.heightPx}px`;
+  // **חוזה H3 + הזמנות עיטור (D-S2H3/F-08):** שורות הפס זורמות אחרי הריפוד
+  // העליון שהוזמן בתכנון (titleTopPadPx — 8px לפס H3 לפי ה-CSS המקורי,
+  // הזמנת עיטור לפס H2) — אותה גאומטריה כמו materialize/PageModel/PDF.
+  if (page.spanning.titleTopPadPx) band.style.paddingTop = `${page.spanning.titleTopPadPx}px`;
+  const left = Math.min(...page.template.columns.map(c => c.x));
+  const right = Math.max(...page.template.columns.map(c => c.x + c.w));
+  band.style.left = `${Math.round(left)}px`;
+  band.style.width = `${Math.round(right - left)}px`;
+  for (const ln of page.spanning.lines) band.appendChild(renderLine(ln, doc, settings));
+  return band;
+}
+
+/**
+ * **S8 (REQ-ORN-01..04):** כל העיטורים נציירים מה־rect שחושב בפאס העיטורים
+ * (ornament-plan) — הרנדרר לא קובע ממדים משלו (F-09: מקור שליטה יחיד).
+ * **EXT-4 (הדיו):** kindStyle מקבל דיו — SVG מובנה/מספרייה כרקע data-URI,
+ * או קו דק (thin). עד כאן התיבות היו בלתי-נראות (אין כללי .orn ב-CSS).
+ */
+function renderDecorations(page, doc) {
+  const els = [];
+  for (const d of (page.decorations || [])) {
+    const el = doc.createElement('div');
+    el.className = d.cssClass || 'orn';
+    el.dataset.slot = d.slot || '';
+    el.dataset.kindStyle = d.kindStyle || '';
+    el.style.left = `${Math.round(d.x)}px`;
+    el.style.top = `${Math.round(d.y)}px`;
+    el.style.width = `${Math.round(d.w)}px`;
+    el.style.height = `${Math.round(d.h)}px`;
+    // **השלמת חוזה העיטורים (שלב 6 — §6.1-6/§6.1-10):** הדיו נצרך מההצהרה
+    // (ornId/ink) שנקבעה בתכנון — המקרן קורא ואינו מחליט מחדש (F-09). נכס
+    // חיצוני (imud:) נפתר כאן בזמן הציור — טעינת משאב, לא החלטת גיאומטריה.
+    // דיו שאינו פתיר — דיאגנוסטיק גלוי (dataset.inkMissing), לא השתקה.
+    if (d.ornId) el.dataset.ornId = d.ornId;
+    const ink = d.ink || (d.image ? { type: 'image', uri: null, ref: d.image } : null);
+    if (ink && ink.type === 'image') {
+      const uri = (ink.ref ? assetUri(ink.ref) : null) || ink.uri || (d.image ? assetUri(d.image) : null);
+      if (uri) {
+        el.style.backgroundImage = `url("${uri}")`;
+        el.style.backgroundSize = '100% 100%';
+        el.style.backgroundRepeat = 'no-repeat';
+      } else {
+        el.dataset.inkMissing = '1'; // asset חיצוני שלא נפתר — מדווח, לא ריק בשקט
+      }
+    } else if (ink && ink.type === 'svg' && ink.uri) {
+      el.style.backgroundImage = `url("${ink.uri}")`;
+      el.style.backgroundSize = 'contain';
+      el.style.backgroundPosition = 'center center';
+      el.style.backgroundRepeat = 'no-repeat';
+    } else if (ink && ink.type === 'rule') {
+      el.style.borderTop = '0.75px solid #000';
+      el.style.height = '0px';
+    } else if (ink && ink.type === 'rect' && ink.color) {
+      el.style.backgroundColor = `rgb(${ink.color[0]}, ${ink.color[1]}, ${ink.color[2]})`;
+    } else if (d.kindStyle && d.kindStyle !== 'none') {
+      el.dataset.inkMissing = '1'; // הצהרה בלי דיו פתיר — גלוי, לא ריק בשקט
+    }
+    if (d.inkMissing) el.dataset.inkMissing = '1';
+    els.push(el);
+  }
+  return els;
+}
+
+/** **03.11 (EXT-14):** פתרון נכס — הפניות imud: מתורגמות ל-data-URI מהרישום
+ * (asset-registry); ערכים אחרים (URL/data-URI קיים) עוברים כמו שהם. */
+function assetUri(ref) {
+  if (!ref) return null;
+  const r = resolveAssetRef(ref);
+  return r.uri || null;
+}
+
+/**
+ * **S8 (REQ-ORN-05/08):** רקע עמוד + תיבות שער לפי התוכנית שחושבה (page-decorations)
+ * — רקע לפי מחלקת העמוד עם inset במ״מ; תיבת טקסט של שער ראשי לפי box פתור.
+ * **03.11 (EXT-14):** שלושת השערים (ראשי/משנה/אחורי) — עיצוב ה־SVG במסך מלא +
+ * תיבת כותרת מה-box של העיצוב (רישום נכסים) או מההגדרות.
+ */
+function renderPageBackgroundAndShaar(page, settings, doc, metadata) {
+  const els = [];
+  const plan = planDecorations(page, settings);
+  const inset = plan.background ? plan.background.insetPx : 0;
+  if (plan.background && plan.background.image) {
+    const el = doc.createElement('div');
+    el.className = 'deco deco--page-background';
+    el.style.backgroundImage = `url("${assetUri(plan.background.image) || plan.background.image}")`;
+    el.style.inset = `${inset}px`;
+    els.push(el);
+  }
+  if (plan.background && plan.background.texture) {
+    const el = doc.createElement('div');
+    el.className = 'deco deco--page-texture';
+    el.style.backgroundImage = `url("${assetUri(plan.background.texture) || plan.background.texture}")`;
+    els.push(el);
+  }
+  // עזר: שער במסך מלא מהפניה פתורה + תיבת כותרת לפי box מהעיצוב (אם נרשם)
+  const fullShaar = (slotName, cssClass, boxClass) => {
+    const slot = plan.slots.find(s => s.slot === slotName && s.asset);
+    if (!slot) return;
+    const resolved = resolveAssetRef(slot.asset);
+    const uri = resolved.uri || slot.asset;
+    const bg = doc.createElement('div');
+    bg.className = cssClass;
+    bg.style.backgroundImage = `url("${uri}")`;
+    bg.style.inset = '0';
+    els.push(bg);
+    // תיבת כותרת — מה-box של העיצוב ברישום (מ״מ) או מההגדרות; בלי box מהעיצוב —
+    // ה-fallback המסורתי של resolveShaarBox (REQ-ORN-05: התיבה תמיד נבנית על שער עם תמונה)
+    const designBox = resolved.item && resolved.item.box ? resolved.item.box : null;
+    const boxRef = designBox || settings['shaar-main-box'] || null;
+    {
+      const { box } = resolveShaarBox('main', settings['theme-set-id'] || 'default', { box: boxRef }, null, { top: 40, bottom: 40, right: 30, left: 30 });
+      const tb = doc.createElement('div');
+      tb.className = boxClass;
+      tb.dir = 'rtl';
+      tb.style.top = `${Math.round(box.top * MM_TO_PX)}px`;
+      tb.style.bottom = `${Math.round(box.bottom * MM_TO_PX)}px`;
+      tb.style.left = `${Math.round(box.left * MM_TO_PX)}px`;
+      tb.style.right = `${Math.round(box.right * MM_TO_PX)}px`;
+      const bookName = (settings['imud-book-title'] || (metadata && (metadata['שם הספר'] || metadata['ספר'] || metadata['title']))) || ''; // S4.5: גם המזהה הארוך + על
+      const topic = (settings['imud-book-subtitle'] || (metadata && (metadata['נושא מפורט'] || metadata['נושא']))) || ''; // 03.11: כותרת־משנה מוגדרת
+      tb.textContent = [bookName, topic].filter(Boolean).join(' · ');
+      els.push(tb);
+    }
+  };
+  fullShaar('shaar-main', 'deco deco--shaar-main', 'shaar-main-box');
+  fullShaar('shaar-sub', 'deco deco--shaar-sub', 'shaar-sub-box');
+  fullShaar('shaar-back-frame', 'deco deco--shaar-back', 'shaar-back-box');
+  return els;
+}
+
+/**
+ * **S8 (PT-09):** עמוד מותאם — תוכן קבוע/תיבות/תמונות במיקומים שהוגדרו (מ״מ→פיקסלים).
+ */
+function renderCustomPageContent(page, doc) {
+  const els = [];
+  if (!page.custom) return els;
+  for (const b of (page.custom.boxes || [])) {
+    const el = doc.createElement('div');
+    el.className = 'custom-box';
+    el.dir = 'rtl';
+    el.style.left = `${b.x}px`; el.style.top = `${b.y}px`;
+    el.style.width = `${b.w}px`; el.style.height = `${b.h}px`;
+    el.textContent = scrubPUAText(b.text || '');
+    els.push(el);
+  }
+  for (const im of (page.custom.images || [])) {
+    const el = doc.createElement('div');
+    el.className = 'custom-image';
+    el.style.left = `${im.x}px`; el.style.top = `${im.y}px`;
+    el.style.width = `${im.w}px`; el.style.height = `${im.h}px`;
+    el.style.backgroundImage = `url("${im.src}")`;
+    els.push(el);
+  }
+  return els;
+}
+
+/** **03.11(ד) — תוכן מובנה של עמודי השער (פורט renderMainShaar/renderSubShaar/
+ * renderBackShaar של המקור). המודל (בלוקים/תיבה/פריסה) חי ב-shaar-content.js —
+ * מקור יחיד שצורך גם ההיטל ל-PDF (F-09); כאן רק ההקרנה ל-DOM.
+ * עד כאן עמוד שער בלי עיצוב־תמונה היה עמוד ריק לגמרי — "אין עמודי שער"
+ * מבחינת המשתמש. המבנה, התיבות והגדלים נאמנים למקור. */
+function renderShaarContent(page, settings, doc, metadata) {
+  const model = buildShaarBlocks(page, settings, metadata);
+  if (!model) return [];
+  const els = [];
+  const px = (pt) => `${ptToPx(pt)}px`;
+
+  const wrap = doc.createElement('div');
+  const variant = page.type === 'shaar-main' ? 'main' : page.type === 'shaar-sub' ? 'sub' : 'back';
+  wrap.className = `shaar-content shaar-content--${variant}`;
+  wrap.dir = 'rtl';
+  wrap.style.top = `${model.box.top}px`;
+  wrap.style.bottom = `${model.box.bottom}px`;
+  wrap.style.right = `${model.box.right}px`;
+  wrap.style.left = `${model.box.left}px`;
+
+  for (const b of model.blocks) {
+    if (b.graphic) {
+      const el = doc.createElement('div');
+      el.className = 'shaar-crown';
+      el.innerHTML = b.graphic === 'crown-sub'
+        ? '<svg viewBox="0 0 300 30"><path d="M10,15 Q75,5 140,15 Q145,10 150,5 Q155,10 160,15 Q225,5 290,15 Q225,25 160,15 Q155,20 150,25 Q145,20 140,15 Q75,25 10,15 Z" fill="#222"/></svg>'
+        : '<svg viewBox="0 0 400 40"><circle cx="200" cy="20" r="10" fill="none" stroke="#000" stroke-width="4.5"/><circle cx="200" cy="20" r="4.5" fill="#000"/><path d="M182,20 C182,24 165,27 140,27 C90,27 40,22 5,20 C40,18 90,13 140,13 C165,13 182,16 182,20 Z" fill="#000"/><path d="M218,20 C218,24 235,27 260,27 C310,27 360,22 395,20 C360,18 310,13 260,13 C235,13 218,16 218,20 Z" fill="#000"/></svg>';
+      wrap.appendChild(el);
+      continue;
+    }
+    const el = doc.createElement('div');
+    el.className = b.cls;
+    el.dir = 'rtl';
+    // **Iteration-003 (parity משקל):** משפחה מפורשת מהבלוק (fontFamily — בקשה
+    // מילולית, כמו המשך כותרת שער-משנה ב-David Libre) גוברת על הנגזרת
+    // מההגדרות לפי מחלקה — אותו חוזה כמו החותמת (stampShaarLayout).
+    const fam = (b.fontFamily != null && String(b.fontFamily) !== '')
+      ? String(b.fontFamily)
+      : shaarFontOf(b.cls, settings);
+    if (fam) el.style.fontFamily = fontStack(fam);
+    if (b.sizePt > 0) el.style.fontSize = px(b.sizePt);
+    if (b.bold) el.style.fontWeight = '700';
+    if (b.letterSpacingPx) el.style.letterSpacing = `${b.letterSpacingPx}px`;
+    // **S73 (צבע פר-בלוק מההגדרות):** כמו המקרן — ברירת מחדל שחורה.
+    const col = shaarColorOfCls(b.cls, settings);
+    if (col) el.style.color = col;
+    el.textContent = scrubPUAText(String(b.text == null ? '' : b.text));
+    wrap.appendChild(el);
+  }
+  els.push(wrap);
+  return els;
+}
+
+/** **S73:** צבע בלוק שער לפי מחלקתו — הגדרת הצבע של הגופן המצוין לו
+ * (מקור יחיד סמנטי עם המקרן; גישה מילולית — דרישת סורק phantom-key). */
+function shaarColorOfCls(cls, settings) {
+  if (cls.includes('bsd-header') || cls.includes('publication-footer')) return nonBlack(settings['shaar-year-color']);
+  if (cls.includes('book-title-main')) return nonBlack(settings['shaar-title-color']);
+  if (cls.includes('book-subtitle')) return nonBlack(settings['shaar-subtitle-color']);
+  if (cls.includes('book-description')) return nonBlack(settings['shaar-desc-color']);
+  if (cls.includes('book-sections-summary')) return nonBlack(settings['shaar-sections-color']);
+  if (cls.includes('author-block')) return nonBlack(settings['shaar-author-color']);
+  if (cls.includes('back-shaar-text-line') || cls.includes('back-shaar-copyright-header')) return nonBlack(settings['shaar-back-text-color']);
+  return null;
+}
+
+/** **S73:** החזרת צבע שאינו שחור (ערך כהה/חסר ⇒ null — ירושת שחור ב-CSS). */
+function nonBlack(hex) {
+  return (hex && /^#[0-9a-f]{6}$/i.test(hex) && hex.toLowerCase() !== '#000000') ? hex : null;
+}
+
+/**
+ * רנדור עמוד שלם. @param {object} page - תוצר dp-planner + header + numbersByIndex
+ * **03.11(ד):** header ברירת מחדל = page.header — הצינור מחשב ומצמיד כותרת עליונה
+ * לכל עמוד (pipeline), וכל קורא שלא מעביר ארגומנט מקבל אותה אוטומטית. עד כאן
+ * התצוגה החיה (preview-tab) לא העבירה כלום והייצוא העביר מטא־נתונים בטעות —
+ * שני הנתיבים הציגו עמודים בלי כותרת עליונה בזמן שהבדיקות העבירו את הארגומנט
+ * במפורש ולא תפסו את הנתק (דיווח משתמש 3: "אין כותרות עליונות").
+ */
+/**
+ * **S4.10 — רנדור DOM של עמוד legacy-imud-flow (התצוגה החיה).**
+ *
+ * הגיאומטריה כולה כבר מחושבת במנוע המורשת ב-px@96 (מכויל מהייחוס):
+ * פסים (סימן/h2/h0/h3), שערים, טורים (ימני 403.61 / שמאלי 120.72, רוחב 269.41),
+ * הערות תחתית, הערות צד בשוליים, שורות TOC, כותרת עליונה תלת-סלוטית ועמודון.
+ * הרנדר מצייר אותה גיאומטריה בדיוק — מה שרואים בתצוגה = מה שיוצא ב-PDF
+ * (legacy-projector) — אותו מקור אמת אחד.
+ */
+function renderLegacyPage(pg, settings, doc) {
+  const { GEO, SZ, parenCenterRaisePx } = require('../layout/legacy-imud-flow');
+  const BAND_X = GEO.COL_L_X;
+  const BAND_W = 2 * GEO.COL_W + 13.48;
+  // **S4.26 (גופני ברירת המחדל בכל האלמנטים):** גוף ההערה, הערות-הצד,
+  // הכותרות ושורות ה-TOC — כל אחד מקבל את הגופן שהוגדר לו (עד כאן הכל
+  // ירש את גופן הגוף). הכותרות מודגשות (כמו ה-DavidLibre-Bold של הייחוס).
+  const imudSetAll = (settings && settings._imudRaw) || {};
+  const fontOf = (k) => { const v = settings[k]; return v ? fontStack(v) : null; };
+  const headingFontOf = (level) => fontOf('heading-' + level + '-font');
+  const HEADING_LEVEL_OF_BAND = { 'h0-title': 0, 'h2-siman': 2, 'h2-title': 2, 'h3-title': 3 };
+  const root = doc.createElement('article');
+  root.className = LEGACY_PT_CLASS[pg.type] || PT_CLASS[pg.type] || 'page';
+  root.dataset.pageIndex = String(pg.index);
+  root.setAttribute('id', `page-${pg.index}`);
+  root.dir = 'rtl';
+  root.style.width = `${GEO.PAGE_W}px`;
+  root.style.height = `${GEO.PAGE_H}px`;
+  root.style.position = 'relative';
+  root.style.overflow = 'hidden';
+  const bf = settings['body-font'];
+  if (bf) root.style.fontFamily = fontStack(bf);
+  // **S73:** צבע גוף הטקסט מההגדרות (body-color; שחור ⇒ ירושת ברירת מחדל)
+  const bodyColS = nonBlack(settings['body-color']);
+  if (bodyColS) root.style.color = bodyColS;
+  const pt2px = (pt) => pt * (96 / 72);
+  const position = (el, x, y, w, h) => {
+    el.style.position = 'absolute';
+    el.style.left = `${x}px`; el.style.top = `${y}px`;
+    if (w != null) el.style.width = `${w}px`;
+    if (h != null) el.style.height = `${h}px`;
+  };
+  // **S5.1 (איחוד מודל הבסיס — "תצוגה = ייצוא"):** גובה השורה בתצוגה = גובה
+  // התיבה מהמודל (בדיוק כמו baselineOf של המקרן ל-PDF וכמו line-height:1.34
+  // של המקור). בעבר היה קבוע 1.1 — הטקסט ישב בראש התיבה ולא ממרוז בה,
+  // בזמן שה-PDF מרכז — הפרש אנכי שיטתי בכל שורה (2–4px).
+  const mkLine = (text, sizePt, align, lhPx = 0) => {
+    const el = doc.createElement('div');
+    el.className = 'line';
+    el.setAttribute('dir', 'rtl');
+    el.style.fontSize = `${pt2px(sizePt)}px`;
+    el.style.lineHeight = (lhPx && lhPx > 0) ? `${lhPx}px` : '1.1';
+    el.style.whiteSpace = 'nowrap';
+    el.style.overflow = 'visible';
+    el.style.textAlign = align;
+    // **S4.24 (מרכוז פסים בתצוגה החיה):** כלל ה-text-align-last:justify של
+    // BASE_CSS (.line:not(.line--last):not(.line--heading)) חל גם על קווי
+    // הפס וההערות-צד (class="line …") — שורה בודדת בבלוק נחשבת "אחרונה"
+    // וה-justify דרס את ה-center/right: מילים פזורות מקצה לקצה, מילה
+    // בודדת נדבקת לקצה הימני (נמדד בחי: "הקדמה" אסימטריה 494px). ערך
+    // inline גובר על הכלל.
+    el.style.textAlignLast = 'auto';
+    el.textContent = scrubPUAText(text);
+    return el;
+  };
+
+  // ---- כותרת עליונה תלת-סלוטית (פס 42.6–57.6pt ⇒ px) ----
+  // **D-89:** צבע כחול-הייחוס #0F1749 — כמו במקרן ה-legacy (נמדד בייחוס).
+  const hs = pg.headerSlots;
+  if (hs && (hs.right || hs.center || hs.left)) {
+    const hdr = doc.createElement('div');
+    hdr.className = 'running-head';
+    hdr.setAttribute('dir', 'rtl');
+    // **S5.1 (מיקום סלוטי הכותרת מהייחוס):** התיבה הקודמת [60, 733.7] הצמידה
+    // את הסלוטים לקצוות הדף — 94px/97px ממיקום הטקסט בייחוס (עמ' 12:
+    // ימין x1=479.84pt=639.8px, שמאל x0=117.68pt=156.9px, מרכז 297.65pt).
+    // הקבועים משוקפים מ-mk() של המקרן (COL_R_X+COL_W−33 / COL_L_X+33) —
+    // מרכז התיבה = מרכז הדף בדיוק. התצוגה = הייצוא = הייחוס.
+    // **S5.2 (O3 — ריתוק דטרמיניסטי של הבסיס):** במקום flex baseline
+    // (תלוי-פלטפורמה: 67.6–73.6px מול 71.9 ב-PDF) — סלוטים אבסולוטיים
+    // בתוך אותה תיבה; הבסיס = HEADER_BASELINE (71.9) באמצעות line-height:1
+    // + מטריקות DavidLibre-Bold (asc 0.7461 / desc 0.2192 ⇒ היסט 0.7635·S),
+    // ומשקל 700 מפורש (פנים ה-Bold הרשומים). מרכז = מרכז הדף (כמו ה-PDF),
+    // לא מרכז space-between.
+    position(hdr, GEO.COL_L_X + 33, 52, (GEO.COL_R_X + GEO.COL_W - 33) - (GEO.COL_L_X + 33), 22);
+    const HDR_BASELINE_Y = 71.9;
+    const DLB_BASELINE_FACTOR = 0.5 + (0.7461 - 0.2192) / 2; // DavidLibre-Bold, line-height:1
+    // **S73 (צבע כותרת עליונה מההגדרות):** header-{recto,verso}-{right,center,left}-color —
+    // ברירת מחדל שחורה (הכחול הקבוע #0F1749 של D-89 הוחלף בהגדרה — בקשת
+    // משתמש מפורשת: ברירת המחדל של כל הגופנים ללא יוצא מן הכלל = שחור).
+    // **S77 (בקשה 3):** גופן/צבע/גודל/יישור/רוחב לפי הצד הפיזי של העמוד
+    // (עד כאן: מפתחי recto קבועים לכל העמודים); היישור והרוחב מההגדרות
+    // (ברירות המחדל right/center/left + 33% משחזרות את העיגון הקודם במדויק).
+    const hdrSide = (pg.index % 2 === 0) ? 'recto' : 'verso'; // עמוד 1 (אינדקס 0) = recto
+    const slots = [
+      ['rh rh--r', hs.right, SZ.hdrR, `header-${hdrSide}-right-font`, `header-${hdrSide}-right-color`, `header-${hdrSide}-right-size-pt`, `header-${hdrSide}-right-align`, `header-${hdrSide}-right-width-pct`, 'right'],
+      ['rh rh--c', hs.center, SZ.hdrC, `header-${hdrSide}-center-font`, `header-${hdrSide}-center-color`, `header-${hdrSide}-center-size-pt`, `header-${hdrSide}-center-align`, `header-${hdrSide}-center-width-pct`, 'center'],
+      ['rh rh--l', hs.left, SZ.hdrL, `header-${hdrSide}-left-font`, `header-${hdrSide}-left-color`, `header-${hdrSide}-left-size-pt`, `header-${hdrSide}-left-align`, `header-${hdrSide}-left-width-pct`, 'left']
+    ];
+    for (const [cls, txt, sz, fk, ck, szk, ak, wk, posKind] of slots) {
+      if (!txt) continue;
+      const s = doc.createElement('span');
+      s.className = cls;
+      s.textContent = txt;
+      // **S77:** גודל הסלוט מההגדרה (ברירת המחדל המיובאת = הקבועים המכוילים)
+      const szPt = Number(settings[szk]) > 0 ? Number(settings[szk]) : sz;
+      const szPx = pt2px(szPt);
+      s.style.fontSize = `${szPx}px`;
+      const ff = fontOf(fk);
+      if (ff) s.style.fontFamily = ff; // **S4.26:** גופן הסלוט מההגדרות (ברירת מחדל: David Libre)
+      s.style.fontWeight = '700';
+      const sc = nonBlack(settings[ck]);
+      if (sc) s.style.color = sc; // **S73:** צבע הסלוט מההגדרות
+      s.style.position = 'absolute';
+      s.style.lineHeight = '1';
+      // **Iteration-006 (G6/RC-F1):** סלוט כותרת = שורה אחת תמיד (חוזה הייחוס;
+      // כותרת-מרכז ארוכה נשארת שורה אחת גם כשהיא חופפת את מילות-הצד).
+      s.style.whiteSpace = 'nowrap';
+      s.style.top = `${(HDR_BASELINE_Y - 52) - szPx * DLB_BASELINE_FACTOR}px`;
+      // **S77:** תיבת הסלוט = רוחב% מהפס; היישור בתוכה מההגדרה. ברירות המחדל
+      // (33% + right/center/left) משחזרות את העיגון הקודם: ימין צמוד ימינה,
+      // מרכז במרכז, שמאל צמוד שמאלה.
+      const bandW = (GEO.COL_R_X + GEO.COL_W - 33) - (GEO.COL_L_X + 33);
+      const wPct = Number(settings[wk]);
+      const boxW = Math.max(0, (Number.isFinite(wPct) && wPct > 0 && wPct <= 100 ? wPct : 33) / 100) * bandW;
+      const align = settings[ak] || posKind;
+      if (posKind === 'right') { s.style.right = '0'; s.style.width = `${boxW}px`; s.style.textAlign = align; }
+      else if (posKind === 'left') { s.style.left = '0'; s.style.width = `${boxW}px`; s.style.textAlign = align; }
+      else { s.style.left = `${(bandW - boxW) / 2}px`; s.style.width = `${boxW}px`; s.style.textAlign = align; }
+      hdr.appendChild(s);
+    }
+    root.appendChild(hdr);
+  }
+
+  // ---- פסים: סימן/h2/h0/h3 — ממורכזים ברוחב הפס ----
+  for (const b of (pg.bands || [])) {
+    const el = mkLine(b.text, b.sizePt, 'center', b.lineHeightPx || b.h || pt2px(b.sizePt) * 1.1);
+    el.className += ` band band--${b.kind || 'title'}`;
+    // **S4.26 + S6.3:** גופן הפס — מהשורה עצמה (b.font — כותרת ההערות
+    // ⇒ David Libre) או מההגדרות לפי הרמה + הדגשה (כמו הייחוס).
+    const hLv = HEADING_LEVEL_OF_BAND[b.kind];
+    const bf = b.font ? fontStack(b.font) : (hLv != null ? headingFontOf(hLv) : null);
+    if (bf) { el.style.fontFamily = bf; if (hLv != null) el.style.fontWeight = '700'; }
+    // **S73:** צבע הפס מההגדרות — כותרת עמודי ההערות ⇒ endnote-title-color;
+    // רמה ⇒ heading-N-color; כמו המקרן (ברירת מחדל שחורה).
+    const bc = b.kind === 'endnote-title'
+      ? nonBlack(settings['endnote-title-color'])
+      : (hLv != null ? nonBlack(settings[`heading-${hLv}-color`]) : null);
+    if (bc) el.style.color = bc;
+    position(el, BAND_X, b.y, BAND_W, b.h);
+    root.appendChild(el);
+  }
+
+  // ---- תוכן השערים ----
+  // **D-89:** צבע פר-שורה (בלוקי השער האחורי — הקבועים של renderBackShaar)
+  // ותיבת התוכן של כל שער — כמו במקרן ה-legacy (sub: מרכז 245.7px; back: 548px;
+  // main: 396.85px — מכויל מהייחוס עמ' 1/2/7).
+  {
+    const MMpx = 96 / 25.4;
+    const GATE_BOX = {
+      'shaar-main': { x: 15 * MMpx, w: GEO.PAGE_W - 30 * MMpx },
+      'shaar-back': { x: 95 * MMpx, w: 377.98 },
+      'shaar-sub': { x: 15 * MMpx, w: GEO.PAGE_W - 110 * MMpx }
+    };
+    const gbox = GATE_BOX[pg.type] || { x: BAND_X, w: BAND_W };
+    for (const g of (pg.gateLines || [])) {
+      const el = mkLine(g.text, g.sizePt, 'center', pt2px(g.sizePt) * 1.3);
+      el.className += ' band band--gate';
+      position(el, gbox.x, g.y, gbox.w, pt2px(g.sizePt) * 1.3);
+      // **S6.3 (גופני השערים — חוברו):** כל שורת שער נושאת את הגופן שהוגדר
+      // לה (f-sh-title ⇒ Lia Sgula לכותרת, f-sh-sub ⇒ Livorna לכותרת-המשנה,
+      // …) והמודל מודד אותה באותו גופן (wrapGate ב-legacy-imud-flow) —
+      // אין עוד סחף מדידה↔רינדור; ההסתייגות ההיסטורית של S4.26 בטלה.
+      if (g.font) {
+        el.style.fontFamily = fontStack(g.font);
+      }
+      if (Array.isArray(g.color)) {
+        el.style.color = `rgb(${Math.round(g.color[0] * 255)},${Math.round(g.color[1] * 255)},${Math.round(g.color[2] * 255)})`;
+      }
+      root.appendChild(el);
+    }
+  }
+
+  // ---- טורים: ימני ואז שמאלי; preface/shaar/toc = טור רחב יחיד ----
+  const isSingle = pg.type === 'preface' || pg.type === 'toc-general' || pg.type === 'toc-detailed'
+    || String(pg.type || '').startsWith('shaar');
+  const colDefs = isSingle
+    ? [{ x: GEO.COL_L_X, w: BAND_W }]
+    : [{ x: GEO.COL_R_X, w: GEO.COL_W }, { x: GEO.COL_L_X, w: GEO.COL_W }];
+  const colsWrap = doc.createElement('div');
+  colsWrap.className = 'columns';
+  pg.columns.forEach((colLines, ci) => {
+    const def = colDefs[Math.min(ci, colDefs.length - 1)];
+    const colEl = doc.createElement('section');
+    colEl.className = 'column';
+    position(colEl, def.x, GEO.FLOW_TOP, def.w, GEO.FLOW_H);
+    colEl.style.overflow = 'visible';
+    for (const ln of colLines) {
+      const el = doc.createElement('div');
+      // **S4.11:** line--heading מסמן שורות כותרת מרובעות (ממורכזות מטבען)
+      // — האודיט החי מדלג עליהן בבדיקת היישור בלי סובלנות על סמך יחס.
+      el.className = 'line' + (ln.isLast ? ' line--last' : '') + (ln.kind === 'heading' ? ' line--heading' : '');
+      el.setAttribute('dir', 'rtl');
+      el.style.position = 'absolute';
+      el.style.right = '0';
+      el.style.top = `${(ln.y || 0) - GEO.FLOW_TOP}px`;
+      el.style.width = `${def.w}px`;
+      // **תיבת השורה = גובה המסגרת מהמנוע (pitch):** בלי גובה מפורש, שורת
+      // חלון (1.5×) מנפחת את התיבה וחופפת את השורה הבאה במדידת ה-DOM
+      // (האודיט החי מדווח LINE_OVERLAP). התוכן עשוי לגלוש ויזואלית — כמו
+      // line-height:0.85 של מילת-החלון במקור — אבל התיבה נשארת בגובה הפס.
+      el.style.height = `${ln.heightPx || 16}px`;
+      el.style.fontSize = `${pt2px(ln.sizePt || SZ.body)}px`;
+      // **S5.1 (איחוד מודל הבסיס):** שורות גוף/חלון — line-height = גובה
+      // התיבה מהמודל (מרכוז half-leading, כמו baselineOf ב-PDF וכמו
+      // line-height:1.34=21.44px של המקור; בסיס השורה הראשונה ≈122px מול
+      // 107.2+14.8 בייחוס). כותרות inline נשארות בראש התיבה ('1') — כמו
+      // הייחוס (S4.14: גליפי הכותרת בראש השורה) וכמו y+0.6 במקרן.
+      el.style.lineHeight = ln.kind === 'heading' ? '1' : `${ln.heightPx || 16}px`;
+      el.style.overflow = 'visible';
+      // **S4.23 (דיווח משתמש: "יישור שורות לא נכון" בתצוגה החיה):** שורות גוף
+      // מלאות עוברות ל-white-space:normal + text-align:justify
+      // **וגם text-align-last:justify** — בדיוק כמו BASE_CSS של שאר הנתיבים
+      // (03.11(ד): "טורים מיושרים באופן מושלם"). שתי הסיבות שבגללן התצוגה
+      // הייתה קטסטרופה (נמדד בפועל: פערי קצה-שמאל 2..53px, חלקן גלשו מהטור):
+      //   1) inline nowrap דרס את BASE_CSS — ו-justify על שורת nowrap הוא
+      //      אפס-פעולה;
+      //   2) **גם בלי nowrap**: לפי הוראת CSS שורה יחידה בבלוק נחשבת "השורה
+      //      האחרונה" ולעולם אינה נמתחת ע"י justify. כל .line כאן הוא בלוק
+      //      בן-שורה-אחת מתוכנן (השבירה כבר נעשתה במנוע) — ולכן הדבר היחיד
+      //      שמותח אותה הוא text-align-last:justify (נתמך בכרום/פיירפוקס).
+      // הדפדפן מותח רווחים בין-מילים — אותה נוסחה של המקרן ל-PDF
+      // (projectLine: spaceW=(colW-sumW)/gaps) — התצוגה = הייצוא.
+      // שורות אחרונות/כותרות נשארות nowrap+center (חד-שורתיות מטבען;
+      // מסומנות ומדולגות באודיט). סדר ההצהרות חשוב: רק שורות גוף מלאות
+      // מקבלות את text-align-last — אחרת הוא היה מיישר גם שורות אחרונות
+      // (שהגדרתן center/right) ומקורן של הסמנים.
+      // **S5.2 (S5 — חיווט body-last-line-align במורשת):** ברירת המחדל 'center'
+      // = ההתנהגות הקיימת בדיוק; 'right' = הצמדה לתחילת השורה (ימין ב-RTL),
+      // 'stretch' = יישור מלא גם לשורה האחרונה. בעבר המפתח סווג 'light' אך
+      // מעולם לא מומש בנתיב החי — שינוי הגדרה לא שינה דבר.
+      const lastAlign = String((settings && settings['body-last-line-align']) || 'center');
+      if (ln.kind === 'heading') {
+        el.style.whiteSpace = 'nowrap';
+        el.style.textAlign = 'center';
+      } else if (ln.isLast) {
+        if (lastAlign === 'right') {
+          el.style.whiteSpace = 'nowrap';
+          el.style.textAlign = 'right';
+        } else if (lastAlign === 'stretch') {
+          el.style.whiteSpace = 'normal';
+          el.style.textAlign = 'justify';
+          el.style.textAlignLast = 'justify';
+        } else {
+          el.style.whiteSpace = 'nowrap';
+          el.style.textAlign = 'center';
+        }
+      } else {
+        el.style.whiteSpace = 'normal';
+        el.style.textAlign = 'justify';
+        el.style.textAlignLast = 'justify';
+      }
+      // **S4.26 (גופן כותרות inline):** h4/h5/h6 בגופן הרמה מההגדרות + הדגשה
+      if (ln.kind === 'heading' && ln.level != null) {
+        const hf = headingFontOf(ln.level);
+        if (hf) { el.style.fontFamily = hf; el.style.fontWeight = '700'; }
+        // **S73:** צבע הכותרת מההגדרות (heading-N-color) — כמו המקרן
+        const hc = nonBlack(settings[`heading-${ln.level}-color`]);
+        if (hc) el.style.color = hc;
+      }
+      // **S4.26 (חלון קלאסי שקוע — שורה 1 עוטפת את החלון):** במקור מילת-החלון
+      // מרחפת (float:right, height:1.25em) והטקסט עוטף אותה בשתי השורות
+      // הראשונות. שורה 1 (window בלי windowWords) מוצרת ברוחב החלון ומוזזת
+      // מימין — המודל כבר מדד אותה ברוחב המוקטן (limitOf של breakPara);
+      // עד כאן היא נמתחה בחזרה לרוחב מלא. המחלקה מסמנת לאודיט לדלג על בדיקת
+      // היישור (השפה הימנית תפוסה ע"י החלון — בכוונה).
+      if (ln.window && !ln.windowWords && ln.windowW) {
+        el.className += ' line--window-wrap';
+        el.style.right = `${ln.windowW}px`;
+        el.style.width = `${Math.max(40, def.w - ln.windowW)}px`;
+      }
+      if (ln.window && ln.windowWords && ln.windowWords.length) {
+        // מילת-חלון (1.5×) בשפה הימנית + הטקסט — תיבה אחת, בסיס משותף
+        // **S4.15:** גופן החלון של המקור — FrankReal משקל 900 (הוכח מהייחוס:
+        // 116 מילות-חלון נמדדו — התאמה מושלמת ל-FrankReal-Bold.ttf). המשפחות
+        // הנופלות מגובוות ב-CSS (BASE_CSS: .w--window) — ברירת מחדל גוף.
+        const win = doc.createElement('span');
+        win.className = 'w w--window';
+        win.textContent = scrubPUAText(ln.windowWords.join(' ')) + ' ';
+        win.style.fontSize = `${pt2px((ln.sizePt || SZ.body) * 1.5)}px`;
+        // **S73:** צבע מילת-החלון — first-word-color (ברירת מחדל שחורה) — כמו המקרן
+        const winCol = nonBlack(settings['first-word-color']);
+        if (winCol) win.style.color = winCol;
+        // **S5.1:** בסיס החלון 2px מתחת לבסיס שורת הטקסט — כמו winBase=baseY+2
+        // במקרן (מכויל מהייחוס: חלון 155.25 מול שורה 153.75, ~1.5pt). בלי זה
+        // החלון יושב על בסיס משותף עם הגוף וגבוה ב-2px ב-PDF.
+        win.style.verticalAlign = '-2px';
+        el.appendChild(win);
+      }
+      // **D-89 (דיווח משתמש: "כל מילה שצמודה לנקודה מופיעה בגופן קטן"):**
+      // סמני ההערות מוקטנים לפי markerIdx של המודל — בדיוק כמו במקרן
+      // ה-legacy/PDF. מספור האיות ("א. ב. ג.") נשאר בגודל הגוף — כמו הייחוס.
+      // **S4.24 (אודיט חי מלא על הקובץ הגדול — 154 ממצאי דיו):** מילים בתוך
+      // סוגריים מרונדרות כאן בגודל השורה (12pt) בעוד השובר מודד אותן בגודל
+      // הסוגריים (10pt — parenDelta; הייחוס: פסקאות-הסוגריים כולן ב-10.0pt).
+      // תוצאה: שורה אחרונה/כותרת של פסקת-סוגריים רחבה מהטור ב-×1.2 וגולשת
+      // ממנו שמאלה (נמדד באתר החי: 78 INK_OUTSIDE_COLUMN עד 156px, 73
+      // LAST_NOT_CENTERED, 3 HEAD_NOT_CENTERED — כולן שורות-סוגריים).
+      // התיקון משקף את placeWords של המקרן ל-PDF: מילת-סוגריים ב-span
+      // בגודל 10pt, מוגבהת ב-0.33×גודל-השורה (בסיס משותף כמו baselineY).
+      // בנוסף: (א) כותרות אינן מקבלות כיווץ-סוגריים (השבירה מודדת אותן
+      // בגודל הכותרת); (ב) מילת-RLM בלבד מודבקת לשכנתה — בלי רווח פנטום
+      // שמ�זיז את המרכוז (נמדד: אסימטריה 3.8px); (ג) הרווח בין שתי מילים
+      // בתוך (...) ב-span של 10pt — כמו spaceBetween בשבירה (התצוגה =
+      // הייצוא, כמו S4.23).
+      {
+        const markerSet = new Set(Array.isArray(ln.markerIdx) ? ln.markerIdx : []);
+        const imudSet = (settings && settings._imudRaw) || {};
+        const markerSz = Number(imudSet['note-marker-size']) || 8;
+        const parenPx = pt2px(SZ.body + SZ.parenDelta);
+        const hostPx = pt2px(ln.sizePt || SZ.body);
+        // **S4.26 (דיווח משתמש: "ממוקם גבוה ביחס לטקסט הרגיל"):** מרכוז אנכי
+        // — מרכז גובה הסוגריים מותאם למרכז גובה הטקסט הרגיל (אותו מודל
+        // תיבת-שורה כמו baselineY של המקרן: parenCenterRaisePx). במקום ההגבהה
+        // העיוורת 0.33×גודל-השורה (5.3px!) — עכשיו ≈0.7px בלבד.
+        const parenRaise = parenCenterRaisePx(pg.ascentEm, ln.sizePt || SZ.body, SZ.body + SZ.parenDelta).toFixed(2);
+        const isHeading = ln.kind === 'heading';
+        const srcWords = ln.words || [];
+        const nW = srcWords.length;
+        // **S4.24 (דגלי קצה מהמודל — מקור יחיד):** parenStarts/parenEnds
+        // של השבירה; נפילה — שחזור עומק-תווים (אותו אלגוריתם כמו breakPara).
+        let parenIdx = null, pStarts = null, pEnds = null;
+        if (!isHeading && Array.isArray(ln.parenFlags) && ln.parenFlags.length === nW) {
+          parenIdx = new Set();
+          ln.parenFlags.forEach((p, i) => { if (p) parenIdx.add(i); });
+          if (Array.isArray(ln.parenStarts) && ln.parenStarts.length === nW && Array.isArray(ln.parenEnds) && ln.parenEnds.length === nW) {
+            pStarts = ln.parenStarts; pEnds = ln.parenEnds;
+          }
+        } else if (!isHeading && nW) {
+          parenIdx = new Set();
+          const st = [], en = [];
+          let depth = 0;
+          srcWords.forEach((w, i) => {
+            let any = false, s = false, e = false;
+            for (let c = 0; c < w.length; c++) {
+              const ch = w[c];
+              if (ch === '(') depth++;
+              const inP = depth > 0;
+              if (inP) any = true;
+              if (c === 0) s = inP;
+              e = inP;
+              if (ch === ')' && depth > 0) depth--;
+            }
+            if (any) parenIdx.add(i);
+            st.push(s); en.push(e);
+          });
+          pStarts = st; pEnds = en;
+        }
+        // **S4.24 (מילים של תווי-כיוון בלבד — בלי רווח פנטום):** מילה המורכבת
+        // מתווי כיוון (RLM/LRM וכו') היא ברוחב אפס, אבל הרווח שמפריד אותה
+        // משכנתה נכלל בתיבת השורה ומזיז את המרכוז (נמדד בחי: אסימטריה
+        // 3.8px בשורות אחרונות, עמ' 572). הדבקה לשכן — הכיווניות נשמרת,
+        // הרווח הפנטום נעלם; נמדד-לעולם-גדול מהרינדר ⇒ אין חשש לגלישה.
+        const FORMAT_WORD_RE = /^[\u200e\u200f\u2066-\u2069\u202a-\u202e\u00ad]+$/;
+        const items = [];
+        for (let wi = 0; wi < nW; wi++) {
+          const w = srcWords[wi];
+          if (FORMAT_WORD_RE.test(w)) {
+            if (items.length) { items[items.length - 1].text += w; continue; }
+            items.push({ text: w, wi: -1 }); // מובילה — תודבק למילה הבאה
+            continue;
+          }
+          const it = { text: w, wi };
+          if (items.length === 1 && items[0].wi === -1) { it.text = items[0].text + w; items[0] = it; }
+          else items.push(it);
+        }
+        for (let k = 0; k < items.length; k++) {
+          const it = items[k];
+          const w = it.text;
+          const wi = it.wi;
+          if (wi >= 0 && markerSet.has(wi)) {
+            const m = doc.createElement('span');
+            m.className = 'w w--fnmarker';
+            m.textContent = scrubPUAText(w);
+            m.style.fontSize = `${pt2px(markerSz)}px`;
+            m.style.verticalAlign = 'super';
+            // **S74 (בעיה 2 — בקשת משתמש 12.11, תצוגה בלבד):** תיבת השורה
+            // נמדדת מהטקסט הרגיל בלבד — הסמן העילי "מפלח" את מרווח הבין-שורות
+            // ואינו מגדיל אותו. בלי line-height:0 תיבת הסמן (בגובה השורה
+            // המוריש) מוגבהת ע"י vertical-align ומנפחת את תיבת השורה — הבסיס
+            // יורד והמרווח לשורה הקודמת מתרחב (ב-PDF הבסיסים קבועים והבעיה
+            // אינה קיימת — דיווח המשתמש). אותו דפוס כמו .w--window (0.85)
+            // שכבר מוכיח שתיבת שורה לא מתנפחת מגוף מוקטן/מוגבה.
+            m.style.lineHeight = '0';
+            el.appendChild(m);
+          } else if (!isHeading && wi >= 0 && parenIdx && parenIdx.has(wi)) {
+            const s = doc.createElement('span');
+            s.className = 'w w--paren';
+            s.textContent = scrubPUAText(w);
+            s.style.fontSize = `${parenPx}px`;
+            s.style.verticalAlign = `${parenRaise}px`;
+            el.appendChild(s);
+          } else {
+            el.appendChild(doc.createTextNode(scrubPUAText(w)));
+          }
+          if (k < items.length - 1) {
+            // **S4.24 (רווח בגודל הסוגריים בתוך ה-span):** כמו spaceBetween
+            // בשבירה — הרווח בין שתי מילים ששני צדדיהן בתוך (...) ב-10pt.
+            // בלי זאת שורת-סוגריים אחרונה גולשת מהטור (נמדד בחי: 4px, עמ' 403).
+            const a = items[k].wi, b = items[k + 1].wi;
+            const parenSpace = !isHeading && a >= 0 && b === a + 1 && pStarts && pEnds && !!pEnds[a] && !!pStarts[b];
+            if (parenSpace) {
+              const sp = doc.createElement('span');
+              sp.className = 'w w--paren-space';
+              sp.style.fontSize = `${parenPx}px`;
+              sp.textContent = ' ';
+              el.appendChild(sp);
+            } else {
+              el.appendChild(doc.createTextNode(' '));
+            }
+          }
+        }
+      }
+      if (ln.tokenId != null) el.dataset.tokenId = String(ln.tokenId);
+      colEl.appendChild(el);
+    }
+    colsWrap.appendChild(colEl);
+  });
+  root.appendChild(colsWrap);
+
+  // ---- הערות צד בטורי השוליים ----
+  // **S4.26:** גופן הערות-הצד מההגדרות (ברירת מחדל: Hadassah Friedlaender
+  // — כמו המדידה במנוע וכמו הייחוס); עד כאן ירשו את גופן הגוף.
+  {
+    const mnFont = fontOf('heading-7-font');
+    // **S73:** צבע הערות-צד — heading-7-color (הגופן בפועל); שחור כברירת מחדל
+    const mnCol = nonBlack(settings['heading-7-color']);
+    for (const mn of (pg.marginNotes || [])) {
+      const x = mn.side === 'right' ? GEO.MARGIN_R_X : GEO.MARGIN_L_X;
+      for (const l of (mn.lines || [])) {
+        // **S74 (בעיה 4 — בקשת משתמש 12.11):** כותרות-הצד ממורכזות כברירת
+        // מחדל — כמו במקרן ה-PDF (placeWords 'center' / align:'center') וכמו
+        // הייחוס. עד כאן התצוגה הצמידה אותן לימין — אי-התאמה בין הנתיבים.
+        const el = mkLine(l.text, SZ.marginNote, 'center', GEO.MN_PITCH);
+        el.className += ' margin-note';
+        if (mnFont) el.style.fontFamily = mnFont;
+        if (mnCol) el.style.color = mnCol;
+        position(el, x, l.y, GEO.MARGIN_W, GEO.MN_PITCH);
+        root.appendChild(el);
+      }
+    }
+  }
+
+  // ---- הערות שוליים (תחתית) ----
+  // **S4.26 (דיווח משתמש — בעיות 3–5):** (א) מצב רציף (ברירת מחדל): כל
+  // הערות העמוד זורמות בבלוק אחד — הערה הבאה פותחת באותה שורה שבה הסתיימה
+  // קודמתה (רווח-כפול בין הערות); (ב) יישור לשני הצדדים — שורות הביניים
+  // מתוחות, השורה האחרונה לימין (כמו .note-line של המקור); (ג) המשך
+  // מקודם — '(המשך)' בלי אות סימון; (ד) גופן גוף-ההערה מההגדרות
+  // (f-note-body — Frank Ruhl Libre) — כמו המדידה (fnApi) במנוע.
+  {
+    const fnFont = fontOf('f-note-body-font') || fontOf('body-font');
+    // **S73:** צבע גוף ההערה — f-note-body-color (ברירת מחדל שחורה) — כמו המקרן
+    const fnCol = nonBlack(settings['f-note-body-color']);
+    const listingSz = Number(imudSetAll['note-listing-num-size']) || 8;
+    for (const fn of (pg.footnotes || [])) {
+      // **S4.26:** זרימה שפותחת בהמשך — מסומנת fn--continuation (כמו block)
+      const firstTok = fn.continuous && fn.lines[0] && (fn.lines[0].words || []).find(t => !t.gap);
+      const flowIsCont = !!(firstTok && firstTok.t === '(המשך)');
+      const el = doc.createElement('div');
+      el.className = 'footnote' + ((fn.cont || flowIsCont) ? ' fn--continuation' : '') + (fn.continuous ? ' fn--flow' : '');
+      el.setAttribute('dir', 'rtl');
+      const lines = fn.lines || [];
+      const y0 = lines[0] ? lines[0].y : GEO.FLOW_TOP;
+      const h = lines.length * GEO.FN_PITCH;
+      position(el, GEO.COL_L_X, y0, BAND_W, h);
+      el.style.fontSize = `${pt2px(SZ.fnBody)}px`;
+      el.style.lineHeight = `${GEO.FN_PITCH}px`;
+      if (fnFont) el.style.fontFamily = fnFont;
+      if (fnCol) el.style.color = fnCol; // **S73:** צבע גוף ההערה
+      el.style.textAlign = 'justify';
+      // **S74 (בעיה 7 — בקשת משתמש 12.11):** השורה האחרונה של מרזב ההערות
+      // (של כל ההערות בעמוד יחד — לא של כל הערה בנפרד) ממורכזת; חריג:
+      // הערה שממשיכה לעמוד הבא (centerLast=false מהמנוע) — נשארת לימין.
+      // **S77 (בקשה 1):** חיתוך תוך-הערה (cutLast מהמנוע) — השורה האחרונה
+      // היא שורת-ביניים לכל דבר ומיושבת לשני הצדדים (מלאה), כמו ב-PDF.
+      el.style.textAlignLast = fn.centerLast ? 'center' : (fn.cutLast ? 'justify' : 'right');
+      el.style.whiteSpace = 'normal';
+      // **S74 (בעיה 5):** סמני הרישום — FRL (נמדד בייחוס עמ' 31/37: הסמן
+      // FRL 8pt, גוף ההערה Assistant ExtraLight) — גופן משלהם בתוך הזרם.
+      const fnMarkFont = fontStack('Frank Ruhl Libre');
+      if (fn.continuous) {
+        // זרימה רציפה — הדפדפן שובר ומיישב (אותו רוחב/גופן כמו fnFlowFor);
+        // סמנים בגודל הרישום; רווח-כפול בין הערות (nbsp — כמו הגאפ במודל).
+        let prevGap = true;
+        for (const l of lines) {
+          for (const t of (l.words || [])) {
+            if (t.gap) { el.appendChild(doc.createTextNode('\u00A0 ')); prevGap = true; continue; }
+            if (!prevGap) el.appendChild(doc.createTextNode(' '));
+            prevGap = false;
+            const s = doc.createElement('span');
+            if (t.mk) {
+              s.className = 'w w--fnmarker';
+              s.style.fontSize = `${pt2px(listingSz)}px`;
+              if (fnMarkFont) s.style.fontFamily = fnMarkFont; // **S74 (בעיה 5):** הסמן ב-FRL
+            }
+            s.textContent = scrubPUAText(t.t);
+            el.appendChild(s);
+          }
+        }
+      } else {
+        // מצב block — כל הערה בלוק משלה, מיושבת לשני הצדדים (בעבר: לימין בלבד)
+        if (fn.cont) {
+          const p = doc.createElement('span');
+          p.className = 'fn-cont';
+          p.textContent = '(המשך) ';
+          el.appendChild(p);
+        }
+        if (fn.marker) {
+          const m = doc.createElement('span');
+          m.className = 'w w--fnmarker';
+          m.style.fontSize = `${pt2px(listingSz)}px`;
+          if (fnMarkFont) m.style.fontFamily = fnMarkFont; // **S74 (בעיה 5):** הסמן ב-FRL
+          m.textContent = scrubPUAText(fn.marker);
+          el.appendChild(m);
+          el.appendChild(doc.createTextNode(' '));
+        }
+        el.appendChild(doc.createTextNode(scrubPUAText(lines.map(l => (Array.isArray(l.words) ? l.words : String(l.words).split(' ')).join(' ')).join(' '))));
+      }
+      root.appendChild(el);
+    }
+  }
+
+  // ---- תוכן-עניינים: כותרת + שורות (כותרת מימין במדרגות, מספר משמאל) ----
+  if (pg.toc) {
+    if (pg.toc.title) {
+      const el = mkLine(pg.toc.title, SZ.tocTitle, 'center', 30);
+      el.className += ' toc-title';
+      position(el, BAND_X, GEO.FLOW_TOP + 136, BAND_W, 30);
+      root.appendChild(el);
+    }
+    for (const r of (pg.toc.rows || [])) {
+      // **S6.0 (F5):** שורת TOC עטופה — כל שורה-בת היא שורת flex בפס 26px
+      // משלה; הגיליון (מספר) רק בשורה הראשונה. שורות חד-שורתיות זהות
+      // לחלוטין לפלט הקודם (אותן מחלקות, אותו מיקום).
+      const rowLines = (r.lines && r.lines.length ? r.lines : [r.text]).filter(t => String(t || '').trim());
+      rowLines.forEach((rowText, rli) => {
+        const row = doc.createElement('div');
+        row.className = 'toc-row';
+        row.setAttribute('dir', 'rtl');
+        position(row, GEO.TOC_NUM_X, r.y + rli * 26, (r.x1 || 560) - GEO.TOC_NUM_X, 26);
+        row.style.display = 'flex';
+        row.style.justifyContent = 'space-between';
+        row.style.fontSize = `${pt2px(r.sizePt || 10.5)}px`;
+        // **S5.1:** גובה שורת TOC = התיבה (26px) — כמו baselineOf(r.y, 26, ...) במקרן
+        row.style.lineHeight = '26px';
+        // **S4.26 + S6.3:** גופן שורות ה-TOC — מההגדרות המקוריות
+        // (f-gtoc-*/f-dtoc-* ⇒ David Libre; שדה r.font מהמודל, שנמדד
+        // באותו גופן) + הדגשה — כמו הייחוס (DavidLibre-Bold).
+        const tf = r.font ? fontStack(r.font) : headingFontOf(r.level != null ? r.level : 2);
+        if (tf) { row.style.fontFamily = tf; row.style.fontWeight = '700'; }
+        // **S73:** צבע שורת ה-TOC — heading-N-color של הרמה — כמו המקרן
+        const tocLvl = r.level != null ? r.level : 2;
+        const tcol = nonBlack(settings[`heading-${tocLvl}-color`]);
+        if (tcol) row.style.color = tcol;
+        const t = doc.createElement('span');
+        t.className = 'toc-text';
+        t.style.marginRight = `${Math.max(0, 560 - (r.x1 || 560))}px`; // מדרגות לפי רמה
+        t.textContent = scrubPUAText(rowText || '');
+        row.appendChild(t);
+        if (r.folio && rli === 0) {
+          const n = doc.createElement('span');
+          n.className = 'toc-num';
+          n.style.fontSize = `${pt2px(SZ.tocNum)}px`;
+          n.textContent = r.folio;
+          row.appendChild(n);
+        }
+        root.appendChild(row);
+      });
+    }
+  }
+
+  // ---- עמודון ----
+  if (pg.folioDisplay) {
+    const folio = doc.createElement('div');
+    folio.className = 'folio';
+    folio.setAttribute('dir', 'rtl');
+    position(folio, 0, GEO.FOLIO_BASELINE - 14, GEO.PAGE_W, 18);
+    folio.style.textAlign = 'center';
+    // **S73 (גופן/גודל/צבע גיליון מההגדרות):** page-num-font ('' = גוף הטקסט —
+    // התנהגות קודמת), page-num-size-pt (ברירת מחדל 10 = SZ.folio), page-num-color
+    // (ברירת מחדל שחורה) — כמו המקרן. התיבה והבסיס נשארים מכוילים (FOLIO_BASELINE).
+    const pnFam = settings['page-num-font'] || '';
+    if (pnFam) folio.style.fontFamily = fontStack(pnFam);
+    const pnSz = Number(settings['page-num-size-pt']);
+    folio.style.fontSize = `${pt2px(pnSz > 0 ? pnSz : SZ.folio)}px`;
+    const pnCol = nonBlack(settings['page-num-color']);
+    if (pnCol) folio.style.color = pnCol;
+    // **S5.1:** line-height מכויל כך שהבסיס יורד בדיוק ל-FOLIO_BASELINE (1054.5)
+    // תחת מודל תיבת-השורה (A≈0.925, D≈0.388 בגופן הגוף ⇒ lh≈21.4px) — כמו
+    // המקרן, שמצייר את הגיליון בבסיס 1054.5 בדיוק. בעבר ירש normal וישב ~3.5px גבוה.
+    folio.style.lineHeight = '21.4px';
+    folio.textContent = pg.folioDisplay;
+    root.appendChild(folio);
+  }
+
+  // ---- עיטורים (D-89: פאנלי השערים, גל השער-משנה, מסגרת השער הראשי, כלל הכותרת) ----
+  // אותו דיו כמו ב-PDF (ornament-ink — מקור יחיד): rect ⇒ div צבוע; svg ⇒ רקע
+  // data-URI. הפאנלים נכנסים ראשונים (מאחורי הטקסט) והעיטורים אחרונים (מעל).
+  if (Array.isArray(pg.decorations) && pg.decorations.length) {
+    const inks = pg.decorations.map((d) => ({ d, ink: d.image ? { type: 'image', uri: d.image } : ornamentInk(d.kindStyle) }));
+    for (const { d, ink } of inks) {
+      if (!ink) continue;
+      if (ink.type === 'rect') {
+        const r = doc.createElement('div');
+        r.className = 'deco deco--rect';
+        position(r, d.x, d.y, d.w, d.h);
+        r.style.backgroundColor = `rgb(${Math.round(ink.color[0] * 255)},${Math.round(ink.color[1] * 255)},${Math.round(ink.color[2] * 255)})`;
+        if (d.kind === 'shaar-panel') { r.style.zIndex = '0'; root.insertBefore(r, root.firstChild); }
+        else root.appendChild(r);
+      } else if (ink.type === 'svg' || ink.type === 'image') {
+        const r = doc.createElement('div');
+        r.className = 'deco deco--' + (ink.type === 'svg' ? 'svg' : 'img');
+        position(r, d.x, d.y, d.w, d.h);
+        r.style.backgroundImage = `url("${ink.uri}")`;
+        r.style.backgroundRepeat = 'no-repeat';
+        r.style.backgroundPosition = 'center';
+        r.style.backgroundSize = 'contain';
+        root.appendChild(r);
+      }
+    }
+  }
+  return root;
+}
+
+function renderPage(page, settings, doc, header) {
+  // **S4.10 — עמודי מנוע המורשת:** לעמודי legacy-imud-flow יש צורה משלהם
+  // (גיאומטריה מפורשת ב-px: bands/gateLines/columns/footnotes/marginNotes/toc)
+  // שאינה תואמת את חוזה ה-DP — הרנדר הכללי קרס על template.columns חסר
+  // והתצוגה החיה הציגה 0 עמודים. רנדר ייעודי נאמן לגיאומטריית המורשת.
+  if (page && page.legacy) return renderLegacyPage(page, settings, doc);
+  if (header == null && page && page.header) header = page.header;
+  if (!page.template) {
+    // עמודי הערות שלא חוברו לרצף המספור — תבנית ברירת מחדל חוקית (A4) במקום קריסה
+    page.template = { width: 794, height: 1123, columns: [], margins: { top: 40, bottom: 40, side: 60, outer: 60 }, contentBox: { top: 40, bottom: 1080, height: 1040 }, gutter: 0, counts: false, numbered: false, hasRunningHead: false };
+  }
+  const root = doc.createElement('article');
+  root.className = PT_CLASS[page.type] || 'page';
+  root.dataset.pageIndex = String(page.index);
+  // **S9 (REQ-HDR-05):** עוגן עמוד — יעד לקישורי תוכן־העניינים הלחיצים (#page-N)
+  root.setAttribute('id', `page-${page.index}`);
+  if (page.template.width != null) root.style.width = `${page.template.width}px`;
+  if (page.template.height != null) root.style.height = `${page.template.height}px`;
+  root.dir = 'rtl';
+  // **03.11(ג):** גופן/גודל הגוף על שורש העמוד — התצוגה והייצוא יחד מגיבים
+  // להגדרות body-font/body-font-size-pt (השורות דורסות לפי סוגן — כותרות וכו').
+  // **S73:** צבע הגוף (body-color; שחור ⇒ אין style — ירושת ברירת המחדל).
+  const bf = settings['body-font'];
+  if (bf) root.style.fontFamily = fontStack(bf);
+  const bodyCol = nonBlack(settings['body-color']);
+  if (bodyCol) root.style.color = bodyCol;
+  const bsPt = Number(settings['body-font-size-pt']);
+  if (Number.isFinite(bsPt) && bsPt > 0) root.style.fontSize = `${ptToPx(bsPt)}px`;
+
+  // key: background-color / background-opacity — rgba אמיתי (P0-5)
+  const bg = settings['background-color'];
+  const bgOp = settings['background-opacity'];
+  if (bg && bg !== '#ffffff') root.style.backgroundColor = bgRgba(bg, bgOp != null ? bgOp : 1);
+  else if (Number.isFinite(bgOp) && bgOp < 1) root.style.backgroundColor = bgRgba('#ffffff', bgOp);
+
+  // **עמודי הערות (S7.1.1):** כותרת + רשימת הערות; אין כותרת עליונה/טורי גוף
+  // **S5.4 (P-5 — תצוגה=ייצוא):** ההערות ממוקמות לפי המודל (colIdx/heightPx
+  // מ-buildEndnotePages) במיקום מוחלט בטורי התבנית — כמו שהפרויקטור מקרין
+  // ל-PDF. בעבר: רשימת זרימה אחת ברוחב מלא — התצוגה הציגה טור אחד בזמן
+  // שהמודל קבע שניים. ללא נתוני מודל — נפילה לרשימת הזרימה הישנה.
+  if (page.type === 'endnotes') {
+    let titleEl = null;
+    if (page.heading) {
+      const h = doc.createElement('h2');
+      h.className = 'endnote-title';
+      h.dir = 'rtl';
+      h.textContent = scrubPUAText(page.heading);
+      root.appendChild(h);
+      titleEl = h;
+    }
+    const list = doc.createElement('div');
+    list.className = 'endnote-list';
+    const tplEn = page.template;
+    const haveModel = tplEn && Array.isArray(tplEn.columns) && tplEn.columns.length
+      && Array.isArray(page.columns) && page.columns.some(c => c.length)
+      && page.notes && page.notes.every(n => n.colIdx != null);
+    if (haveModel) {
+      // **S6.0 (R4-M2 — עוגן מיקום שגוי):** הרשימה הייתה position:relative
+      // בזרימה אחרי כותרת ה-h2 ⇒ בלוק ההכלה התחיל ~42px מתחת לראש העמוד
+      // בעוד top-ים של ההערות הם קואורדינטות עמוד ⇒ כל ההערות הוסטו ~42px
+      // מטה מהמודל/PDF (והאחרונות נחתכו). כעת הרשימה absolute בקואורדינטות
+      // העמוד; גם הכותרת ממוקמת מהמודל (ראש תיבת התוכן) ולא בזרימה.
+      list.style.position = 'absolute';
+      list.style.top = '0';
+      list.style.left = '0';
+      list.style.right = '0';
+      const titleAnchor = titleEl;
+      if (titleAnchor) {
+        titleAnchor.style.position = 'absolute';
+        titleAnchor.style.top = `${Math.round(tplEn.contentBox.top)}px`;
+        titleAnchor.style.left = `${Math.round(Math.min(...tplEn.columns.map(c => c.x)))}px`;
+        titleAnchor.style.right = `${Math.round(tplEn.width - Math.max(...tplEn.columns.map(c => c.x + c.w)))}px`;
+        titleAnchor.style.margin = '0';
+      }
+      const topEn = tplEn.contentBox.top + (page.titleBandPx || 0);
+      const colsEn = page.columns;
+      // טור-אחד (endnote-columns=1): רוחב תיבת התוכן המלא — כמו הפרויקטור/PDF
+      const singleColEn = colsEn.length === 1;
+      const fullL = Math.min(...tplEn.columns.map(c => c.x));
+      const fullR = Math.max(...tplEn.columns.map(c => c.x + c.w));
+      for (let ci = 0; ci < colsEn.length; ci++) {
+        let y = topEn;
+        for (const n of colsEn[ci] || []) {
+          const col = singleColEn
+            ? { x: fullL, w: fullR - fullL }
+            : (tplEn.columns[ci] || tplEn.columns[0]);
+          const el = doc.createElement('div');
+          el.className = 'endnote-note';
+          el.dir = 'rtl';
+          el.style.position = 'absolute';
+          el.style.left = `${Math.round(col.x)}px`;
+          el.style.top = `${Math.round(y)}px`;
+          el.style.width = `${Math.round(col.w)}px`;
+          // **שלב 6 פרוסה 2 (§9):** שורות ההערה מהחותמת — פיץ' מדויק מהמודל
+          // (בדיוק כמו הפרויקטור ל-PDF וכמו התקציב שקבע buildEndnotePages).
+          const stamped = Array.isArray(n.noteRows) && n.noteRows.length > 0 && Array.isArray(n.noteWords) && Number(n.lineH) > 0;
+          if (stamped) {
+            el.style.margin = '0'; // התקציב אינו כולל שוליים — תצוגה=ייצוא=תקציב
+            el.dataset.rows = String(n.noteRows.length);
+            for (let li = 0; li < n.noteRows.length; li++) {
+              const row = n.noteRows[li];
+              const div = doc.createElement('div');
+              div.className = 'fn-row';
+              div.style.whiteSpace = 'nowrap';
+              div.style.lineHeight = `${n.lineH}px`;
+              div.style.height = `${n.lineH}px`;
+              const parts = [];
+              if (li === 0 && n.marker != null && String(n.marker) !== '') parts.push(`${n.marker}\u200F`);
+              for (let i = row.wFrom; i < row.wTo; i++) parts.push(scrubPUAText(String(n.noteWords[i])));
+              div.textContent = parts.join(' ');
+              el.appendChild(div);
+            }
+          } else {
+            el.dataset.stampMissing = '1'; // diagnostic גלוי (§9.8)
+            el.textContent = `${n.marker || ''}\u200F ${scrubPUAText(n.text || '')}`;
+          }
+          list.appendChild(el);
+          y += (n.heightPx || 0);
+        }
+      }
+    } else {
+      for (const n of page.notes || []) {
+        const el = doc.createElement('div');
+        el.className = 'endnote-note';
+        el.dir = 'rtl';
+        el.textContent = `${n.marker || ''}\u200F ${scrubPUAText(n.text || '')}`;
+        list.appendChild(el);
+      }
+    }
+    root.appendChild(list);
+    const folioEn = renderFolio(page, settings, doc);
+    if (folioEn) root.appendChild(folioEn);
+    return root;
+  }
+
+  // **S8 (REQ-ORN-05/08):** רקעים/ערכות/תיבות שער — שכבות תשתית לפני התוכן
+  for (const el of renderPageBackgroundAndShaar(page, settings, doc, page._metadata)) root.appendChild(el);
+
+  // **03.11(ד):** תוכן מובנה של עמודי השער (בס״ד/כותרת/כתר/תיאור/מחבר/שנה —
+  // פורט המקור). בלי זה עמוד שער ללא עיצוב־תמונה היה ריק לחלוטין.
+  for (const el of renderShaarContent(page, settings, doc, page._metadata)) root.appendChild(el);
+
+  // **S9 (REQ-HDR-05):** עמודי תוכן־עניינים — שורות + נקודות + עוגנים; אין טורי גוף
+  // **03.11(ד):** כותרת עליונה גם בעמודי התוכן־עניינים — כמקור
+  // (renderPaginatedTOC מרנדר top-header-grid בכל עמודי התוכן).
+  if (page.type === 'toc-general' || page.type === 'toc-detail') {
+    const hToc = renderHeader(header, doc);
+    if (hToc) root.appendChild(hToc);
+    for (const el of renderTocPageContent(page, doc)) root.appendChild(el);
+    const folioToc = renderFolio(page, settings, doc);
+    if (folioToc) root.appendChild(folioToc);
+    return root;
+  }
+
+  // **S8 (PT-09):** עמוד מותאם — תוכן קבוע; אין טורים/כותרת עליונה
+  if (page.type === 'custom') {
+    for (const el of renderCustomPageContent(page, doc)) root.appendChild(el);
+    const folioC = renderFolio(page, settings, doc);
+    if (folioC) root.appendChild(folioC);
+    return root;
+  }
+
+  const h = renderHeader(header, doc);
+  if (h) root.appendChild(h);
+
+  // **S8 (FWD-1):** פס כותרת חוצה־טורים מעל הטורים (H2 full-width)
+  const band = renderSpanningBand(page, settings, doc);
+  if (band) root.appendChild(band);
+
+  const colsWrap = doc.createElement('div');
+  colsWrap.className = 'columns';
+  const spanOffset = page.spanning ? page.spanning.heightPx : 0; // הטורים מתחילים מתחת לפס
+  page.columns.forEach((colLines, ci) => {
+    const colEl = doc.createElement('section');
+    colEl.className = 'column';
+    colEl.style.left = `${page.template.columns[ci] ? page.template.columns[ci].x : 0}px`;
+    colEl.style.width = `${page.template.columns[ci] ? page.template.columns[ci].w : 'auto'}px`;
+    colEl.style.top = `${page.template.contentBox.top + spanOffset}px`;
+    colEl.style.height = `${Math.max(0, page.template.contentBox.height - spanOffset)}px`;
+    for (const ln of colLines) colEl.appendChild(renderLine(ln, doc, settings));
+    colsWrap.appendChild(colEl);
+  });
+  root.appendChild(colsWrap);
+
+  // חוט מפריד בין טורים (overlay — אחרי הטורים, לא מזיז שום דבר)
+  const divider = renderColumnDivider(page, settings, doc);
+  if (divider) root.appendChild(divider);
+
+  const fn = renderFootnoteArea(page, settings, doc);
+  if (fn) root.appendChild(fn);
+
+  const folioMain = renderFolio(page, settings, doc);
+  if (folioMain) root.appendChild(folioMain);
+
+  // **S8 (REQ-ORN-01..04):** עיטורים — ציור מה־rectים בלבד (F-09 מקור יחיד)
+  for (const el of renderDecorations(page, doc)) root.appendChild(el);
+
+  // הערות צד / תיבות מידע: מיקום מוחלט לפי ה‑placement (S7.1.2) — anchor לפסקה המארחת.
+  // **שלב 6 פרוסה 2 (§§9-10):** הגוף מוקרן משורות החותמת — תיבת-שורה מפורשת
+  // לכל שורה (line-height/height = lineH מהמודל; nowrap — הדפדפן אינו שובר
+  // מחדש). בעבר ה-aside עטף טקסט חופשי עם line-height:1.15 יחסי מה-CSS —
+  // סטייה של עד ~0.4px לשורה מהתקציב שצברה על שורות רבות ⇒ חפיפות
+  // SIDE_NOTE_OVERLAP בפועל בעמוד 107 (האודיט החי). תיבת מידע: ריפוד/מסגרת/
+  // רקע מהחוזה (styleSpec+boxChrome) — אותה גיאומטריה שהוקצתה (§11).
+  for (const sn of page.sideNotes || []) {
+    const isBox = sn.itemKind === 'info-box';
+    const el = doc.createElement('aside');
+    el.className = 'side-note' + (sn.isCustomStyle ? ' side-note--custom' : '') + (isBox ? ' info-box' : '');
+    if (sn.isCustomStyle) el.dataset.style = sn.isCustomStyle;
+    el.dataset.anchor = sn.anchorToken || '';
+    el.dir = 'rtl';
+    if (sn.yTop != null) el.style.top = `${Math.round(sn.yTop)}px`;
+    if (sn.x != null) {
+      el.style.left = `${Math.round(sn.x)}px`;
+      el.style.right = 'auto';
+    }
+    const boxW = (sn.boxSpec && Number(sn.boxSpec.widthPx) > 0) ? sn.boxSpec.widthPx : sn.colWidth;
+    if (boxW) el.style.width = `${Math.round(boxW)}px`;
+    if (isBox) {
+      const chrome = sn.boxChrome || { pad: 0, border: 0 };
+      if (chrome.pad) el.style.padding = `${chrome.pad}px`;
+      if (chrome.border) el.style.border = '1px solid #000';
+      if (sn.styleSpec && sn.styleSpec.background) el.style.backgroundColor = sn.styleSpec.background;
+      if (sn.styleSpec && sn.styleSpec.fontSizePt) el.style.fontSize = `${Math.round(sn.styleSpec.fontSizePt * (96 / 72) * 100) / 100}px`;
+    }
+    const stamped = Array.isArray(sn.noteRows) && sn.noteRows.length > 0 && Array.isArray(sn.noteWords) && Number(sn.lineH) > 0;
+    if (stamped) {
+      el.dataset.rows = String(sn.noteRows.length);
+      for (let li = 0; li < sn.noteRows.length; li++) {
+        const row = sn.noteRows[li];
+        const div = doc.createElement('div');
+        div.className = 'sn-row';
+        div.style.whiteSpace = 'nowrap';
+        div.style.lineHeight = `${sn.lineH}px`;
+        div.style.height = `${sn.lineH}px`;
+        const parts = [];
+        if (li === 0 && !isBox && sn.counterMark != null && String(sn.counterMark) !== '') parts.push(String(sn.counterMark));
+        for (let i = row.wFrom; i < row.wTo; i++) parts.push(scrubPUAText(String(sn.noteWords[i])));
+        div.textContent = parts.join(' ');
+        el.appendChild(div);
+      }
+    } else {
+      el.dataset.stampMissing = '1'; // diagnostic גלוי — בלי מדידה חלופית שקטה (§9.8)
+      el.textContent = (sn.counterMark ? `${sn.counterMark} ` : '') + scrubPUAText(sn.text);
+    }
+    root.appendChild(el);
+  }
+  return root;
+}
+
+module.exports = { renderPage, renderLine, scrubPUAText, bgRgba, PT_CLASS, renderSpanningBand, renderDecorations, renderPageBackgroundAndShaar, renderShaarContent, renderCustomPageContent, applyCustomStyleSpec, fontStack };

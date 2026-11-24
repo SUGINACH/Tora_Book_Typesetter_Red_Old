@@ -1,0 +1,22 @@
+{
+  "name": "tora-book-typesetter-red",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tora Book Typesetter RED Old — המנוע הישן בלבד (פורט נאמן של מנוע המקור, פרופיל IMUD) — גיבוי שימור",
+  "scripts": {
+    "test": "node tests/unit/typography.test.js && node tests/unit/s3-assets.test.js && node tests/unit/s3-cache-collision.test.js && node tests/unit/s3-font-sync.test.js && node tests/unit/s3-transport-integrity.test.js && node tests/unit/s3d-measure-safety.test.js && node tests/integration/registry.test.js && node tests/integration/imud-migration.test.js && node tests/integration/legacy-result-contract.test.js && node tests/integration/setting-sets.test.js && node tests/integration/source-variants.test.js && node tests/e2e/audit-sensitivity.test.js && node tests/e2e/s15-view-justify.test.js && node tests/e2e/s2-heading3-spacing.test.js && node tests/e2e/s24-fullmath-fixes.test.js && node tests/e2e/s62-user-questions.test.js && node tests/e2e/s64-ornament-index.test.js && node tests/e2e/s9b-shadow-compare.test.js && node tests/e2e/d89-visual-fixes.test.js && node tests/e2e/d108-bare-folio.test.js && node tests/e2e/s73-pdf-font-parity.test.js && node tests/e2e/s75-notes-flow.test.js && node tests/e2e/s76-notes-flow.test.js && node tests/e2e/s77-user-issues.test.js && node tests/e2e/real-fonts.test.js && node tests/regress/r03-paren-note-flags.test.js && node tests/regress/rc-d1-escort-through-side-notes.test.js && node ../tools/scan-control-triggers.js",
+    "test:unit": "node tests/unit/typography.test.js && node tests/unit/s3-font-sync.test.js",
+    "test:settings": "node tests/integration/registry.test.js && node tests/integration/imud-migration.test.js",
+    "test:e2e": "node tests/e2e/d89-visual-fixes.test.js && node tests/e2e/real-fonts.test.js",
+    "test:audit": "node tests/e2e/audit-sensitivity.test.js",
+    "test:determinism": "node -e \"const{typeset}=require('./src/engine/core/pipeline');const{importImudSettings}=require('./src/engine/core/legacy-settings-map');const{getDefaultSettings}=require('./src/engine/core/settings-registry');const fs=require('fs');const raw=JSON.parse(fs.readFileSync('ui/assets/imud/default_settings.json','utf8'));const t=fs.readFileSync('tests/fixtures/imud_default_text.txt','utf8');const base=getDefaultSettings();const s=Object.assign({},base,importImudSettings(raw,base).settings);const a=typeset(t,s);const b=typeset(t,s);if(a.layoutHash!==b.layoutHash){console.error('NON-DETERMINISTIC');process.exit(1)}console.log('deterministic OK',a.layoutHash.slice(0,16),'pages:',a.pages.length)\"",
+    "test:scan": "node tests/regress/r03-paren-note-flags.test.js && node ../tools/scan-control-triggers.js",
+    "test:export": "node tests/e2e/real-fonts.test.js && node tests/e2e/s73-pdf-font-parity.test.js",
+    "test:legacy": "node tests/integration/legacy-result-contract.test.js && node tests/e2e/s75-notes-flow.test.js && node tests/e2e/s76-notes-flow.test.js",
+    "test:regress": "node tests/regress/r03-paren-note-flags.test.js && node tests/regress/rc-d1-escort-through-side-notes.test.js"
+  },
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=18"
+  }
+}

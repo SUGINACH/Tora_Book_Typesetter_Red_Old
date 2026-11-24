@@ -1,0 +1,6 @@
+# ריפו המנוע הישן — קבצי עבודה מקומיים מחוץ לעץ
+audits/layout-parity-artifacts/
+audits/very-long-artifacts/
+red-build/tmp-dbg.js
+.secrets/
+package-lock.json

@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+# tools/layout-audit/run.sh — אודיט עימוד בדפדפן אמיתי (03.11(ד); S4.11)
+#
+# שקיפות עימוד מהקוד: מגיש את האפליקציה (red-build/ui) בשרת מקומי, פותח
+# דפדפן headless דרך agent-browser, טוען את ספר המבחן, מעמד, ומריץ את
+# audit-in-page.js בתוך הדף. יציאה 0 = אפס בעיות; יציאה 1 = יש בעיות
+# (הדוח המלא ב-$LAYOUT_AUDIT_OUT); יציאה 2 = כשל תשתית.
+#
+# **S4.11 (בקשת המשתמש: "כל הבדיקות צריכות להיעשות על הקובץ ה'גדול מאוד'"):**
+#   1. הזרקת הטקסט עברה מ-base64 בארגומנט שורת-פקודה (מגבלת לינוקס
+#      MAX_ARG_STRLEN=128KB — קובץ של 3.4MB היה נכשל) ל-fetch מ-URL שהשרת
+#      המקומי מגיש. עכשיו כל גודל קובץ עובר.
+#   2. המתנת המוכנות עברה מ-sleep קבוע (3 שניות) ל-polling של מצב האפליקציה
+#      עד שהעימוד הושלם (ספרים גדולים לוקחים יותר מ-3 שניות).
+#   3. האודיט עצמו (audit-in-page.js) מודע-וירטואליזציה: סורק את הספר
+#      בגלילה ומבקר כל עמוד כשהוא חי ב-DOM, עם בדיקת כיסוי מלא.
+#
+# דרישות: node, python3, agent-browser (npm i -g agent-browser && agent-browser install).
+# משתני סביבה:
+#   LAYOUT_AUDIT_FIXTURE          — קובץ הטקסט לבדיקה (ברירת מחדל: ה-fixture הקטן)
+#   LAYOUT_AUDIT_READY_TIMEOUT_MS — פסק זמן להמתנת סיום העימוד (ברירת מחדל: 240000)
+# שימוש: bash tools/layout-audit/run.sh   (משורש הריפו)
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+UI="$ROOT/red-build/ui"
+PORT="${LAYOUT_AUDIT_PORT:-8931}"
+FIXTURE="${LAYOUT_AUDIT_FIXTURE:-$ROOT/red-build/tests/fixtures/imud_default_text.txt}"
+OUT="${LAYOUT_AUDIT_OUT:-/tmp/layout-audit-report.json}"
+READY_TIMEOUT_MS="${LAYOUT_AUDIT_READY_TIMEOUT_MS:-240000}"
+
+command -v agent-browser >/dev/null 2>&1 || { echo "חסר agent-browser — התקן: npm i -g agent-browser && agent-browser install"; exit 2; }
+[ -f "$FIXTURE" ] || { echo "חסר fixture: $FIXTURE"; exit 2; }
+
+# הבדיקה חייבת לשרת את ה-bundles שנבנו מהמקור הנוכחי, ולא קבצים ישנים
+# שנשמרו ב-red-build/ui. אותו build script משמש גם את פריסת ה-Preview.
+echo "Building browser bundles from current source before layout audit..."
+node "$ROOT/tools/build-worker-bundle.js" || { echo "✗ בניית bundles נכשלה — האודיט לא ירוץ על build ישן"; exit 2; }
+for f in "$UI/app.bundle.js" "$UI/engine-worker.bundle.js"; do
+  [ -s "$f" ] || { echo "✗ bundle חסר או ריק אחרי build: $f"; exit 2; }
+done
+
+rm -f "$OUT"
+
+cd "$UI"
+python3 -m http.server "$PORT" >/tmp/layout-audit-http.log 2>&1 &
+HTTP_PID=$!
+# **S4.11:** ה-fixture מוגש מהשרת עצמו — הדף fetch אותו. בלי base64 בארגומנט.
+FIXSERVED="_audit-fixture-$$.txt"
+cp "$FIXTURE" "$FIXSERVED"
+trap 'kill $HTTP_PID 2>/dev/null; rm -f "$UI/_layout-audit.js" "$UI/$FIXSERVED"; agent-browser close >/dev/null 2>&1' EXIT
+sleep 1
+
+# **פרוסה 3 (§7 בהוראה):** QUERY נוסף ל-URL (למשל engine=unified) — ביקורת
+# מסלול ה-PageModel לפני שלב 9, בלי לשנות ברירת מחדל כלשהי.
+AUDIT_QUERY="${LAYOUT_AUDIT_QUERY:-}"
+AUDIT_URL="http://localhost:$PORT/index.html"
+[ -n "$AUDIT_QUERY" ] && AUDIT_URL="$AUDIT_URL?$AUDIT_QUERY"
+agent-browser open "$AUDIT_URL" >/dev/null || exit 2
+agent-browser wait 3500 >/dev/null
+
+# טעינת הספר + עימוד + מעבר לתצוגה — הנתיב החי האמיתי.
+# **S4.11:** polling עד להשלמת העימוד (hasResult && pages>0) במקום sleep קבוע —
+# הקובץ הגדול (849 עמודים) לוקח יותר מ-3 השניות שהיו כתובות כאן.
+# **S4.14 (תיקון יציבות תשתית):** ה-eval הארוך (עד 240 שניות בתוך Runtime.evaluate
+# אחד) נכשל ב"CDP command timed out" כשהעימוד אורך יותר מפסק-הזמן הפנימי של
+# agent-browser. הפרדה לשלושה evals קצרים: הזרקה (חוזרת מיד), לולאת poll
+# ברמת ה-shell (כל iter eval מהיר), ומעבר לתצוגה. זהה לוגית, עמיד בזמן.
+INJECT="$(agent-browser eval "(async()=>{
+  const app = window.__toraApp; if(!app) return 'NO_APP';
+  const ta = document.querySelector('textarea'); if(!ta) return 'NO_TEXTAREA';
+  const text = await (await fetch('/$FIXSERVED')).text();
+  ta.value = text;
+  ta.dispatchEvent(new Event('input',{bubbles:true}));
+  await new Promise(r=>setTimeout(r,400));
+  app.onExplicitRetypeset();
+  return 'STARTED';
+})()" 2>&1 | tail -1)"
+INJECT="${INJECT//\"/}"
+case "$INJECT" in
+  STARTED) : ;;
+  *) echo "✗ הזרקה נכשלה: $INJECT"; exit 2 ;;
+esac
+
+READINESS="PENDING"
+T0=$(date +%s%3N)
+while :; do
+  ST="$(agent-browser eval "(function(){ const st = window.__toraApp && window.__toraApp.getState(); return st && st.hasResult && st.pages > 0 ? 'READY_' + st.pages + '_pages' : 'WAIT'; })()" 2>&1 | tail -1)"
+  ST="${ST//\"/}"
+  case "$ST" in
+    READY_*) READINESS="$ST"; break ;;
+  esac
+  NOW=$(date +%s%3N)
+  if [ $((NOW - T0)) -ge "$READY_TIMEOUT_MS" ]; then READINESS="TIMEOUT"; break; fi
+  sleep 2
+done
+case "$READINESS" in
+  READY_*) : ;;
+  *)
+    echo "✗ האפליקציה לא התמודדה בזמן ($READY_TIMEOUT_MS ms) — פלט: $READINESS"
+    exit 2
+    ;;
+esac
+agent-browser eval "(async()=>{ for (const t of document.querySelectorAll('[role=tab],.tab,button')) if (/תצוגה/.test(t.textContent)) t.click(); await new Promise(r=>setTimeout(r,1500)); return 'VIEW'; })()" >/dev/null 2>&1
+# הפלט של agent-browser eval מקודד-JSON (עטוף במרכאות) — מנקים אותן
+READINESS="${READINESS//\"/}"
+echo "$READINESS"
+
+case "$READINESS" in
+  READY_*) : ;;
+  *)
+    echo "✗ האפליקציה לא התמודדה בזמן ($READY_TIMEOUT_MS ms) — פלט: $READINESS"
+    exit 2
+    ;;
+esac
+
+# הזרקת האודיט (הסקריפט מוגש עם ה-UI ונטען ב-fetch — ללא בעיות escaping).
+# האודיט אסינכרוני (סריקת גלילה של ספר וירטואלי) — agent-browser ממתין ל-Promise.
+cp "$ROOT/tools/layout-audit/audit-in-page.js" "$UI/_layout-audit.js"
+AUDIT_ERR="${OUT}.stderr"
+rm -f "$AUDIT_ERR"
+agent-browser eval "(async()=>{ const t = await (await fetch('/_layout-audit.js')).text(); return eval(t); })()" > "$OUT" 2> "$AUDIT_ERR"
+AUDIT_RC=$?
+rm -f "$UI/_layout-audit.js"
+
+if [ ! -s "$OUT" ]; then
+  echo "✗ האודיט לא הפיק דוח (agent-browser exit=$AUDIT_RC)"
+  if [ -s "$AUDIT_ERR" ]; then
+    echo "--- agent-browser stderr ---"
+    cat "$AUDIT_ERR"
+    echo "--- end stderr ---"
+  fi
+  exit 2
+fi
+rm -f "$AUDIT_ERR"
+
+echo "──────────────────────────────────────────────"
+echo "דוח אודיט עימוד (דפדפן אמיתי):"
+python3 - "$OUT" << 'PYEOF'
+import json, sys
+raw = open(sys.argv[1]).read().strip()
+if raw.startswith('"'):
+    raw = json.loads(raw)
+d = json.loads(raw)
+s = d.get('summary', {})
+sw = d.get('sweep') or {}
+print(f"  עמודים שנבדקו: {s.get('pages')}/{s.get('slots')} (וירטואלי: {s.get('virtualized')})"
+      + (f" | סריקה: {sw.get('steps')} צעדים, {sw.get('ms')}ms" if sw else "") + f" | אודיט: {s.get('sweepMs')}ms")
+print(f"  (שערים: {s.get('shaarPages')}) | שורות: {s.get('totalLines')}")
+print(f"  כותרות עליונות בעמודי תוכן: {s.get('bodyPagesWithHeader')}")
+print(f"  גופנים בפועל: {', '.join(d.get('observedFonts', []))}")
+print(f"  בעיות: {s.get('problems')} {s.get('bySeverity', '')}")
+for p in d.get('problems', [])[:10]:
+    print(f"    - [{p.get('severity')}] {p.get('type')} (עמוד {p.get('page', '-')})"
+          + (f": {p.get('a','')} ↔ {p.get('b','')}" if p.get('type') == 'LINE_OVERLAP' else ''))
+sys.exit(1 if s.get('problems', 0) else 0)
+PYEOF
+RC=$?
+echo "──────────────────────────────────────────────"
+[ $RC -eq 0 ] && echo "✓ אודיט עימוד עבר — אפס בעיות" || echo "✗ יש בעיות עימוד — הדוח המלא: $OUT"
+exit $RC

@@ -1,0 +1,79 @@
+name: corpus-invariants
+
+# **D-100 (11.11 — הכרעת משתמש): בדיקת ההתאמה לייחוס בוטלה כליל.**
+#
+# ההתאמה לייחוס (layout-parity מול קובצי ה-PDF של המנוע הישן) נעשתה בתחילת
+# הפרויקט כדי לתת למסמך את המראה הכללי הדרוש לצרכי המשתמש — תפקיד שהושלם.
+# בשלב המתקדם של הפרויקט אין עוד צורך בבדיקה ובהתאמה אלה:
+#   - job ה-layout-parity (חילוץ הייחוס + השוואת compare.py + קובע-רץ הציון)
+#     הוסר מ-workflow זה.
+#   - סיווג הסטיות הסופי והסגור: audits/P6_P7_D97_CLASSIFICATION.md (D-99) —
+#     אפס פגמים אמיתיים.
+#   - הכלים (extract-reference.py / run-ours.js על no_long / compare.py) נשארים
+#     במאגר לצרכי פרובננס וארכיאולוגיה, וניתן להריצם ידנית — אך הם אינם חלק
+#     מה-CI, משערי הקבלה או מדדי המגמה.
+#
+# הסמכות שנותרה ב-CI זה — אינווריאנטים מוחלטים בלבד, בלי תלות בייחוס:
+#
+# **04.11 (בקשת המשתמש: "כל הבדיקות צריכות להיעשות על הקובץ ה'גדול מאוד'"):**
+# הקורפוס הגדול מאוד — audits/very_long_test_text.txt (3.4MB, 2,571 כותרות,
+# 10 חלקים, 363K מילים). הבדיקה היא באינווריאנטים מוחלטים בלבד (verify-corpus.py):
+# תכונות שכל עימוד נכון חייב לקיים בפני עצמו, בלי תלות באף פלט חיצוני —
+#   C1 שימור תוכן (מולטיסט מילים) · C2 אפס חפיפות · C3 גבולות עמוד ·
+#   C4 יישור · C5 רצף עמודונים · C6 מכונת מצבים · C7 שלמות תוכן-עניינים ·
+#   C8 כותרות עליונות · C9 שימור כותרות · C10 הערות שוליים · C11 PDF תקין ·
+#   C12 ייצוא HTML (S4.11 — אותו רינדור כמו התצוגה החיה).
+# בנוסף: דטרמיניזם (הרצה כפולה — hash ועמודים זהים) בתוך run-ours.js,
+# והספר המיוצא עצמו (PDF+HTML) עולה כ-artifact.
+# זה הקורפוס שחשף את שלושת באגי ההערות שתוקנו ב-S4.10 — קובעי הרף שלו
+# הם שומרי הרגרסיה לכל תיקון עתידי.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  very-long-corpus:
+    runs-on: ubuntu-latest
+    # **S5.2 (P-11):** תקרה מפורשת — כמו בכל שאר ה-jobs.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PyMuPDF (חילוץ גיאומטריה מ-PDF)
+        run: pip install pymupdf==1.26.7
+
+      - name: Run RED on the very large corpus (live path + determinism double-run + HTML export)
+        run: node tools/layout-parity/run-ours.js audits/very_long_test_text.txt audits/very-long-artifacts --determinism --html
+
+      - name: Absolute invariants verification (C1..C12 — כולל ייצוא HTML)
+        run: |
+          python3 tools/layout-parity/verify-corpus.py \
+            audits/very_long_test_text.txt \
+            audits/very-long-artifacts/ours-model.json \
+            audits/very-long-artifacts/ours.pdf \
+            audits/very-long-artifacts/corpus-report.json \
+            audits/very-long-artifacts/ours.html
+
+      - name: Always upload the corpus report + the exported book
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: very-long-corpus-report
+          path: |
+            audits/very-long-artifacts/corpus-report.json
+            audits/very-long-artifacts/ours-model.json
+            audits/very-long-artifacts/ours.html
+            audits/very-long-artifacts/ours.pdf
+          if-no-files-found: warn
