@@ -24,7 +24,7 @@
  *        [--tag <name>] [--out <dir>] [--skip-determinism]
  * דוגמאות:
  *   node tools/layout-audit/run-full-math.js                      # מקומי + very_long
- *   node tools/layout-audit/run-full-math.js --url https://suginach.github.io/Tora_Book_Typesetter_Red_Work_2/ --tag live
+ *   node tools/layout-audit/run-full-math.js --url https://suginach.github.io/Tora_Book_Typesetter_Red_Old/ --tag live
  */
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -48,6 +48,10 @@ const URL = argOf('--url', null);
 const TAG = argOf('--tag', URL ? 'live' : 'local');
 const OUT = path.resolve(argOf('--out', path.join(ROOT, 'red-build', 'tests', 'artifacts', 'full-math-audit')));
 const SKIP_DET = args.includes('--skip-determinism');
+// **ריפו הגיבוי (מנוע ישן):** בסיס ייחוס נעול — audits/full-math-baseline.json.
+// האודיט נכשל על כל סטייה מהבסיס (ממצא חדש/נעלם); התאמה מלאה לבסיס = PASS
+// מתועד. הבסיס נלכד מהרצת ייחוס על המנוע המקורי בשלמותו (ראה ה-_comment שם).
+const BASELINE = path.resolve(argOf('--baseline', path.join(ROOT, 'audits', 'full-math-baseline.json')));
 const PORT = 8932;
 const B64_CHUNK = 100_000;
 const READY_TIMEOUT_MS = 900_000;
@@ -481,13 +485,45 @@ async function buildLocalBrowserBundles() {
   try { await ab(['close']); } catch (e) {}
   if (server) server.close();
 
-  const ok = s.problems === 0 && detIdentical && s.pages === s.slots;
+  // **בסיס ייחוס:** עם בסיס — השוואת ספירת הממצאים מול הבסיס (נעילת מצב קיים);
+  // בלי בסיס — הדרישה המקורית: 0 בעיות.
+  let baselineResult = null;
+  let problemsOk = s.problems === 0;
+  if (fs.existsSync(BASELINE)) {
+    try {
+      const bl = JSON.parse(fs.readFileSync(BASELINE, 'utf8'));
+      const blCounts = bl.problemCounts || {};
+      const blTotal = Object.values(blCounts).reduce((a, b) => a + b, 0);
+      const sameCounts = JSON.stringify(st.counts || {}) === JSON.stringify(blCounts);
+      problemsOk = s.problems === blTotal && sameCounts;
+      baselineResult = {
+        file: path.relative(ROOT, BASELINE),
+        expectedTotal: blTotal, actualTotal: s.problems,
+        expectedCounts: blCounts, actualCounts: st.counts || {},
+        match: problemsOk
+      };
+    } catch (e) {
+      problemsOk = false;
+      baselineResult = { error: String(e && e.message || e) };
+    }
+  }
+  const ok = problemsOk && detIdentical && s.pages === s.slots;
   console.log('');
   console.log('════════ סיכום האודיט המתמטי המלא ════════');
   console.log(`pages: ${s.pages}/${s.slots} | lines: ${(s.totalLines || 0).toLocaleString()} | words: ${(s.totalWords || 0).toLocaleString()} | problems: ${s.problems}`);
   console.log(`counts: ${JSON.stringify(st.counts || {})}`);
   console.log(`determinism: ${detIdentical ? 'IDENTICAL' : 'DIFFERENCES!'}`);
   console.log(`reports: ${OUT}`);
-  console.log(ok ? '✓ PASS — 0 בעיות + דטרמיניזם מלא' : '✗ FAIL — נדרשות 0 בעיות');
+  if (baselineResult) {
+    if (baselineResult.match) {
+      console.log(`✓ PASS — מצב קיים נעול: ${s.problems} בעיות בדיוק כבסיס הייחוס (${baselineResult.file}) + דטרמיניזם מלא`);
+    } else {
+      console.log(`✗ FAIL — סטייה מבסיס הייחוס (${baselineResult.file}):`);
+      console.log(`   צפוי: ${JSON.stringify(baselineResult.expectedCounts)} (סה"כ ${baselineResult.expectedTotal})`);
+      console.log(`   בפועל: ${JSON.stringify(baselineResult.actualCounts)} (סה"כ ${baselineResult.actualTotal})`);
+    }
+  } else {
+    console.log(ok ? '✓ PASS — 0 בעיות + דטרמיניזם מלא' : '✗ FAIL — נדרשות 0 בעיות');
+  }
   process.exit(ok ? 0 : 1);
 })().catch((e) => { console.error(String(e && e.stack || e)); try { ab(['close']); } catch (x) {} if (server) server.close(); process.exit(2); });

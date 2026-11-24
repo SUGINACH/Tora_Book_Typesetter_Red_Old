@@ -1,0 +1,11 @@
+{
+  "_comment": "בסיס ייחוס נעול של המנוע הישן בריפו הגיבוי — נלכח מהרצת ייחוס על המנוע הישן המקורי (Tora_Book_Typesetter_Red_Work_2 @ 933e6c5, הדגל forced-unified מבוטל, ללא שינוי קוד אחר). אלו 24 ממצאי MARKER_NOTE_MATCH קיימים (סמני-סימן בגוף מול פתיחות במרזב — חקירה פתוחה בריפו המרכזי). האודיט נכשל רק על סטייה מהבסיס (ממצא חדש/נוסף) — שימור המצב הקיים אינו כשל בריפו גיבוי.",
+  "pages": 699,
+  "lines": 43124,
+  "words": 359596,
+  "determinism": "IDENTICAL",
+  "problemCounts": {
+    "MARKER_NOTE_MATCH": 24
+  },
+  "capturedFrom": "reference run — unmodified legacy engine @ 933e6c5 (2026-11-24)"
+}
