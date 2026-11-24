@@ -476,7 +476,7 @@ function boot() {
   const mount = document.getElementById('app');
   if (!mount) return;
   injectPageBaseCss();
-  const ASSET_VERSION = '2026-11-24-ext20'; // cache-busting: מנע גרסה מיושנת מהמטמון אחרי פריסה
+  const ASSET_VERSION = '2026-11-25-ext22'; // cache-busting: מנע גרסה מיושנת מהמטמון אחרי פריסה
   // **S5.2:** התעבורה מקבלת מפעל () => new Worker(url) במקום מופע קיים —
   // cancel/קריסה (terminate) נטרלו בעבר את המנוע לצמיתות; עכשיו הפוסט הבא
   // בונה מופע חדש מאותו URL (כולל ?v=). בלי זה כל בקשה אחרי ביטול הוחברה
@@ -1574,6 +1574,11 @@ const registry = [
   K('page-num-start-idx', 'number', 1, P.GRID, 'inp-page-num-start-idx', ['decoration/folio'], 'fx:folio-start-idx', { min: 1, max: 999, note: 'שוחזר מ‑V1 (REQ-HDR-03): סוד העמוד הנספר שממנו מתחיל התצוגה' }),
   K('count-shaar-pages', 'bool', false, P.GRID, 'chk-count-shaar', ['decoration/folio'], 'fx:count-shaar'),
   K('count-shaar-sub-pages', 'bool', false, P.GRID, 'chk-count-shaar-sub', ['decoration/folio'], 'fx:count-shaar-sub', { note: 'Iteration-003: המקור מונה שערי-משנה בפוליו אך לא את השערים הראשי/אחורי (sub-shaar-count-numbering=true, main/back=false) — בקרה פר-סוג' }),
+  // **EXT-22:** הצגת הגיליון על עמודי השערים (main/back/sub-shaar-show-number
+  // במקור; ברירת המחדל false — השערים אינם מציגים מספר, כמו המקור).
+  K('main-shaar-show-number', 'bool', false, P.GRID, 'chk-main-shaar-show-num', ['layout/legacy-imud-flow'], 'fx:main-shaar-show-num'),
+  K('back-shaar-show-number', 'bool', false, P.GRID, 'chk-back-shaar-show-num', ['layout/legacy-imud-flow'], 'fx:back-shaar-show-num'),
+  K('sub-shaar-show-number', 'bool', false, P.GRID, 'chk-sub-shaar-show-num', ['layout/legacy-imud-flow'], 'fx:sub-shaar-show-num'),
   K('count-toc-pages', 'bool', false, P.GRID, 'chk-count-toc', ['decoration/folio'], 'fx:count-toc'),
   K('count-endnote-pages', 'bool', false, P.GRID, 'chk-count-endnotes', ['decoration/folio', 'core/pipeline'], 'fx:count-endnotes', { note: 'S7.1.1: אם true — עמודי הערות נספרים במספור ומקבלים גיליון' }),
 
@@ -1602,6 +1607,14 @@ const registry = [
   K('heading-0-body-font', 'font', 'Frank Ruhl Libre', P.TYPO, 'sel-h0-body-font', ['layout/legacy-imud-flow'], 'fx:h0-body-font', { note: 'S6.3: גוף ההקדמה — מדידה (prefaceApi) ורינדור באותו גופן' }),
   K('heading-0-body-size-pt', 'number', 11.5, P.TYPO, 'rng-h0-body-size', ['core/pipeline', 'layout/legacy-imud-flow'], 'fx:h0-body-size', { min: 6, max: 40, step: 0.5, note: 'RC-2a (i004): גודל גוף ההקדמה — המקור s-h0-body=11.5; הפיץ׳ 11.5×1.34×4/3 = H0_LINE_H. עד כאן לא מופוה ייבוא ⇒ ההקדמה זרמה ב-12pt' }),
   K('endnote-title-font', 'font', 'David Libre', P.NOTES, 'sel-endnote-title-font', ['layout/legacy-imud-flow'], 'fx:endnote-title-font', { note: 'S6.3: גופן כותרת עמודי הערות' }),
+  // **EXT-22:** גודל כותרת ההערות (s-note-title במקור; ברירת המחדל 17 = הקבוע המכויל
+  // הקיים SZ.h2 — ערך 9 של המקור לא מיובא כדי לשמר את הפלט המכויל; השליטה חיה).
+  K('endnote-title-size-pt', 'number', 17, P.NOTES, 'rng-endnote-title-size', ['layout/legacy-imud-flow'], 'fx:endnote-title-size', { min: 6, max: 40 }),
+  // **EXT-22:** גדלי סמני ההערות והמפריד (EXT-17 קרא מה-raw בלבד; כעת גם שליטה
+  // חיה בפאנל — note-marker-size/note-listing-num-size/note-num-separator במקור).
+  K('note-marker-size', 'number', 8, P.NOTES, 'rng-note-marker-size', ['layout/legacy-imud-flow'], 'fx:note-marker-size', { min: 5, max: 14, note: 'EXT-22: גודל מילת-הסמן בגוף (8 במקור)' }),
+  K('note-listing-num-size', 'number', 8, P.NOTES, 'rng-note-listing-size', ['layout/legacy-imud-flow'], 'fx:note-listing-size', { min: 5, max: 14, note: 'EXT-22: גודל סמן הרישום ברשימת ההערות (8 במקור)' }),
+  K('note-num-separator', 'string', '.', P.NOTES, 'inp-note-num-sep', ['layout/legacy-imud-flow'], 'fx:note-num-sep', { note: 'EXT-22: המפריד אחרי מספר ההערה (. במקור)' }),
   K('body-last-line-align', 'enum', 'center', P.TYPO, 'sel-last-line-align', ['output/dom-renderer'], 'fx:last-line-align', { enum: ['center', 'right', 'stretch'], note: 'wiring מ‑Orange ✓' }),
 
   // ---- כותרות 0–7 (HEADINGS) ----
@@ -1617,6 +1630,17 @@ const registry = [
     K(`heading-${h}-color`, 'color', '#000000', P.HEADINGS, `inp-h${h}-color`, ['output/legacy-projector', 'output/legacy-projector', 'output/dom-renderer'], `fx:h${h}-color`),
     K(`heading-${h}-size-pt`, 'number', [20, 18, 16, 15, 14, 14, 13, 12][h], P.HEADINGS, `rng-h${h}-size`, ['typography/measure-api'], `fx:h${h}-size`, { min: 8, max: 48 }),
   ]),
+  // **EXT-22 (השוואה עם המקור הירוק 25.11):** סימן-הספר והתנהגויות הפתיחה של
+  // המקור שהיו נקראות מה-raw בלבד (ui-state) — כעת שליטה חיה בפאנל. ברירות
+  // המחדל = ההתנהגות המכוילת הקיימת בדיוק (siman 20pt בגופן הכותרות;
+  // odd-h0/h1 דלוקים, odd-h2 כבוי; מספור-סימן אוטומטי ואיפוס לכל פרק דלוקים).
+  K('siman-font', 'font', '', P.HEADINGS, 'sel-siman-font', ['layout/legacy-imud-flow'], 'fx:siman-font', { note: 'EXT-22: גופן פס הסימן (f-siman במקור; ריק = ירושת גופן הכותרות — ברירת המחדל הקיימת)' }),
+  K('siman-size-pt', 'number', 20, P.HEADINGS, 'rng-siman-size', ['layout/legacy-imud-flow'], 'fx:siman-size', { min: 10, max: 36, note: 'EXT-22: גודל פס הסימן (s-siman במקור; 20 = הקבוע המכויל SZ.siman)' }),
+  K('odd-h0', 'bool', true, P.HEADINGS, 'chk-odd-h0', ['layout/legacy-imud-flow'], 'fx:odd-h0', { note: 'EXT-22: פתיחת H0 בעמוד אי-זוגי — עמוד ריק לפני פתיחה בגב (ensureOddPageStart של המקור)' }),
+  K('odd-h1', 'bool', true, P.HEADINGS, 'chk-odd-h1', ['layout/legacy-imud-flow'], 'fx:odd-h1', { note: 'EXT-22: פתיחת H1 בעמוד אי-זוגי (odd-h1 במקור)' }),
+  K('odd-h2', 'bool', false, P.HEADINGS, 'chk-odd-h2', ['layout/legacy-imud-flow'], 'fx:odd-h2', { note: 'EXT-22: פתיחת H2 בעמוד אי-זוגי (odd-h2 במקור; כבוי בברירת המחדל)' }),
+  K('h2-auto-siman', 'bool', true, P.HEADINGS, 'chk-h2-auto-siman', ['layout/legacy-imud-flow'], 'fx:h2-auto-siman', { note: 'EXT-22: מספור סימן אוטומטי א-ב-ג (h2-auto-siman במקור)' }),
+  K('h2-reset-siman', 'bool', true, P.HEADINGS, 'chk-h2-reset-siman', ['layout/legacy-imud-flow'], 'fx:h2-reset-siman', { note: 'EXT-22: איפוס מונה הסימנים לכל פרק (h2-reset-siman במקור)' }),
   // D-45→D-54: h2-orn-scope חזר בסעיף העיטורים להלן עם מנגנום חי (S8).
   K('hdr-h1-title-mode', 'enum', 'main', P.HEADERS, 'sel-hdr-h1-mode', ['decoration/headers-builder'], 'fx:hdr-h1-mode', { enum: ['main', 'full'], note: 'K-8: main כברירת מחדל + toggle' }),
 
@@ -1735,6 +1759,24 @@ const registry = [
     K(`toc-level-${lvl}-show`, 'bool', lvl <= 6, P.TOC, `chk-toc-l${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-l${lvl}`),
     K(`toc-level-${lvl}-inline`, 'bool', false, P.TOC, `chk-toc-l${lvl}-inline`, ['layout/legacy-imud-flow'], `fx:toc-l${lvl}-inline`),
   ]),
+  // **EXT-22 (בדיקת השוואה מול המקור הירוק 25.11 — "לגבי הוספה! לא הורדה!!",
+  // ביחוד לגבי תוכן העניינים):** אפשרויות ה-TOC של המקור שחסרו בלוח —
+  // גופן וגודל פר-רמה לכל תוכן בנפרד (f/s-gtoc-N, f/s-dtoc-N), הצגה פר-סוג
+  // (gtoc-show/dtoc-show) וקיבוץ פר-סוג (gtoc-grp/dtoc-grp). ברירות המחדל =
+  // ההתנהגות המכוילת הקיימת בדיוק (David Libre לכל הרמות; 12/11/10.5×4/8.8;
+  // כללי 1–6, מפורט 2–6; רמות 3+ מקובצות עם ההורה כמו היחידות האטומיות) —
+  // ה-digest נשמר. השליטה המשותפת הקיימת (toc-level-N-show/inline) נשארת
+  // כמסכת AND — שום דבר לא הוסר.
+  ...[1, 2, 3, 4, 5, 6, 7].flatMap(lvl => [
+    K(`toc-gfont-${lvl}`, 'font', 'David Libre', P.TOC, `sel-toc-gfont-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-gfont-${lvl}`, { note: `EXT-22: גופן שורות רמה ${lvl} בתוכן הכללי (f-gtoc-${lvl} במקור)` }),
+    K(`toc-dfont-${lvl}`, 'font', 'David Libre', P.TOC, `sel-toc-dfont-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-dfont-${lvl}`, { note: `EXT-22: גופן שורות רמה ${lvl} בתוכן המפורט (f-dtoc-${lvl} במקור)` }),
+    K(`toc-gsize-${lvl}`, 'number', lvl === 1 ? 12 : lvl === 2 ? 11 : lvl === 7 ? 8.8 : 10.5, P.TOC, `rng-toc-gsize-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-gsize-${lvl}`, { min: 6, max: 30, note: `EXT-22: גודל שורות רמה ${lvl} בתוכן הכללי (s-gtoc-${lvl} במקור)` }),
+    K(`toc-dsize-${lvl}`, 'number', lvl === 1 ? 12 : lvl === 2 ? 11 : lvl === 7 ? 8.8 : 10.5, P.TOC, `rng-toc-dsize-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-dsize-${lvl}`, { min: 6, max: 30, note: `EXT-22: גודל שורות רמה ${lvl} בתוכן המפורט (s-dtoc-${lvl} במקור)` }),
+    K(`toc-gshow-${lvl}`, 'bool', lvl <= 6, P.TOC, `chk-toc-gshow-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-gshow-${lvl}`, { note: `EXT-22: הצגת רמה ${lvl} בתוכן הכללי בלבד (gtoc-show; המסכה המשותפת toc-level-${lvl}-show נשארת)` }),
+    K(`toc-dshow-${lvl}`, 'bool', lvl >= 2 && lvl <= 6, P.TOC, `chk-toc-dshow-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-dshow-${lvl}`, { note: `EXT-22: הצגת רמה ${lvl} בתוכן המפורט בלבד (dtoc-show)` }),
+    K(`toc-ggrp-${lvl}`, 'bool', lvl >= 3, P.TOC, `chk-toc-ggrp-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-ggrp-${lvl}`, { note: `EXT-22: קיבוץ רשומות רמה ${lvl} עם ההורה בתוכן הכללי — break-inside (gtoc-grp)` }),
+    K(`toc-dgrp-${lvl}`, 'bool', lvl >= 3, P.TOC, `chk-toc-dgrp-${lvl}`, ['layout/legacy-imud-flow'], `fx:toc-dgrp-${lvl}`, { note: `EXT-22: קיבוץ רשומות רמה ${lvl} עם ההורה בתוכן המפורט (dtoc-grp)` }),
+  ]),
 
   // ---- שערים/נושאים (THEMES) ---- **S8 (D-54): ערכות נושא חיות — הפעלה מלאה (F-10 נעול)**
   K('background-color', 'color', '#ffffff', P.THEMES, 'inp-bg-color', ['output/dom-renderer'], 'fx:bg-color'),
@@ -1744,6 +1786,16 @@ const registry = [
   K('shaar-main-image', 'string', '', P.THEMES, 'inp-shaar-main-img', ['decoration/page-decorations', 'decoration/shaar-boxes'], 'fx:shaar-main-img'),
   K('shaar-sub-image', 'string', '', P.THEMES, 'inp-shaar-sub-img', ['decoration/page-decorations'], 'fx:shaar-sub-img'),
   K('shaar-back-enabled', 'bool', true, P.THEMES, 'chk-shaar-back', ['decoration/page-decorations', 'decoration/shaar-boxes'], 'fx:shaar-back', { note: 'PT-03: 4 מקטעים עצמאיים; כיבוי ראשי מבטל את כולם' }),
+  // **EXT-22 (בוררי תיבות השער של המקור — builder-{main,sub,back}-{top,bottom,right,left}):
+  // תיבת הטקסט של כל שער במ״מ. 0 = אוטומטי (התיבה של העיצוב מהספרייה /
+  // ברירת המחדל המכוילת) — התנהגות ברירת המחדל נשמרת בדיוק; ערך > 0 קובע
+  // שוליים מפורשים לאותו צד של אותו שער (כמו resolveShaarBoxStyle של המקור).
+  ...['main', 'sub', 'back'].flatMap(kind => [
+    K(`shaar-${kind}-box-top`, 'number', 0, P.THEMES, `rng-shaar-${kind}-box-top`, ['output/dom-renderer', 'decoration/shaar-boxes'], `fx:shaar-${kind}-box-top`, { min: 0, max: 130, note: `EXT-22: שוליים עליונים של תיבת שער ${kind === 'main' ? 'ראשי' : kind === 'sub' ? 'משנה' : 'אחורי'} במ״מ (0=אוטומטי; builder-${kind}-top במקור)` }),
+    K(`shaar-${kind}-box-bottom`, 'number', 0, P.THEMES, `rng-shaar-${kind}-box-bottom`, ['output/dom-renderer', 'decoration/shaar-boxes'], `fx:shaar-${kind}-box-bottom`, { min: 0, max: 130, note: `EXT-22: שוליים תחתונים של תיבת שער ${kind === 'main' ? 'ראשי' : kind === 'sub' ? 'משנה' : 'אחורי'} במ״מ (0=אוטומטי; builder-${kind}-bottom במקור)` }),
+    K(`shaar-${kind}-box-right`, 'number', 0, P.THEMES, `rng-shaar-${kind}-box-right`, ['output/dom-renderer', 'decoration/shaar-boxes'], `fx:shaar-${kind}-box-right`, { min: 0, max: 100, note: `EXT-22: שוליים ימניים של תיבת שער ${kind === 'main' ? 'ראשי' : kind === 'sub' ? 'משנה' : 'אחורי'} במ״מ (0=אוטומטי; builder-${kind}-right במקור)` }),
+    K(`shaar-${kind}-box-left`, 'number', 0, P.THEMES, `rng-shaar-${kind}-box-left`, ['output/dom-renderer', 'decoration/shaar-boxes'], `fx:shaar-${kind}-box-left`, { min: 0, max: 100, note: `EXT-22: שוליים שמאליים של תיבת שער ${kind === 'main' ? 'ראשי' : kind === 'sub' ? 'משנה' : 'אחורי'} במ״מ (0=אוטומטי; builder-${kind}-left במקור)` }),
+  ]),
   // REQ-ORN-08: פאנל רקעים מוזג לתוך נושאים — 3 סוגי עמודים + color/texture/image + insets מ"מ
   K('background-page-type', 'enum', 'regular', P.THEMES, 'sel-bg-page-type', ['decoration/page-decorations'], 'fx:bg-page-type', { enum: ['regular', 'preface-open', 'sign-open'], note: 'REQ-ORN-08: מחלקת העמוד שאליה הרקע מיועד (מיזוג פאנל רקע→נושאים)' }),
   K('background-image', 'string', '', P.THEMES, 'inp-bg-image', ['decoration/page-decorations'], 'fx:bg-image'),
@@ -3664,6 +3716,48 @@ const BINDINGS = [
     "note": "Iteration-003: המקור מונה שערי-משנה בפוליו אך לא את השערים הראשי/אחורי (sub-shaar-count-numbering=true, main/back=false) — בקרה פר-סוג"
   },
   {
+    "id": "main-shaar-show-number",
+    "control": "chk-main-shaar-show-num",
+    "panel": "רשת העמוד ומספור",
+    "panelKey": "GRID",
+    "labelHe": "main-shaar-show-number",
+    "type": "bool",
+    "def": false,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": null
+  },
+  {
+    "id": "back-shaar-show-number",
+    "control": "chk-back-shaar-show-num",
+    "panel": "רשת העמוד ומספור",
+    "panelKey": "GRID",
+    "labelHe": "back-shaar-show-number",
+    "type": "bool",
+    "def": false,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": null
+  },
+  {
+    "id": "sub-shaar-show-number",
+    "control": "chk-sub-shaar-show-num",
+    "panel": "רשת העמוד ומספור",
+    "panelKey": "GRID",
+    "labelHe": "sub-shaar-show-number",
+    "type": "bool",
+    "def": false,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": null
+  },
+  {
     "id": "count-toc-pages",
     "control": "chk-count-toc",
     "panel": "רשת העמוד ומספור",
@@ -3950,6 +4044,62 @@ const BINDINGS = [
     "max": null,
     "step": null,
     "note": "S6.3: גופן כותרת עמודי הערות"
+  },
+  {
+    "id": "endnote-title-size-pt",
+    "control": "rng-endnote-title-size",
+    "panel": "הערות שוליים וסיום",
+    "panelKey": "NOTES",
+    "labelHe": "endnote-title-size-pt",
+    "type": "number",
+    "def": 17,
+    "enum": null,
+    "min": 6,
+    "max": 40,
+    "step": null,
+    "note": null
+  },
+  {
+    "id": "note-marker-size",
+    "control": "rng-note-marker-size",
+    "panel": "הערות שוליים וסיום",
+    "panelKey": "NOTES",
+    "labelHe": "note-marker-size",
+    "type": "number",
+    "def": 8,
+    "enum": null,
+    "min": 5,
+    "max": 14,
+    "step": null,
+    "note": "EXT-22: גודל מילת-הסמן בגוף (8 במקור)"
+  },
+  {
+    "id": "note-listing-num-size",
+    "control": "rng-note-listing-size",
+    "panel": "הערות שוליים וסיום",
+    "panelKey": "NOTES",
+    "labelHe": "note-listing-num-size",
+    "type": "number",
+    "def": 8,
+    "enum": null,
+    "min": 5,
+    "max": 14,
+    "step": null,
+    "note": "EXT-22: גודל סמן הרישום ברשימת ההערות (8 במקור)"
+  },
+  {
+    "id": "note-num-separator",
+    "control": "inp-note-num-sep",
+    "panel": "הערות שוליים וסיום",
+    "panelKey": "NOTES",
+    "labelHe": "note-num-separator",
+    "type": "string",
+    "def": ".",
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: המפריד אחרי מספר ההערה (. במקור)"
   },
   {
     "id": "body-last-line-align",
@@ -4456,6 +4606,104 @@ const BINDINGS = [
     "max": 48,
     "step": null,
     "note": null
+  },
+  {
+    "id": "siman-font",
+    "control": "sel-siman-font",
+    "panel": "כותרות 0–7",
+    "panelKey": "HEADINGS",
+    "labelHe": "siman-font",
+    "type": "font",
+    "def": "",
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: גופן פס הסימן (f-siman במקור; ריק = ירושת גופן הכותרות — ברירת המחדל הקיימת)"
+  },
+  {
+    "id": "siman-size-pt",
+    "control": "rng-siman-size",
+    "panel": "כותרות 0–7",
+    "panelKey": "HEADINGS",
+    "labelHe": "siman-size-pt",
+    "type": "number",
+    "def": 20,
+    "enum": null,
+    "min": 10,
+    "max": 36,
+    "step": null,
+    "note": "EXT-22: גודל פס הסימן (s-siman במקור; 20 = הקבוע המכויל SZ.siman)"
+  },
+  {
+    "id": "odd-h0",
+    "control": "chk-odd-h0",
+    "panel": "כותרות 0–7",
+    "panelKey": "HEADINGS",
+    "labelHe": "odd-h0",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: פתיחת H0 בעמוד אי-זוגי — עמוד ריק לפני פתיחה בגב (ensureOddPageStart של המקור)"
+  },
+  {
+    "id": "odd-h1",
+    "control": "chk-odd-h1",
+    "panel": "כותרות 0–7",
+    "panelKey": "HEADINGS",
+    "labelHe": "odd-h1",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: פתיחת H1 בעמוד אי-זוגי (odd-h1 במקור)"
+  },
+  {
+    "id": "odd-h2",
+    "control": "chk-odd-h2",
+    "panel": "כותרות 0–7",
+    "panelKey": "HEADINGS",
+    "labelHe": "odd-h2",
+    "type": "bool",
+    "def": false,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: פתיחת H2 בעמוד אי-זוגי (odd-h2 במקור; כבוי בברירת המחדל)"
+  },
+  {
+    "id": "h2-auto-siman",
+    "control": "chk-h2-auto-siman",
+    "panel": "כותרות 0–7",
+    "panelKey": "HEADINGS",
+    "labelHe": "h2-auto-siman",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: מספור סימן אוטומטי א-ב-ג (h2-auto-siman במקור)"
+  },
+  {
+    "id": "h2-reset-siman",
+    "control": "chk-h2-reset-siman",
+    "panel": "כותרות 0–7",
+    "panelKey": "HEADINGS",
+    "labelHe": "h2-reset-siman",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: איפוס מונה הסימנים לכל פרק (h2-reset-siman במקור)"
   },
   {
     "id": "hdr-h1-title-mode",
@@ -6418,6 +6666,790 @@ const BINDINGS = [
     "note": null
   },
   {
+    "id": "toc-gfont-1",
+    "control": "sel-toc-gfont-1",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gfont-1",
+    "type": "font",
+    "def": "David Libre",
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: גופן שורות רמה 1 בתוכן הכללי (f-gtoc-1 במקור)"
+  },
+  {
+    "id": "toc-dfont-1",
+    "control": "sel-toc-dfont-1",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dfont-1",
+    "type": "font",
+    "def": "David Libre",
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: גופן שורות רמה 1 בתוכן המפורט (f-dtoc-1 במקור)"
+  },
+  {
+    "id": "toc-gsize-1",
+    "control": "rng-toc-gsize-1",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gsize-1",
+    "type": "number",
+    "def": 12,
+    "enum": null,
+    "min": 6,
+    "max": 30,
+    "step": null,
+    "note": "EXT-22: גודל שורות רמה 1 בתוכן הכללי (s-gtoc-1 במקור)"
+  },
+  {
+    "id": "toc-dsize-1",
+    "control": "rng-toc-dsize-1",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dsize-1",
+    "type": "number",
+    "def": 12,
+    "enum": null,
+    "min": 6,
+    "max": 30,
+    "step": null,
+    "note": "EXT-22: גודל שורות רמה 1 בתוכן המפורט (s-dtoc-1 במקור)"
+  },
+  {
+    "id": "toc-gshow-1",
+    "control": "chk-toc-gshow-1",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gshow-1",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: הצגת רמה 1 בתוכן הכללי בלבד (gtoc-show; המסכה המשותפת toc-level-1-show נשארת)"
+  },
+  {
+    "id": "toc-dshow-1",
+    "control": "chk-toc-dshow-1",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dshow-1",
+    "type": "bool",
+    "def": false,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: הצגת רמה 1 בתוכן המפורט בלבד (dtoc-show)"
+  },
+  {
+    "id": "toc-ggrp-1",
+    "control": "chk-toc-ggrp-1",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-ggrp-1",
+    "type": "bool",
+    "def": false,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: קיבוץ רשומות רמה 1 עם ההורה בתוכן הכללי — break-inside (gtoc-grp)"
+  },
+  {
+    "id": "toc-dgrp-1",
+    "control": "chk-toc-dgrp-1",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dgrp-1",
+    "type": "bool",
+    "def": false,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: קיבוץ רשומות רמה 1 עם ההורה בתוכן המפורט (dtoc-grp)"
+  },
+  {
+    "id": "toc-gfont-2",
+    "control": "sel-toc-gfont-2",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gfont-2",
+    "type": "font",
+    "def": "David Libre",
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: גופן שורות רמה 2 בתוכן הכללי (f-gtoc-2 במקור)"
+  },
+  {
+    "id": "toc-dfont-2",
+    "control": "sel-toc-dfont-2",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dfont-2",
+    "type": "font",
+    "def": "David Libre",
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: גופן שורות רמה 2 בתוכן המפורט (f-dtoc-2 במקור)"
+  },
+  {
+    "id": "toc-gsize-2",
+    "control": "rng-toc-gsize-2",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gsize-2",
+    "type": "number",
+    "def": 11,
+    "enum": null,
+    "min": 6,
+    "max": 30,
+    "step": null,
+    "note": "EXT-22: גודל שורות רמה 2 בתוכן הכללי (s-gtoc-2 במקור)"
+  },
+  {
+    "id": "toc-dsize-2",
+    "control": "rng-toc-dsize-2",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dsize-2",
+    "type": "number",
+    "def": 11,
+    "enum": null,
+    "min": 6,
+    "max": 30,
+    "step": null,
+    "note": "EXT-22: גודל שורות רמה 2 בתוכן המפורט (s-dtoc-2 במקור)"
+  },
+  {
+    "id": "toc-gshow-2",
+    "control": "chk-toc-gshow-2",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gshow-2",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: הצגת רמה 2 בתוכן הכללי בלבד (gtoc-show; המסכה המשותפת toc-level-2-show נשארת)"
+  },
+  {
+    "id": "toc-dshow-2",
+    "control": "chk-toc-dshow-2",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dshow-2",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: הצגת רמה 2 בתוכן המפורט בלבד (dtoc-show)"
+  },
+  {
+    "id": "toc-ggrp-2",
+    "control": "chk-toc-ggrp-2",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-ggrp-2",
+    "type": "bool",
+    "def": false,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: קיבוץ רשומות רמה 2 עם ההורה בתוכן הכללי — break-inside (gtoc-grp)"
+  },
+  {
+    "id": "toc-dgrp-2",
+    "control": "chk-toc-dgrp-2",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dgrp-2",
+    "type": "bool",
+    "def": false,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: קיבוץ רשומות רמה 2 עם ההורה בתוכן המפורט (dtoc-grp)"
+  },
+  {
+    "id": "toc-gfont-3",
+    "control": "sel-toc-gfont-3",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gfont-3",
+    "type": "font",
+    "def": "David Libre",
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: גופן שורות רמה 3 בתוכן הכללי (f-gtoc-3 במקור)"
+  },
+  {
+    "id": "toc-dfont-3",
+    "control": "sel-toc-dfont-3",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dfont-3",
+    "type": "font",
+    "def": "David Libre",
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: גופן שורות רמה 3 בתוכן המפורט (f-dtoc-3 במקור)"
+  },
+  {
+    "id": "toc-gsize-3",
+    "control": "rng-toc-gsize-3",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gsize-3",
+    "type": "number",
+    "def": 10.5,
+    "enum": null,
+    "min": 6,
+    "max": 30,
+    "step": null,
+    "note": "EXT-22: גודל שורות רמה 3 בתוכן הכללי (s-gtoc-3 במקור)"
+  },
+  {
+    "id": "toc-dsize-3",
+    "control": "rng-toc-dsize-3",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dsize-3",
+    "type": "number",
+    "def": 10.5,
+    "enum": null,
+    "min": 6,
+    "max": 30,
+    "step": null,
+    "note": "EXT-22: גודל שורות רמה 3 בתוכן המפורט (s-dtoc-3 במקור)"
+  },
+  {
+    "id": "toc-gshow-3",
+    "control": "chk-toc-gshow-3",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gshow-3",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: הצגת רמה 3 בתוכן הכללי בלבד (gtoc-show; המסכה המשותפת toc-level-3-show נשארת)"
+  },
+  {
+    "id": "toc-dshow-3",
+    "control": "chk-toc-dshow-3",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dshow-3",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: הצגת רמה 3 בתוכן המפורט בלבד (dtoc-show)"
+  },
+  {
+    "id": "toc-ggrp-3",
+    "control": "chk-toc-ggrp-3",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-ggrp-3",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: קיבוץ רשומות רמה 3 עם ההורה בתוכן הכללי — break-inside (gtoc-grp)"
+  },
+  {
+    "id": "toc-dgrp-3",
+    "control": "chk-toc-dgrp-3",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dgrp-3",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: קיבוץ רשומות רמה 3 עם ההורה בתוכן המפורט (dtoc-grp)"
+  },
+  {
+    "id": "toc-gfont-4",
+    "control": "sel-toc-gfont-4",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gfont-4",
+    "type": "font",
+    "def": "David Libre",
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: גופן שורות רמה 4 בתוכן הכללי (f-gtoc-4 במקור)"
+  },
+  {
+    "id": "toc-dfont-4",
+    "control": "sel-toc-dfont-4",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dfont-4",
+    "type": "font",
+    "def": "David Libre",
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: גופן שורות רמה 4 בתוכן המפורט (f-dtoc-4 במקור)"
+  },
+  {
+    "id": "toc-gsize-4",
+    "control": "rng-toc-gsize-4",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gsize-4",
+    "type": "number",
+    "def": 10.5,
+    "enum": null,
+    "min": 6,
+    "max": 30,
+    "step": null,
+    "note": "EXT-22: גודל שורות רמה 4 בתוכן הכללי (s-gtoc-4 במקור)"
+  },
+  {
+    "id": "toc-dsize-4",
+    "control": "rng-toc-dsize-4",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dsize-4",
+    "type": "number",
+    "def": 10.5,
+    "enum": null,
+    "min": 6,
+    "max": 30,
+    "step": null,
+    "note": "EXT-22: גודל שורות רמה 4 בתוכן המפורט (s-dtoc-4 במקור)"
+  },
+  {
+    "id": "toc-gshow-4",
+    "control": "chk-toc-gshow-4",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gshow-4",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: הצגת רמה 4 בתוכן הכללי בלבד (gtoc-show; המסכה המשותפת toc-level-4-show נשארת)"
+  },
+  {
+    "id": "toc-dshow-4",
+    "control": "chk-toc-dshow-4",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dshow-4",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: הצגת רמה 4 בתוכן המפורט בלבד (dtoc-show)"
+  },
+  {
+    "id": "toc-ggrp-4",
+    "control": "chk-toc-ggrp-4",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-ggrp-4",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: קיבוץ רשומות רמה 4 עם ההורה בתוכן הכללי — break-inside (gtoc-grp)"
+  },
+  {
+    "id": "toc-dgrp-4",
+    "control": "chk-toc-dgrp-4",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dgrp-4",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: קיבוץ רשומות רמה 4 עם ההורה בתוכן המפורט (dtoc-grp)"
+  },
+  {
+    "id": "toc-gfont-5",
+    "control": "sel-toc-gfont-5",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gfont-5",
+    "type": "font",
+    "def": "David Libre",
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: גופן שורות רמה 5 בתוכן הכללי (f-gtoc-5 במקור)"
+  },
+  {
+    "id": "toc-dfont-5",
+    "control": "sel-toc-dfont-5",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dfont-5",
+    "type": "font",
+    "def": "David Libre",
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: גופן שורות רמה 5 בתוכן המפורט (f-dtoc-5 במקור)"
+  },
+  {
+    "id": "toc-gsize-5",
+    "control": "rng-toc-gsize-5",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gsize-5",
+    "type": "number",
+    "def": 10.5,
+    "enum": null,
+    "min": 6,
+    "max": 30,
+    "step": null,
+    "note": "EXT-22: גודל שורות רמה 5 בתוכן הכללי (s-gtoc-5 במקור)"
+  },
+  {
+    "id": "toc-dsize-5",
+    "control": "rng-toc-dsize-5",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dsize-5",
+    "type": "number",
+    "def": 10.5,
+    "enum": null,
+    "min": 6,
+    "max": 30,
+    "step": null,
+    "note": "EXT-22: גודל שורות רמה 5 בתוכן המפורט (s-dtoc-5 במקור)"
+  },
+  {
+    "id": "toc-gshow-5",
+    "control": "chk-toc-gshow-5",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gshow-5",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: הצגת רמה 5 בתוכן הכללי בלבד (gtoc-show; המסכה המשותפת toc-level-5-show נשארת)"
+  },
+  {
+    "id": "toc-dshow-5",
+    "control": "chk-toc-dshow-5",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dshow-5",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: הצגת רמה 5 בתוכן המפורט בלבד (dtoc-show)"
+  },
+  {
+    "id": "toc-ggrp-5",
+    "control": "chk-toc-ggrp-5",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-ggrp-5",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: קיבוץ רשומות רמה 5 עם ההורה בתוכן הכללי — break-inside (gtoc-grp)"
+  },
+  {
+    "id": "toc-dgrp-5",
+    "control": "chk-toc-dgrp-5",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dgrp-5",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: קיבוץ רשומות רמה 5 עם ההורה בתוכן המפורט (dtoc-grp)"
+  },
+  {
+    "id": "toc-gfont-6",
+    "control": "sel-toc-gfont-6",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gfont-6",
+    "type": "font",
+    "def": "David Libre",
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: גופן שורות רמה 6 בתוכן הכללי (f-gtoc-6 במקור)"
+  },
+  {
+    "id": "toc-dfont-6",
+    "control": "sel-toc-dfont-6",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dfont-6",
+    "type": "font",
+    "def": "David Libre",
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: גופן שורות רמה 6 בתוכן המפורט (f-dtoc-6 במקור)"
+  },
+  {
+    "id": "toc-gsize-6",
+    "control": "rng-toc-gsize-6",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gsize-6",
+    "type": "number",
+    "def": 10.5,
+    "enum": null,
+    "min": 6,
+    "max": 30,
+    "step": null,
+    "note": "EXT-22: גודל שורות רמה 6 בתוכן הכללי (s-gtoc-6 במקור)"
+  },
+  {
+    "id": "toc-dsize-6",
+    "control": "rng-toc-dsize-6",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dsize-6",
+    "type": "number",
+    "def": 10.5,
+    "enum": null,
+    "min": 6,
+    "max": 30,
+    "step": null,
+    "note": "EXT-22: גודל שורות רמה 6 בתוכן המפורט (s-dtoc-6 במקור)"
+  },
+  {
+    "id": "toc-gshow-6",
+    "control": "chk-toc-gshow-6",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gshow-6",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: הצגת רמה 6 בתוכן הכללי בלבד (gtoc-show; המסכה המשותפת toc-level-6-show נשארת)"
+  },
+  {
+    "id": "toc-dshow-6",
+    "control": "chk-toc-dshow-6",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dshow-6",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: הצגת רמה 6 בתוכן המפורט בלבד (dtoc-show)"
+  },
+  {
+    "id": "toc-ggrp-6",
+    "control": "chk-toc-ggrp-6",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-ggrp-6",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: קיבוץ רשומות רמה 6 עם ההורה בתוכן הכללי — break-inside (gtoc-grp)"
+  },
+  {
+    "id": "toc-dgrp-6",
+    "control": "chk-toc-dgrp-6",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dgrp-6",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: קיבוץ רשומות רמה 6 עם ההורה בתוכן המפורט (dtoc-grp)"
+  },
+  {
+    "id": "toc-gfont-7",
+    "control": "sel-toc-gfont-7",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gfont-7",
+    "type": "font",
+    "def": "David Libre",
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: גופן שורות רמה 7 בתוכן הכללי (f-gtoc-7 במקור)"
+  },
+  {
+    "id": "toc-dfont-7",
+    "control": "sel-toc-dfont-7",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dfont-7",
+    "type": "font",
+    "def": "David Libre",
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: גופן שורות רמה 7 בתוכן המפורט (f-dtoc-7 במקור)"
+  },
+  {
+    "id": "toc-gsize-7",
+    "control": "rng-toc-gsize-7",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gsize-7",
+    "type": "number",
+    "def": 8.8,
+    "enum": null,
+    "min": 6,
+    "max": 30,
+    "step": null,
+    "note": "EXT-22: גודל שורות רמה 7 בתוכן הכללי (s-gtoc-7 במקור)"
+  },
+  {
+    "id": "toc-dsize-7",
+    "control": "rng-toc-dsize-7",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dsize-7",
+    "type": "number",
+    "def": 8.8,
+    "enum": null,
+    "min": 6,
+    "max": 30,
+    "step": null,
+    "note": "EXT-22: גודל שורות רמה 7 בתוכן המפורט (s-dtoc-7 במקור)"
+  },
+  {
+    "id": "toc-gshow-7",
+    "control": "chk-toc-gshow-7",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-gshow-7",
+    "type": "bool",
+    "def": false,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: הצגת רמה 7 בתוכן הכללי בלבד (gtoc-show; המסכה המשותפת toc-level-7-show נשארת)"
+  },
+  {
+    "id": "toc-dshow-7",
+    "control": "chk-toc-dshow-7",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dshow-7",
+    "type": "bool",
+    "def": false,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: הצגת רמה 7 בתוכן המפורט בלבד (dtoc-show)"
+  },
+  {
+    "id": "toc-ggrp-7",
+    "control": "chk-toc-ggrp-7",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-ggrp-7",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: קיבוץ רשומות רמה 7 עם ההורה בתוכן הכללי — break-inside (gtoc-grp)"
+  },
+  {
+    "id": "toc-dgrp-7",
+    "control": "chk-toc-dgrp-7",
+    "panel": "תוכן העניינים",
+    "panelKey": "TOC",
+    "labelHe": "toc-dgrp-7",
+    "type": "bool",
+    "def": true,
+    "enum": null,
+    "min": null,
+    "max": null,
+    "step": null,
+    "note": "EXT-22: קיבוץ רשומות רמה 7 עם ההורה בתוכן המפורט (dtoc-grp)"
+  },
+  {
     "id": "background-color",
     "control": "inp-bg-color",
     "panel": "ערכות נושא, שערים ורקעים",
@@ -6514,6 +7546,174 @@ const BINDINGS = [
     "max": null,
     "step": null,
     "note": "PT-03: 4 מקטעים עצמאיים; כיבוי ראשי מבטל את כולם"
+  },
+  {
+    "id": "shaar-main-box-top",
+    "control": "rng-shaar-main-box-top",
+    "panel": "ערכות נושא, שערים ורקעים",
+    "panelKey": "THEMES",
+    "labelHe": "shaar-main-box-top",
+    "type": "number",
+    "def": 0,
+    "enum": null,
+    "min": 0,
+    "max": 130,
+    "step": null,
+    "note": "EXT-22: שוליים עליונים של תיבת שער ראשי במ״מ (0=אוטומטי; builder-main-top במקור)"
+  },
+  {
+    "id": "shaar-main-box-bottom",
+    "control": "rng-shaar-main-box-bottom",
+    "panel": "ערכות נושא, שערים ורקעים",
+    "panelKey": "THEMES",
+    "labelHe": "shaar-main-box-bottom",
+    "type": "number",
+    "def": 0,
+    "enum": null,
+    "min": 0,
+    "max": 130,
+    "step": null,
+    "note": "EXT-22: שוליים תחתונים של תיבת שער ראשי במ״מ (0=אוטומטי; builder-main-bottom במקור)"
+  },
+  {
+    "id": "shaar-main-box-right",
+    "control": "rng-shaar-main-box-right",
+    "panel": "ערכות נושא, שערים ורקעים",
+    "panelKey": "THEMES",
+    "labelHe": "shaar-main-box-right",
+    "type": "number",
+    "def": 0,
+    "enum": null,
+    "min": 0,
+    "max": 100,
+    "step": null,
+    "note": "EXT-22: שוליים ימניים של תיבת שער ראשי במ״מ (0=אוטומטי; builder-main-right במקור)"
+  },
+  {
+    "id": "shaar-main-box-left",
+    "control": "rng-shaar-main-box-left",
+    "panel": "ערכות נושא, שערים ורקעים",
+    "panelKey": "THEMES",
+    "labelHe": "shaar-main-box-left",
+    "type": "number",
+    "def": 0,
+    "enum": null,
+    "min": 0,
+    "max": 100,
+    "step": null,
+    "note": "EXT-22: שוליים שמאליים של תיבת שער ראשי במ״מ (0=אוטומטי; builder-main-left במקור)"
+  },
+  {
+    "id": "shaar-sub-box-top",
+    "control": "rng-shaar-sub-box-top",
+    "panel": "ערכות נושא, שערים ורקעים",
+    "panelKey": "THEMES",
+    "labelHe": "shaar-sub-box-top",
+    "type": "number",
+    "def": 0,
+    "enum": null,
+    "min": 0,
+    "max": 130,
+    "step": null,
+    "note": "EXT-22: שוליים עליונים של תיבת שער משנה במ״מ (0=אוטומטי; builder-sub-top במקור)"
+  },
+  {
+    "id": "shaar-sub-box-bottom",
+    "control": "rng-shaar-sub-box-bottom",
+    "panel": "ערכות נושא, שערים ורקעים",
+    "panelKey": "THEMES",
+    "labelHe": "shaar-sub-box-bottom",
+    "type": "number",
+    "def": 0,
+    "enum": null,
+    "min": 0,
+    "max": 130,
+    "step": null,
+    "note": "EXT-22: שוליים תחתונים של תיבת שער משנה במ״מ (0=אוטומטי; builder-sub-bottom במקור)"
+  },
+  {
+    "id": "shaar-sub-box-right",
+    "control": "rng-shaar-sub-box-right",
+    "panel": "ערכות נושא, שערים ורקעים",
+    "panelKey": "THEMES",
+    "labelHe": "shaar-sub-box-right",
+    "type": "number",
+    "def": 0,
+    "enum": null,
+    "min": 0,
+    "max": 100,
+    "step": null,
+    "note": "EXT-22: שוליים ימניים של תיבת שער משנה במ״מ (0=אוטומטי; builder-sub-right במקור)"
+  },
+  {
+    "id": "shaar-sub-box-left",
+    "control": "rng-shaar-sub-box-left",
+    "panel": "ערכות נושא, שערים ורקעים",
+    "panelKey": "THEMES",
+    "labelHe": "shaar-sub-box-left",
+    "type": "number",
+    "def": 0,
+    "enum": null,
+    "min": 0,
+    "max": 100,
+    "step": null,
+    "note": "EXT-22: שוליים שמאליים של תיבת שער משנה במ״מ (0=אוטומטי; builder-sub-left במקור)"
+  },
+  {
+    "id": "shaar-back-box-top",
+    "control": "rng-shaar-back-box-top",
+    "panel": "ערכות נושא, שערים ורקעים",
+    "panelKey": "THEMES",
+    "labelHe": "shaar-back-box-top",
+    "type": "number",
+    "def": 0,
+    "enum": null,
+    "min": 0,
+    "max": 130,
+    "step": null,
+    "note": "EXT-22: שוליים עליונים של תיבת שער אחורי במ״מ (0=אוטומטי; builder-back-top במקור)"
+  },
+  {
+    "id": "shaar-back-box-bottom",
+    "control": "rng-shaar-back-box-bottom",
+    "panel": "ערכות נושא, שערים ורקעים",
+    "panelKey": "THEMES",
+    "labelHe": "shaar-back-box-bottom",
+    "type": "number",
+    "def": 0,
+    "enum": null,
+    "min": 0,
+    "max": 130,
+    "step": null,
+    "note": "EXT-22: שוליים תחתונים של תיבת שער אחורי במ״מ (0=אוטומטי; builder-back-bottom במקור)"
+  },
+  {
+    "id": "shaar-back-box-right",
+    "control": "rng-shaar-back-box-right",
+    "panel": "ערכות נושא, שערים ורקעים",
+    "panelKey": "THEMES",
+    "labelHe": "shaar-back-box-right",
+    "type": "number",
+    "def": 0,
+    "enum": null,
+    "min": 0,
+    "max": 100,
+    "step": null,
+    "note": "EXT-22: שוליים ימניים של תיבת שער אחורי במ״מ (0=אוטומטי; builder-back-right במקור)"
+  },
+  {
+    "id": "shaar-back-box-left",
+    "control": "rng-shaar-back-box-left",
+    "panel": "ערכות נושא, שערים ורקעים",
+    "panelKey": "THEMES",
+    "labelHe": "shaar-back-box-left",
+    "type": "number",
+    "def": 0,
+    "enum": null,
+    "min": 0,
+    "max": 100,
+    "step": null,
+    "note": "EXT-22: שוליים שמאליים של תיבת שער אחורי במ״מ (0=אוטומטי; builder-back-left במקור)"
   },
   {
     "id": "background-page-type",
@@ -10418,7 +11618,10 @@ function renderPageBackgroundAndShaar(page, settings, doc, metadata) {
     els.push(el);
   }
   // עזר: שער במסך מלא מהפניה פתורה + תיבת כותרת לפי box מהעיצוב (אם נרשם)
-  const fullShaar = (slotName, cssClass, boxClass) => {
+  // **EXT-22:** תיבה מפורשת מההגדרות (shaar-{kind}-box-* במ״מ; 0=אוטומטי —
+  // builder-{kind}-{side} של המקור) גוברת על תיבת העיצוב; לכל שער ה-kind
+  // שלו (בעבר כולם קיבלו את תיבת ה-main).
+  const fullShaar = (slotName, cssClass, boxClass, kind) => {
     const slot = plan.slots.find(s => s.slot === slotName && s.asset);
     if (!slot) return;
     const resolved = resolveAssetRef(slot.asset);
@@ -10428,12 +11631,17 @@ function renderPageBackgroundAndShaar(page, settings, doc, metadata) {
     bg.style.backgroundImage = `url("${uri}")`;
     bg.style.inset = '0';
     els.push(bg);
-    // תיבת כותרת — מה-box של העיצוב ברישום (מ״מ) או מההגדרות; בלי box מהעיצוב —
-    // ה-fallback המסורתי של resolveShaarBox (REQ-ORN-05: התיבה תמיד נבנית על שער עם תמונה)
+    // תיבת כותרת — מפורש מההגדרות (EXT-22) > מה-box של העיצוב ברישום (מ״מ) >
+    // מההגדרות הישנות > ה-fallback המסורתי של resolveShaarBox (REQ-ORN-05).
+    const kk = kind || 'main';
+    const ovr = (side) => { const v = Number(settings[`shaar-${kk}-box-${side}`]); return v > 0 ? v : null; };
+    const explicit = (ovr('top') || ovr('bottom') || ovr('right') || ovr('left'))
+      ? { top: ovr('top') != null ? ovr('top') : 40, bottom: ovr('bottom') != null ? ovr('bottom') : 40, right: ovr('right') != null ? ovr('right') : 30, left: ovr('left') != null ? ovr('left') : 30 }
+      : null;
     const designBox = resolved.item && resolved.item.box ? resolved.item.box : null;
-    const boxRef = designBox || settings['shaar-main-box'] || null;
+    const boxRef = explicit || designBox || settings['shaar-main-box'] || null;
     {
-      const { box } = resolveShaarBox('main', settings['theme-set-id'] || 'default', { box: boxRef }, null, { top: 40, bottom: 40, right: 30, left: 30 });
+      const { box } = resolveShaarBox(kk, settings['theme-set-id'] || 'default', { box: boxRef }, null, { top: 40, bottom: 40, right: 30, left: 30 });
       const tb = doc.createElement('div');
       tb.className = boxClass;
       tb.dir = 'rtl';
@@ -10447,9 +11655,9 @@ function renderPageBackgroundAndShaar(page, settings, doc, metadata) {
       els.push(tb);
     }
   };
-  fullShaar('shaar-main', 'deco deco--shaar-main', 'shaar-main-box');
-  fullShaar('shaar-sub', 'deco deco--shaar-sub', 'shaar-sub-box');
-  fullShaar('shaar-back-frame', 'deco deco--shaar-back', 'shaar-back-box');
+  fullShaar('shaar-main', 'deco deco--shaar-main', 'shaar-main-box', 'main');
+  fullShaar('shaar-sub', 'deco deco--shaar-sub', 'shaar-sub-box', 'sub');
+  fullShaar('shaar-back-frame', 'deco deco--shaar-back', 'shaar-back-box', 'back');
   return els;
 }
 
@@ -10747,7 +11955,15 @@ function renderLegacyPage(pg, settings, doc) {
       'shaar-back': { x: 95 * MMpx, w: 377.98 },
       'shaar-sub': { x: 15 * MMpx, w: GEO.PAGE_W - 110 * MMpx }
     };
-    const gbox = GATE_BOX[pg.type] || { x: BAND_X, w: BAND_W };
+    // **EXT-22 (builder-{kind}-{left,right}):** שוליים מפורשים במ״מ (0=אוטומטי)
+    // גוברים על הקבועים המכוילים — כמו המקרן ל-PDF (תצוגה=ייצוא).
+    const gbBase = GATE_BOX[pg.type] || { x: BAND_X, w: BAND_W };
+    const gateKind = pg.type === 'shaar-main' ? 'main' : pg.type === 'shaar-sub' ? 'sub' : 'back';
+    const govL = Number(settings[`shaar-${gateKind}-box-left`]);
+    const govR = Number(settings[`shaar-${gateKind}-box-right`]);
+    const geffL = govL > 0 ? Math.round(govL * MMpx) : gbBase.x;
+    const geffR = govR > 0 ? Math.round(govR * MMpx) : Math.max(0, GEO.PAGE_W - gbBase.x - gbBase.w);
+    const gbox = (govL > 0 || govR > 0) ? { x: geffL, w: Math.max(40, GEO.PAGE_W - geffL - geffR) } : gbBase;
     for (const g of (pg.gateLines || [])) {
       const el = mkLine(g.text, g.sizePt, 'center', pt2px(g.sizePt) * 1.3);
       el.className += ' band band--gate';
@@ -12790,8 +14006,51 @@ function pathToSubpaths(d, transform) {
   return { subpaths, x, y };
 }
 
-/** פענוח SVG שלם → { vbW, vbH, shapes: [{subpaths, fill}] } (מרחב viewBox). */
-function parseSvgPaint(svg) {
+/** **EXT-21 (שערים ב-PDF):** מטריצת טרנספורמציה [a,b,c,d,e,f] — הרכבה
+ * "החל A ואז B" (תואם לסדר SVG: אלמנט פנימי קודם, ה-<g> העוטף אחריו). */
+function composeMtx(A, B) {
+  return [
+    B[0] * A[0] + B[2] * A[1],
+    B[1] * A[0] + B[3] * A[1],
+    B[0] * A[2] + B[2] * A[3],
+    B[1] * A[2] + B[3] * A[3],
+    B[0] * A[4] + B[2] * A[5] + B[4],
+    B[1] * A[4] + B[3] * A[5] + B[5],
+  ];
+}
+
+/** **EXT-21:** פענוח transform מאטריבוט אלמנט/קבוצה למטריצה אחת (או null). */
+function parseTransformList(tr) {
+  if (!tr) return null;
+  const funcs = [];
+  const fre = /(matrix|translate|scale|rotate)\s*\(\s*([^)]+)\)/g;
+  let fm;
+  while ((fm = fre.exec(String(tr)))) {
+    const a = String(fm[2]).split(/[\s,]+/).map(Number);
+    if (fm[1] === 'matrix' && a.length >= 6) funcs.push([a[0], a[1], a[2], a[3], a[4], a[5]]);
+    else if (fm[1] === 'translate') funcs.push([1, 0, 0, 1, a[0] || 0, a[1] || 0]);
+    else if (fm[1] === 'scale') {
+      const kx = a[0] != null ? a[0] : 1, ky = a[1] != null ? a[1] : (a[0] != null ? a[0] : 1);
+      funcs.push([kx, 0, 0, ky, 0, 0]);
+    } else if (fm[1] === 'rotate') {
+      const ang = (a[0] || 0) * Math.PI / 180, cos = Math.cos(ang), sin = Math.sin(ang);
+      const cx = a[1] || 0, cy = a[2] || 0;
+      funcs.push([cos, sin, -sin, cos, cx - cos * cx + sin * cy, cy - sin * cx - cos * cy]);
+    }
+  }
+  if (!funcs.length) return null;
+  let acc = [1, 0, 0, 1, 0, 0];
+  for (const F of funcs) acc = composeMtx(acc, F);
+  return acc;
+}
+
+/** פענוח SVG שלם → { vbW, vbH, shapes: [{subpaths, fill, stroke}] } (מרחב viewBox).
+ * **EXT-21 (שערים ב-PDF):** הורחב — מילויי url(#grad) נפתרים לצבע הממוצע
+ * של עצירות הגרדיאנט; transform פר-אלמנט (כולל matrix של שער אחורי
+ * משוקף); <line>; ובאופציה {strokes:true} — גם קו מתאר (stroke) לצורות
+ * (מצויר כמסגרת-קוודים דקה). ברירות המחדל של הקטלוגים לא השתנו: מילוי
+ * בלבד, ללא strokes — כל הקריאות הקיימות מקבלות את אותה תוצאה. */
+function parseSvgPaint(svg, opts) {
   const s = String(svg || '');
   if (!s) return null;
   const vb = /viewBox\s*=\s*"([^"]+)"/.exec(s);
@@ -12805,43 +14064,43 @@ function parseSvgPaint(svg) {
   if (!vbH && hm) vbH = parseFloat(hm[1]);
   if (!vbW || !vbH) return null;
 
+  // **EXT-21:** מלאי גרדיאנטים מ-<defs> — לפי מזהה; צבע = ממוצע העצירות
+  // (קירוב דפוסי: הפרשי הגרדיאנטים של ערכות השערים עדינים, #f2f2f2→#e2e2e2).
+  const gradients = new Map();
+  const gradRe = /<(linearGradient|radialGradient)\b([^>]*)>([\s\S]*?)<\/\1\s*>/g;
+  let gm;
+  while ((gm = gradRe.exec(s))) {
+    const idm = /\bid\s*=\s*"([^"]+)"/.exec(gm[2]);
+    if (!idm) continue;
+    const cols = [];
+    const stopRe = /<stop\b([^>]*)>/g;
+    let sm;
+    while ((sm = stopRe.exec(gm[3]))) {
+      const cm = /stop-color\s*=\s*"([^"]+)"/.exec(sm[1]);
+      if (cm) cols.push(parseColor(cm[1]));
+    }
+    if (cols.length) gradients.set(idm[1], [0, 1, 2].map(k => cols.reduce((acc, c) => acc + (c ? c[k] : 0), 0) / cols.length));
+  }
+  const resolveFillAttr = (f) => {
+    if (f == null) return [0, 0, 0]; // ברירת המחדל של SVG — שחור
+    const t = String(f).trim();
+    if (t === 'none' || t === 'transparent') return null;
+    const um = /^url\(\s*['"]?#([^'")\s]+)/.exec(t);
+    if (um) return gradients.get(um[1]) || null; // גרדיאנט לא ידוע — שקוף
+    return parseColor(t);
+  };
+
   // transform של <g> — **S70 (R6):** תמיכה מלאה ב-translate/scale/matrix
   // (כולל רשימות) עם הרכבה לפי סדר SVG: הפונקציה השמאלית מוחלת אחרונה.
   let tx = 0, ty = 0, sx = 1, sy = 1;
   let mtx = null; // [a,b,c,d,e,f] כאשר x' = a·x + c·y + e ; y' = b·x + d·y + f
   const gt = /<g\b[^>]*transform\s*=\s*"([^"]+)"/.exec(s);
   if (gt) {
-    const tr = gt[1];
-    const funcs = [];
-    const fre = /(matrix|translate|scale)\s*\(\s*([^)]+)\)/g;
-    let fm;
-    while ((fm = fre.exec(tr))) {
-      const a = fm[2].split(/[\s,]+/).map(Number);
-      if (fm[1] === 'matrix' && a.length >= 6) funcs.push([a[0], a[1], a[2], a[3], a[4], a[5]]);
-      else if (fm[1] === 'translate') funcs.push([1, 0, 0, 1, a[0] || 0, a[1] || 0]);
-      else if (fm[1] === 'scale') {
-        const kx = a[0] != null ? a[0] : 1, ky = a[1] != null ? a[1] : (a[0] != null ? a[0] : 1);
-        funcs.push([kx, 0, 0, ky, 0, 0]);
-      }
-    }
-    // הרכבה לפי סדר SVG: השמאלית חיצונית (מוחלת אחרונה) — acc_new = acc ∘ F
-    // (אימות: "translate(10,0) scale(2)" ⇒ x'=2x+10 ✓)
-    let acc = [1, 0, 0, 1, 0, 0];
-    for (const F of funcs) {
-      acc = [
-        acc[0] * F[0] + acc[2] * F[1],
-        acc[1] * F[0] + acc[3] * F[1],
-        acc[0] * F[2] + acc[2] * F[3],
-        acc[1] * F[2] + acc[3] * F[3],
-        acc[0] * F[4] + acc[2] * F[5] + acc[4],
-        acc[1] * F[4] + acc[3] * F[5] + acc[5],
-      ];
-    }
-    mtx = acc;
+    mtx = parseTransformList(gt[1]);
     // תאימות לאחור: טרנספורמציה בודדת translate/scale — שמירת tx/ty/sx/sy
-    const tm = /translate\(\s*([-\d.]+)[\s,]+([-\d.]+)/.exec(tr);
+    const tm = /translate\(\s*([-\d.]+)[\s,]+([-\d.]+)/.exec(gt[1]);
     if (tm) { tx = parseFloat(tm[1]); ty = parseFloat(tm[2]); }
-    const sm = /scale\(\s*([-\d.]+)(?:[\s,]+([-\d.]+))?\)/.exec(tr);
+    const sm = /scale\(\s*([-\d.]+)(?:[\s,]+([-\d.]+))?\)/.exec(gt[1]);
     if (sm) { sx = parseFloat(sm[1]); sy = sm[2] != null ? parseFloat(sm[2]) : sx; }
   }
   const transform = (pts) => {
@@ -12855,16 +14114,49 @@ function parseSvgPaint(svg) {
     }
     return out;
   };
-
-  const shapes = [];
-  const pushShape = (d, fillAttr, strokeAttr) => {
-    if (strokeAttr && strokeAttr !== 'none') return; // קווים חיצוניים — מחוץ לתת-הקבוצה (לא קיימים בקטלוג)
-    const { subpaths } = pathToSubpaths(d, transform);
-    if (!subpaths.length) return;
-    shapes.push({ subpaths, fill: parseColor(fillAttr) });
+  // **EXT-21:** הרכבת transform פר-אלמנט על זה של ה-<g> (האלמנט פנימי — קודם).
+  const shapeTransform = (attrs) => {
+    const tm = /\btransform\s*=\s*"([^"]+)"/.exec(attrs || '');
+    if (!tm) return transform;
+    const el = parseTransformList(tm[1]);
+    if (!el) return transform;
+    if (mtx) {
+      const comb = composeMtx(el, mtx);
+      return (pts) => {
+        const out = [];
+        for (let i = 0; i + 1 < pts.length; i += 2) out.push(comb[0] * pts[i] + comb[2] * pts[i + 1] + comb[4], comb[1] * pts[i] + comb[3] * pts[i + 1] + comb[5]);
+        return out;
+      };
+    }
+    return (pts) => {
+      const out = [];
+      for (let i = 0; i + 1 < pts.length; i += 2) out.push(el[0] * pts[i] + el[2] * pts[i + 1] + el[4], el[1] * pts[i] + el[3] * pts[i + 1] + el[5]);
+      return out;
+    };
   };
 
-  // <path> — fill מהאלמנט או מה-<g> שעוטף (inherit)
+  const wantStrokes = !!(opts && opts.strokes);
+  const shapes = [];
+  const pushShape = (d, fillAttr, strokeAttr, strokeWAttr, attrs) => {
+    // **EXT-21:** צורות עם stroke — עד כאן נדחו סופית; כעת נשמרות (מילוי +
+    // מסגרת) רק כשהאופציה הופעלה (עיצובי שער מהספרייה). ברירת המחדל —
+    // התנהגות הקטלוגים ההיסטורית נשמרת במדויק (דחייה).
+    if (strokeAttr && strokeAttr !== 'none' && !wantStrokes) return;
+    const fillCol = resolveFillAttr(fillAttr);
+    const strokeCol = (wantStrokes && strokeAttr && strokeAttr !== 'none') ? parseColor(strokeAttr) : null;
+    if (fillCol == null && !strokeCol) return;
+    const tf = shapeTransform(attrs);
+    const { subpaths } = pathToSubpaths(d, tf);
+    if (!subpaths.length) return;
+    let stroke = null;
+    if (strokeCol) {
+      const w = /([\d.]+)/.exec(String(strokeWAttr != null ? strokeWAttr : ''));
+      stroke = { color: strokeCol, width: w ? parseFloat(w[1]) : 1 };
+    }
+    shapes.push({ subpaths, fill: fillCol, stroke });
+  };
+
+  // <path> — fill מהאלמנט או מה-<g> שעוטף (inherit); **EXT-21:** + stroke-width/transform פר-אלמנט
   const gFill = /<g\b[^>]*\bfill\s*=\s*"([^"]+)"/.exec(s);
   const gStroke = /<g\b[^>]*\bstroke\s*=\s*"([^"]+)"/.exec(s);
   const pathRe = /<path\b([^>]*)>/g;
@@ -12875,7 +14167,8 @@ function parseSvgPaint(svg) {
     if (!d) continue;
     const fill = /fill\s*=\s*"([^"]+)"/.exec(attrs);
     const stroke = /stroke\s*=\s*"([^"]+)"/.exec(attrs);
-    pushShape(d[1], fill ? fill[1] : (gFill ? gFill[1] : '#000'), stroke ? stroke[1] : (gStroke ? gStroke[1] : 'none'));
+    const sw = /stroke-width\s*=\s*"([^"]+)"/.exec(attrs);
+    pushShape(d[1], fill ? fill[1] : (gFill ? gFill[1] : '#000'), stroke ? stroke[1] : (gStroke ? gStroke[1] : 'none'), sw ? sw[1] : null, attrs);
   }
   // <circle>/<ellipse> — ארבע קשתות בזייה
   const circRe = /<(circle|ellipse)\b([^>]*)>/g;
@@ -12893,17 +14186,45 @@ function parseSvgPaint(svg) {
       + `C ${cx - rx * k} ${cy + ry} ${cx - rx} ${cy + ry * k} ${cx - rx} ${cy} Z`;
     const fill = /fill\s*=\s*"([^"]+)"/.exec(at);
     const stroke = /stroke\s*=\s*"([^"]+)"/.exec(at);
-    pushShape(d, fill ? fill[1] : '#000', stroke ? stroke[1] : 'none');
+    const sw = /stroke-width\s*=\s*"([^"]+)"/.exec(at);
+    pushShape(d, fill ? fill[1] : '#000', stroke ? stroke[1] : 'none', sw ? sw[1] : null, at);
   }
-  // <rect>
-  const rectRe = /<rect\b([^>]*)>/g;
+  // <rect> — **EXT-21:** גם transform פר-אלמנט + stroke/stroke-width (אופציונלי)
+  const rectRe = /<rect\b([^>]*)(?:\/>|>)/g;
   while ((m = rectRe.exec(s))) {
     const at = m[1];
-    const num = (k) => { const r = new RegExp(`\\b${k}\\s*=\\s*"([\\d.]+)"`).exec(at); return r ? parseFloat(r[1]) : 0; };
+    const num = (k) => { const r = new RegExp(`\\b${k}\\s*=\\s*"([-\\d.]+)"`).exec(at); return r ? parseFloat(r[1]) : 0; };
     const x0 = num('x'), y0 = num('y'), w = num('width'), h = num('height');
     if (!w || !h) continue;
     const fill = /fill\s*=\s*"([^"]+)"/.exec(at);
-    pushShape(`M ${x0} ${y0} L ${x0 + w} ${y0} L ${x0 + w} ${y0 + h} L ${x0} ${y0 + h} Z`, fill ? fill[1] : '#000', 'none');
+    const stroke = /stroke\s*=\s*"([^"]+)"/.exec(at);
+    const sw = /stroke-width\s*=\s*"([^"]+)"/.exec(at);
+    pushShape(`M ${x0} ${y0} L ${x0 + w} ${y0} L ${x0 + w} ${y0 + h} L ${x0} ${y0 + h} Z`, fill ? fill[1] : '#000', stroke ? stroke[1] : 'none', sw ? sw[1] : null, at);
+  }
+  // **EXT-21:** <line> — קטע עם stroke ⇒ מלבן דק ממולא לאורך הקטע (רק עם strokes)
+  if (wantStrokes) {
+    const lineRe = /<line\b([^>]*)(?:\/>|>)/g;
+    while ((m = lineRe.exec(s))) {
+      const at = m[1];
+      const num = (k) => { const r = new RegExp(`\\b${k}\\s*=\\s*"([-\\d.]+)"`).exec(at); return r ? parseFloat(r[1]) : null; };
+      const x1 = num('x1'), y1 = num('y1'), x2 = num('x2'), y2 = num('y2');
+      if (x1 == null || y1 == null || x2 == null || y2 == null) continue;
+      const stroke = /stroke\s*=\s*"([^"]+)"/.exec(at);
+      if (!stroke || stroke[1] === 'none') continue;
+      const sw = /stroke-width\s*=\s*"([^"]+)"/.exec(at);
+      const col = parseColor(stroke[1]);
+      if (!col) continue;
+      const wd = sw ? parseFloat(sw[1]) : 1;
+      const tf = shapeTransform(at);
+      const pts = tf([x1, y1, x2, y2]);
+      const ax = pts[0], ay = pts[1], bx = pts[2], by = pts[3];
+      const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy);
+      if (!len) continue;
+      const nx = (-dy / len) * (wd / 2), ny = (dx / len) * (wd / 2);
+      const d = `M ${ax + nx} ${ay + ny} L ${bx + nx} ${by + ny} L ${bx - nx} ${by - ny} L ${ax - nx} ${ay - ny} Z`;
+      const { subpaths } = pathToSubpaths(d, (p) => p); // הקואורדינטות כבר עברו tf
+      if (subpaths.length) shapes.push({ subpaths, fill: col, stroke: null });
+    }
   }
   // **S70 (R6):** <polygon>/<polyline> — points לנתיב; polygon נסגר (Z)
   // וממולא כברירת מחדל; polyline נצבע רק אם יש לו fill מפורש (קו-בלבד
@@ -12921,7 +14242,7 @@ function parseSvgPaint(svg) {
     let d = `M ${nums[0]} ${nums[1]}`;
     for (let i = 2; i + 1 < nums.length; i += 2) d += ` L ${nums[i]} ${nums[i + 1]}`;
     if (m[1] === 'polygon') d += ' Z';
-    pushShape(d, fill ? fill[1] : (gFill ? gFill[1] : '#000'), stroke ? stroke[1] : (gStroke ? gStroke[1] : 'none'));
+    pushShape(d, fill ? fill[1] : (gFill ? gFill[1] : '#000'), stroke ? stroke[1] : (gStroke ? gStroke[1] : 'none'), null, at);
   }
   if (!shapes.length) return null;
   return { vbW, vbH, shapes };
@@ -12951,37 +14272,75 @@ function parseColor(c) {
  * @param {number} hPt — גובה העמוד ב-pt (היפוך y)
  * @param {number} PX_TO_PT
  * @returns {string[]} פעולות PDF (m/l/c/h/f + rg) */
-function svgToPdfOps(paint, rectPx, hPt, PX_TO_PT) {
+function svgToPdfOps(paint, rectPx, hPt, PX_TO_PT, mode) {
   const { vbW, vbH, shapes } = paint;
-  // meet: סקייל אחיד מרבי שנכנס, ממורכז
-  const s = Math.min(rectPx.w / vbW, rectPx.h / vbH);
-  const drawW = vbW * s, drawH = vbH * s;
-  const offX = rectPx.x + (rectPx.w - drawW) / 2;
-  const offY = rectPx.y + (rectPx.h - drawH) / 2;
-  const X = (vx) => (offX + vx * s) * PX_TO_PT;
-  const Y = (vy) => hPt - (offY + vy * s) * PX_TO_PT;
+  let sX, sY, offX, offY;
+  if (mode === 'stretch') {
+    // **EXT-21 (שערים ב-PDF):** מתיחה מלאה לתיבה — כמו background-size:100% 100%
+    sX = rectPx.w / vbW; sY = rectPx.h / vbH;
+    offX = rectPx.x; offY = rectPx.y;
+  } else {
+    // meet: סקייל אחיד מרבי שנכנס, ממורכז
+    const s = Math.min(rectPx.w / vbW, rectPx.h / vbH);
+    sX = s; sY = s;
+    const drawW = vbW * s, drawH = vbH * s;
+    offX = rectPx.x + (rectPx.w - drawW) / 2;
+    offY = rectPx.y + (rectPx.h - drawH) / 2;
+  }
+  const X = (vx) => (offX + vx * sX) * PX_TO_PT;
+  const Y = (vy) => hPt - (offY + vy * sY) * PX_TO_PT;
   const r2 = (v) => Math.round(v * 100) / 100;
   const ops = [];
   for (const sh of shapes) {
-    const col = sh.fill || [0, 0, 0];
-    ops.push(`${r2(col[0])} ${r2(col[1])} ${r2(col[2])} rg`);
-    for (const sub of sh.subpaths) {
-      let started = false;
-      for (const seg of sub) {
-        const p = seg.pts;
-        if (seg.op === 'M') {
-          if (started) ops.push('h f');
-          ops.push(`${r2(X(p[0]))} ${r2(Y(p[1]))} m`);
-          started = true;
-        } else if (seg.op === 'L') {
-          if (!started) { ops.push(`${r2(X(p[0]))} ${r2(Y(p[1]))} m`); started = true; }
-          ops.push(`${r2(X(p[2]))} ${r2(Y(p[3]))} l`);
-        } else if (seg.op === 'C') {
-          if (!started) { ops.push(`${r2(X(p[0]))} ${r2(Y(p[1]))} m`); started = true; }
-          ops.push(`${r2(X(p[2]))} ${r2(Y(p[3]))} ${r2(X(p[4]))} ${r2(Y(p[5]))} ${r2(X(p[6]))} ${r2(Y(p[7]))} c`);
+    if (sh.fill == null && !sh.stroke) continue;
+    if (sh.fill != null) {
+      const col = sh.fill;
+      ops.push(`${r2(col[0])} ${r2(col[1])} ${r2(col[2])} rg`);
+      for (const sub of sh.subpaths) {
+        let started = false;
+        for (const seg of sub) {
+          const p = seg.pts;
+          if (seg.op === 'M') {
+            if (started) ops.push('h f');
+            ops.push(`${r2(X(p[0]))} ${r2(Y(p[1]))} m`);
+            started = true;
+          } else if (seg.op === 'L') {
+            if (!started) { ops.push(`${r2(X(p[0]))} ${r2(Y(p[1]))} m`); started = true; }
+            ops.push(`${r2(X(p[2]))} ${r2(Y(p[3]))} l`);
+          } else if (seg.op === 'C') {
+            if (!started) { ops.push(`${r2(X(p[0]))} ${r2(Y(p[1]))} m`); started = true; }
+            ops.push(`${r2(X(p[2]))} ${r2(Y(p[3]))} ${r2(X(p[4]))} ${r2(Y(p[5]))} ${r2(X(p[6]))} ${r2(Y(p[7]))} c`);
+          }
+        }
+        if (started) ops.push('h f');
+      }
+    }
+    // **EXT-21:** מסגרת stroke — קווד דק לכל קצה ישר של תת-הנתיב (רוחב הקו
+    // ביחידות viewBox, מוכפל בסקייל הציר; מסגרות השערים 0.3-0.4mm ⇒ ~1px).
+    if (sh.stroke) {
+      const st = sh.stroke;
+      const col = st.color;
+      ops.push(`${r2(col[0])} ${r2(col[1])} ${r2(col[2])} rg`);
+      for (const sub of sh.subpaths) {
+        let prev = null;
+        for (const seg of sub) {
+          const p = seg.pts;
+          let ex, ey;
+          if (seg.op === 'M') { ex = p[0]; ey = p[1]; prev = null; }
+          else if (seg.op === 'L') { ex = p[2]; ey = p[3]; }
+          else if (seg.op === 'C') { ex = p[6]; ey = p[7]; }
+          else continue;
+          if (prev && seg.op === 'L') {
+            const px = prev[0], py = prev[1];
+            const dx = ex - px, dy = ey - py, len = Math.hypot(dx, dy);
+            if (len > 1e-6) {
+              const nx = (-dy / len) * (st.width / 2), ny = (dx / len) * (st.width / 2);
+              ops.push(`${r2(X(px + nx))} ${r2(Y(py + ny))} m ${r2(X(ex + nx))} ${r2(Y(ey + ny))} l ${r2(X(ex - nx))} ${r2(Y(ey - ny))} l ${r2(X(px - nx))} ${r2(Y(py - ny))} l h f`);
+            }
+          }
+          prev = [ex, ey];
         }
       }
-      if (started) ops.push('h f');
     }
   }
   return ops;
@@ -13015,8 +14374,8 @@ function svgInkBBox(paint, rectPx) {
 }
 
 module.exports = {
-  BUILTIN_SVGS, ornamentInk, svgToDataUri,
-  parseSvgPaint, svgToPdfOps, svgInkBBox, parsePathD, pathToSubpaths, parseColor
+  BUILTIN_SVGS, ornamentInk, svgToDataUri, decodeDataUriSvg,
+  parseSvgPaint, svgToPdfOps, svgInkBBox, parsePathD, pathToSubpaths, parseColor, composeMtx, parseTransformList
 };
 
 };
@@ -13163,19 +14522,29 @@ __modules["src/engine/output/shaar-content.js"] = function (require, module, exp
 const MM_TO_PX = 96 / 25.4;
 const PT = (v) => v * (96 / 72); // "mm-ish" units of the legacy calibration → px
 
-/** תיבת השער לפי הסוג — מיקומי המקור (מ"מ → פיקסלים). */
+/** תיבת השער לפי הסוג — מיקומי המקור (מ"מ → פיקסלים).
+ * **EXT-22:** שוליים מפורשים מההגדרות (shaar-{kind}-box-{side} במ״מ; 0=אוטומטי
+ * — builder-{kind}-{side} של המקור הירוק) גוברים על המיקומים המקוריים;
+ * ברירות המחדל (0) משמרות את התיבות המכוילות בדיוק. */
 function shaarBoxOf(type, settings) {
   const imudProf = !!(settings && (settings['_layout-profile'] === 'imud' || settings._imudRaw));
   const mode = imudProf ? 'fixed' : null;
   const mm = (v) => Math.round(v * MM_TO_PX);
+  let box;
   if (type === 'shaar-main') {
-    return { top: mm(20), bottom: mm(16), right: mm(15), left: mm(15), mode: mode || 'between' };
+    box = { top: mm(20), bottom: mm(16), right: mm(15), left: mm(15), mode: mode || 'between' };
+  } else if (type === 'shaar-sub') {
+    box = { top: mm(20), bottom: mm(20), right: mm(95), left: mm(15), mode: mode || 'center' };
+  } else {
+    // shaar-back
+    box = { top: mm(22), bottom: mm(18), right: mm(15), left: mm(95), mode: mode || 'center' };
   }
-  if (type === 'shaar-sub') {
-    return { top: mm(20), bottom: mm(20), right: mm(95), left: mm(15), mode: mode || 'center' };
+  const kind = type === 'shaar-main' ? 'main' : type === 'shaar-sub' ? 'sub' : 'back';
+  for (const side of ['top', 'bottom', 'right', 'left']) {
+    const v = Number(settings && settings[`shaar-${kind}-box-${side}`]);
+    if (v > 0) box[side] = mm(v);
   }
-  // shaar-back
-  return { top: mm(22), bottom: mm(18), right: mm(15), left: mm(95), mode: mode || 'center' };
+  return box;
 }
 
 /** פיצול מקף של כותרת חלק (renderSubShaar המקורי): main=לפני, sub=אחרי. */
@@ -16038,7 +17407,25 @@ const RED_SETTING_BRIDGE_S77 = {
   'size-body': 'body-font-size-pt',
   'line-height-body': 'body-line-height',
   's-h0-body': 'heading-0-body-size-pt',
-  'f-h0-body': 'heading-0-body-font'
+  'f-h0-body': 'heading-0-body-font',
+  // **EXT-22 (השוואה עם המקור הירוק — להוספה בלבד):** הרחבת הגשר — התנהגויות
+  // פתיחה/סימן/הערות שנקראו מה-raw בלבד (b/n ב-readConfig) + גדלי
+  // תוכן-העניינים פר-רמה (s-gtoc-N/s-dtoc-N). ברירות המחדל של הרישום
+  // זהות לקבועים המכוילים — ה-digest נשמר; שינוי חי בפאנל משפיע מיד.
+  'odd-h0': 'odd-h0',
+  'odd-h1': 'odd-h1',
+  'odd-h2': 'odd-h2',
+  'h2-auto-siman': 'h2-auto-siman',
+  'h2-reset-siman': 'h2-reset-siman',
+  's-siman': 'siman-size-pt',
+  'note-marker-size': 'note-marker-size',
+  'note-listing-num-size': 'note-listing-num-size',
+  'note-num-separator': 'note-num-separator',
+  ...[1, 2, 3, 4, 5, 6, 7].reduce((acc, lvl) => {
+    acc[`s-gtoc-${lvl}`] = `toc-gsize-${lvl}`;
+    acc[`s-dtoc-${lvl}`] = `toc-dsize-${lvl}`;
+    return acc;
+  }, {})
 };
 // **EXT-20:** תרגום אוצר-מילים של סגנונות שאין זהות בין הרישום ל-raw —
 // מופה כאן פעם אחת (drop-word-mode לעיל מטופל ב-g עצמו).
@@ -17119,13 +18506,36 @@ function legacyTypeset(rawText, settings, env) {
     const shYearFontApi = fontApiFor(settings['shaar-year-font']);
     const h1FontApi = fontApiFor(settings['heading-1-font']);
     const h1SubFontApi = fontApiFor('David Libre');
+    // **EXT-22 (builder-{kind}-{left,right} של המקור):** רוחב תיבת השער
+    // משוליים מפורשים במ״מ (0=אוטומטי — 15/15 לראשי, 95/15 לאחורי,
+    // 15/95 למשנה). משמש לעטיפת השורות (מדידה=רינדור) ולמיקום האופקי
+    // במקרנים (dom-renderer + legacy-projector — תצוגה=ייצוא).
+    const gateBoxW = (kind, dfltL, dfltR) => {
+      const L = Number(settings[`shaar-${kind}-box-left`]);
+      const R = Number(settings[`shaar-${kind}-box-right`]);
+      const mm = 96 / 25.4;
+      const effL = L > 0 ? L : dfltL;
+      const effR = R > 0 ? R : dfltR;
+      return Math.max(40, GEO.PAGE_W - (effL + effR) * mm);
+    };
+    // **EXT-22 (builder-{kind}-{top,bottom}):** היסט אנכי של בלוק שורות השער —
+    // top מזיז את הבלוק מטה מגובה ברירת המחדל, bottom מעלה (כשקטן מברירת
+    // המחדל). 0=אוטומטי — אין היסט (העוגנים המכוילים נשמרים בדיוק).
+    const gateYShift = (kind, dfltTop, dfltBot) => {
+      const T = Number(settings[`shaar-${kind}-box-top`]);
+      const B = Number(settings[`shaar-${kind}-box-bottom`]);
+      const mm = 96 / 25.4;
+      const dTop = T > 0 ? (T - dfltTop) * mm : 0;
+      const dBot = B > 0 && B < dfltBot ? (dfltBot - B) * mm : 0;
+      return Math.round(dTop - dBot);
+    };
     if (type === 'shaar-main') {
       // **D-89:** צבעי הייחוס — הכותרת/המהדורה/המחבר ב-#0F172A (נמדד בעמ' 1,
       // 46pt/11pt/15pt), הנושא והתיאור ב-#0F1749 (מצוירים שם כקטועים).
       // **S6.3:** גדלים מההגדרות (s-sh-*) + גופן לכל שורה (f-sh-*) + עטיפת
       // הכותרת בגופן שלה (במקור: div עם רוחב התיבה — עוטף אוטומטית).
       const out = [];
-      const mainBoxW = GEO.PAGE_W - 30 * (96 / 25.4);
+      const mainBoxW = gateBoxW('main', 15, 15);
       const titleLines = wrapGate(meta.bookTitle, cfg.shTitle, mainBoxW, shTitleFontApi);
       const lineHOf = (sz) => sz * (96 / 72) * 1.3;
       // **S6.3 (בטיחות עטיפה):** כותרת שנעטפה לשניים דוחפת את הכותרת-המשנה
@@ -17147,6 +18557,12 @@ function legacyTypeset(rawText, settings, env) {
       }));
       out.push({ text: meta.edition || '', sizePt: cfg.shSec, y: pt(558.0), singleOp: true, color: colOf(settings['shaar-sections-color']), font: settings['shaar-sections-font'] || null });
       out.push({ text: meta.author || '', sizePt: cfg.shAuthor, y: pt(713.5), singleOp: true, color: colOf(settings['shaar-author-color']), font: settings['shaar-author-font'] || null });
+      const dyMain = gateYShift('main', 20, 16);
+      if (dyMain) out.forEach(g => { g.y += dyMain; });
+      const dyBack = gateYShift('back', 22, 18);
+      if (dyBack) out.forEach(g => { g.y += dyBack; });
+      const dySub = gateYShift('sub', 20, 20);
+      if (dySub) out.forEach(g => { g.y += dySub; });
       return out.filter(g => g.text);
     }
     if (type === 'shaar-back') {
@@ -17165,7 +18581,7 @@ function legacyTypeset(rawText, settings, env) {
       // העטיפה נמדדת באותו גופן (wrapGate) — המדידה = הרינדור.
       const shBackFontApi = fontApiFor(settings['shaar-back-text-font']);
       const backFont = settings['shaar-back-text-font'] || null;
-      const backBoxW = GEO.PAGE_W - 110 * (96 / 25.4);
+      const backBoxW = gateBoxW('back', 95, 15); // **EXT-22**
       const copyright = cfg.backCopyright || meta.copyright || '';
       const publisher = cfg.backPublishing || meta.publisher || '';
       const contact = cfg.backContact || meta.contact || '';
@@ -17195,7 +18611,7 @@ function legacyTypeset(rawText, settings, env) {
       // ונעטפת לרוחב תיבת השער (378px) כמו ה-div במקור.
       // **S6.3:** גודל הכותרת מההגדרות (s-h1; במקור 50pt) וגופן הרמה
       // (f-h1 ⇒ Lia Sgula); ההמשך ב-f-h1-sub של המקור (David Libre).
-      const subBoxW = GEO.PAGE_W - 110 * (96 / 25.4);
+      const subBoxW = gateBoxW('sub', 15, 95); // **EXT-22**
       const h1Lines = wrapGate(first, cfg.h1Size, subBoxW, h1FontApi);
       const h1LineH = cfg.h1Size * (96 / 72) * 1.3;
       // **S6.3 (בטיחות עטיפה):** כמו בשער הראשי — ההמשך לפחות 25px מתחת
@@ -17279,7 +18695,11 @@ function legacyTypeset(rawText, settings, env) {
           const areaH = spanExempt ? 261.3 : H2_AREA_H;
           if (cfg.autoSimanH2) {
             simanCounter++;
-            pg.bands.push({ kind: 'h2-siman', text: 'סימן ' + toGematria(simanCounter), sizePt: SZ.siman, y: spanExempt ? 284.9 : 307.88, h: 36, tokenId: null });
+            // **EXT-22:** גודל וגופן פס הסימן מההגדרות החיות (s-siman/f-siman
+            // של המקור; ברירות מחדל 20pt/ירושת הכותרות — הקבועים המכוילים).
+            const simanSz = Number(settings['siman-size-pt']) > 0 ? Number(settings['siman-size-pt']) : SZ.siman;
+            const simanFam = settings['siman-font'] ? String(settings['siman-font']) : '';
+            pg.bands.push({ kind: 'h2-siman', text: 'סימן ' + toGematria(simanCounter), sizePt: simanSz, y: spanExempt ? 284.9 : 307.88, h: 36, tokenId: null, ...(simanFam ? { font: simanFam } : {}) });
           }
           const disp = sec.newPage.text.replace(/^סימן\s+[א-ת]+[:\-–—\s]*/i, '').trim();
           // **S4.24 (כותרת-h2 ארוכה מהפס — עטיפה):** נמדד בחי — "בענין הזכרת
@@ -18078,7 +19498,10 @@ function legacyTypeset(rawText, settings, env) {
             // ההתנהגות ההיסטורית ('א' בגודל הגוף).
             fnResetMode === 'siman' ? {
               markerOf: (i) => fnChapterCounter + i + 1,
-              markerSizePt: cfg.fnListingNumSize,
+              // **EXT-22:** מדידת סמן הגוף בגודל הסמן (note-marker-size) —
+              // כמו הרינדור במקרן (projCfg.markerSize); ברירות המחדל זהות (8)
+              // — ה-digest נשמר. בעבר נמדד בגודל הרישום (fnListingNumSize).
+              markerSizePt: cfg.fnMarkerSize,
               markerMeasure: (t, sz) => fnApi.measureTextWidth(t, sz, 0),
               bodySizePt: bodySz,
               bodyMeasure: (t, sz) => (isH0Body && prefaceApi ? prefaceApi : { measureTextWidth: (tt, ss) => brk.w(tt, ss) }).measureTextWidth(t, sz, 0)
@@ -19054,12 +20477,15 @@ function legacyTypeset(rawText, settings, env) {
   // IMUD נותן ערכי פתיחה המשמרים את הפלט המכויל במדויק (רשימות המקור).
   const tocLevelShowS77 = (n) => settings[`toc-level-${n}-show`] === false ? false : true;
   const tocLevelInlineS77 = (n) => settings[`toc-level-${n}-inline`] === true;
-  const genShowRaw = Array.isArray(cfg.gtocShow) ? cfg.gtocShow : [1, 2, 3, 4, 5, 6];
-  const detShowRaw = Array.isArray(cfg.dtocShow) ? cfg.dtocShow : [2, 3, 4, 5, 6];
-  const lvlShown = (rawList, n) => tocLevelShowS77(n) && rawList.includes(n);
-  const genEntries = tokens.filter(t => t.type[0] === 'h' && lvlShown(genShowRaw, t.level))
+  // **EXT-22:** הצגה פר-סוג (gtoc-show/dtoc-show של המקור) — ערך הרישום גובר;
+  // המסכה המשותפת (toc-level-N-show) נשארת כ-AND. ברירות המחדל משחזרות את
+  // הרשימות המקוריות בדיוק (כללי 1–6, מפורט 2–6) — ה-digest נשמר; הדלקת
+  // רמה שמעבר לרשימת המקור (למשל 7) היא בחירה מפורשת של המשתמש.
+  const tocTypeShowS = (kind, n) => settings[(kind === 'det' ? 'toc-dshow-' : 'toc-gshow-') + n] !== false;
+  const lvlShown = (kind, n) => tocLevelShowS77(n) && tocTypeShowS(kind, n);
+  const genEntries = tokens.filter(t => t.type[0] === 'h' && lvlShown('gen', t.level))
     .map(t => ({ tokenId: t.id, level: t.level, text: t.text }));
-  const detEntries = tokens.filter(t => t.type[0] === 'h' && lvlShown(detShowRaw, t.level))
+  const detEntries = tokens.filter(t => t.type[0] === 'h' && lvlShown('det', t.level))
     .map(t => ({ tokenId: t.id, level: t.level, text: t.text }));
 
   // **S6.3:** גדלים נפרדים לכל תוכן-עניינים — s-gtoc-* מול s-dtoc-*
@@ -19112,12 +20538,16 @@ function legacyTypeset(rawText, settings, env) {
       const availW = Math.max(40, (x1 - GEO.TOC_NUM_X - 10) * 0.92);
       const lines = wrapTocRow(e.text, sizePt, availW);
       // **S6.3:** גופן השורה מההגדרות המקוריות (f-gtoc-*/f-dtoc-* ⇒ David
-      // Libre בברירת המחדל) — נקרא ישירות מה-raw (אין מפתח רישום נפרד
-      // לגופן ה-TOC); משפחה ראשונה מהמחסנית. הרינדור ב-dom-renderer לפי
-      // שדה ה-font.
+      // Libre בברירת המחדל). **EXT-22:** הגדרה חיה של הרישום (toc-gfont-N /
+      // toc-dfont-N) גוברת על ה-raw — אותו חוזה כמו שאר הגשר; משפחה ראשונה
+      // מהמחסנית. הרינדור ב-dom-renderer לפי שדה ה-font, וההקרנה ל-PDF לפי
+      // r.font (תצוגה=ייצוא).
       const rawFontKey = (kind === 'toc-detailed' ? 'f-dtoc-' : 'f-gtoc-') + e.level;
+      const liveFontKey = (kind === 'toc-detailed' ? 'toc-dfont-' : 'toc-gfont-') + e.level;
+      const liveFont = settings && settings[liveFontKey] ? String(settings[liveFontKey]) : '';
       const rawFontStack = String(rawSet[rawFontKey] || '');
-      const rawFirst = rawFontStack ? rawFontStack.replace(/'/g, '').split(',')[0].trim() : '';
+      const fontSrc = liveFont || rawFontStack;
+      const rawFirst = fontSrc ? fontSrc.replace(/'/g, '').split(',')[0].trim() : '';
       return {
         ...e, sizePt, x1, lines,
         h: tocRowH(e.level, sizes) + Math.max(0, lines.length - 1) * 26,
@@ -19125,10 +20555,15 @@ function legacyTypeset(rawText, settings, env) {
       };
     });
     // יחידות: h1 בודד; h2 + כל ה-h3..h6 שאחריו עד ה-h2 הבא
+    // **EXT-22:** קיבוץ פר-רמה ופר-סוג (gtoc-grp/dtoc-grp של המקור) — רמה
+    // עם קיבוץ כבוי נפתחת כיחידה עצמאית (break-inside נפרד). ברירת המחדל:
+    // רמות 3+ מקובצות — בדיוק ההתנהגות הקיימת.
+    const grpOf = (lvl) => settings[(kind === 'toc-detailed' ? 'toc-dgrp-' : 'toc-ggrp-') + lvl] !== false;
     const units = [];
     for (const r of rows) {
       if (r.level <= 2 || !units.length) units.push([r]);
-      else units[units.length - 1].push(r);
+      else if (grpOf(r.level)) units[units.length - 1].push(r);
+      else units.push([r]);
     }
     const pagesRows = [];
     let curRows = [], curH = 0, first = true;
@@ -19196,7 +20631,12 @@ function legacyTypeset(rawText, settings, env) {
         rows: pr.rows.map((r, i) => ({
           tokenId: r.tokenId, level: r.level, text: r.text, lines: r.lines, sizePt: r.sizePt, y: rowYs[i],
           folio: '',
-          x1: r.x1 != null ? r.x1 : GEO.TOC_TITLE_X1 - (r.level - 1) * GEO.TOC_STAIR
+          x1: r.x1 != null ? r.x1 : GEO.TOC_TITLE_X1 - (r.level - 1) * GEO.TOC_STAIR,
+          // **EXT-22 (תיקון שורש):** שדה ה-font אבד במיפוי הזה — גופן ה-TOC
+          // (raw מקור f-gtoc-N/f-dtoc-N או ההגדרה החיה toc-{g,d}font-N) מעולם
+          // לא הגיע לרינדור; ה-DOM נפל ל-heading-N-font. כעת מועבר הלאה —
+          // התצוגה והייצוא מציירים את הגופן שנבחר.
+          font: r.font != null ? r.font : null
         }))
       };
       return pg;
@@ -19231,7 +20671,7 @@ function legacyTypeset(rawText, settings, env) {
       setHeader(enPg, cfg.fnTitleText);
       enPg._enFirst = enFirst;
       // **S6.3:** גופן כותרת ההערות מההגדרות (f-note-title ⇒ David Libre).
-      if (enFirst) enPg.bands.push({ kind: 'endnote-title', text: cfg.fnTitleText, sizePt: SZ.h2, y: GEO.FLOW_TOP, h: EN_TITLE_H, tokenId: null, font: settings['endnote-title-font'] || null });
+      if (enFirst) enPg.bands.push({ kind: 'endnote-title', text: cfg.fnTitleText, sizePt: (Number(settings['endnote-title-size-pt']) > 0 ? Number(settings['endnote-title-size-pt']) : SZ.h2), y: GEO.FLOW_TOP, h: EN_TITLE_H, tokenId: null, font: settings['endnote-title-font'] || null });
       enCol = 0; enY = GEO.FLOW_TOP + (enFirst ? EN_TITLE_H : 0);
       endnotePagesBuilt.push(enPg);
     };
@@ -19339,7 +20779,14 @@ function legacyTypeset(rawText, settings, env) {
     // המחדל 1 — כולם נספרים; ההתנהגות ההיסטורית נשמרת במדויק).
     if (pnStartIdx > 1 && (pi + 1) < pnStartIdx) counted = false;
     p.pageNumber = counted ? pn++ : null;
-    const shows = ['toc-general', 'toc-detailed', 'regular', 'sign-open', 'preface'].includes(p.type);
+    const shows = ['toc-general', 'toc-detailed', 'regular', 'sign-open', 'preface'].includes(p.type)
+      // **EXT-22 (main/back/sub-shaar-show-number של המקור):** הצגת הגיליון
+      // על עמודי השערים — כבויה כברירת מחדל (כמו המקור); הדלקה חיה מציגה
+      // את מספר העמוד גם על השער (כשהוא נספר — עמוד שאינו נספר אין לו מספר
+      // ממילא).
+      || (p.type === 'shaar-main' && settings['main-shaar-show-number'] === true)
+      || (p.type === 'shaar-back' && settings['back-shaar-show-number'] === true)
+      || (p.type === 'shaar-sub' && settings['sub-shaar-show-number'] === true);
     // **D-108:** הגיליון המודפס בגימטריה חשופה בלבד — toBareGematria (מקור
     // הפורמט המשותף לשני המנועים), לא toGematria המפריד אלפים בגרש.
     // **EXT-20:** פורמט הגיליון מההגדרה (folioOf) — 'hebrew' = toBareGematria.
@@ -19674,7 +21121,8 @@ function legacyTypeset(rawText, settings, env) {
         try { designUri = (resolveDesignRef(designRef) || {}).uri || null; } catch (e) { designUri = null; }
       }
       if (designUri) {
-        dec(p, { x: 0, y: 0, w: GEO.PAGE_W, h: GEO.PAGE_H, kind: 'shaar-design', image: designUri });
+        // **EXT-21:** behind — רקע עמוד-מלא; מצויר לפני הטקסט (PDF) וב-z:0 (DOM)
+        dec(p, { x: 0, y: 0, w: GEO.PAGE_W, h: GEO.PAGE_H, kind: 'shaar-design', image: designUri, behind: true });
         // **S6.3 (בורר המפריד):** הפניית המפריד של הבורר (imud-divider) גוברת
         // על ה-raw — מוזרקת כדיו גם על גבי עיצוב השער-משנה (רק הפניה אמיתית).
         if (p.type === 'shaar-sub') {
@@ -19687,7 +21135,8 @@ function legacyTypeset(rawText, settings, env) {
         continue; // עיצוב מלא — לא שלד
       }
       if (p.type === 'shaar-sub') {
-        dec(p, { x: 0.55 * GEO.PAGE_W, y: 0, w: 0.45 * GEO.PAGE_W, h: GEO.PAGE_H, kind: 'shaar-panel', kindStyle: 'rect:#F4F4F4' });
+        // **EXT-21:** behind — הפאנל מאחורי הטקסט ב-PDF (כמו z:0 ב-DOM)
+        dec(p, { x: 0.55 * GEO.PAGE_W, y: 0, w: 0.45 * GEO.PAGE_W, h: GEO.PAGE_H, kind: 'shaar-panel', kindStyle: 'rect:#F4F4F4', behind: true });
         // **S74 (בעיה 3):** הגל בין שני חלקי הכותרת — מעוגן לראש כותרת-המשנה
         // בפועל (subTop−40.8 — היחס המכויל מהייחוס), לא למיקום קבוע. בעבר
         // נקבע לפי מספר השורות (>1) — כותרת שנעטפה ללא כותרת-משנה קיבלה גל
@@ -19707,7 +21156,8 @@ function legacyTypeset(rawText, settings, env) {
           dec(p, { x: 175.7, y: subLines[0].y - 40.8, w: 140, h: 25, kind: 'shaar-divider', kindStyle: style });
         }
       } else if (p.type === 'shaar-back') {
-        dec(p, { x: 0, y: 0, w: 0.45 * GEO.PAGE_W, h: GEO.PAGE_H, kind: 'shaar-panel', kindStyle: 'rect:#F4F4F4' });
+        // **EXT-21:** behind — הפאנל מאחורי הטקסט ב-PDF (כמו z:0 ב-DOM)
+        dec(p, { x: 0, y: 0, w: 0.45 * GEO.PAGE_W, h: GEO.PAGE_H, kind: 'shaar-panel', kindStyle: 'rect:#F4F4F4', behind: true });
       } else if (p.type === 'shaar-main') {
         dec(p, { x: 96, y: 0, w: 1.33, h: GEO.PAGE_H, kind: 'frame-v', kindStyle: 'rect:#CCCCCC' });
         dec(p, { x: 697.33, y: 0, w: 1.33, h: GEO.PAGE_H, kind: 'frame-v', kindStyle: 'rect:#CCCCCC' });
@@ -22170,7 +23620,7 @@ const { GEO, SZ, parenCenterRaisePx } = require('../layout/legacy-imud-flow');
 // הטקסט המוקרן: גוף/כותרות/שער/כותרות-עליונות/גיליון/הערות — כמו ה-DOM.
 const { lineFontFamily, hexColorToRgb } = require('./line-font');
 const { MeasureAPI, registeredFonts, resolveMeasureImpl } = require('../typography/measure-api');
-const { ornamentInk, parseSvgPaint, svgToPdfOps } = require('../decoration/ornament-ink'); // **EXT-4:** הדיו — מקור יחיד
+const { ornamentInk, parseSvgPaint, svgToPdfOps, decodeDataUriSvg } = require('../decoration/ornament-ink'); // **EXT-4:** הדיו — מקור יחיד; **EXT-21:** decodeDataUriSvg לעיצובי שער
 
 const COL_R = { x: GEO.COL_R_X, w: GEO.COL_W };
 const COL_L = { x: GEO.COL_L_X, w: GEO.COL_W };
@@ -22336,10 +23786,16 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
   };
   // **EXT-17:** גדלי סמני ההערות מהגדרות המקור (ברירות המחדל: 8/8). ההגדרות
   // של פרופיל IMUD מגיעות ב-_imudRaw (כמו readConfig של העימוד עצמו).
+  // **EXT-22:** ההגדרה החיה של הרישום גוברת על ה-raw (שליטה מהפאנל).
   const imudSet = (settings && settings._imudRaw) || settings || {};
+  const liveOrRaw = (key, dflt) => {
+    const live = Number(settings && settings[key]);
+    if (live > 0) return live;
+    return Number(imudSet[key]) || dflt;
+  };
   const projCfg = {
-    markerSize: Number(imudSet['note-marker-size']) || 8,
-    listingSize: Number(imudSet['note-listing-num-size']) || 8
+    markerSize: liveOrRaw('note-marker-size', 8),
+    listingSize: liveOrRaw('note-listing-num-size', 8)
   };
   const ascent = api.ascentEm();
   const descent = api.descentEm(); // **S5.1:** המטריקה האמיתית — לא 0.2 מוקשה
@@ -22384,10 +23840,13 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
     // בגופן heading-N-font של הרמה; המקרן צייר הכול ב-DavidLibre קבוע.
     // נפילה ל-hApi (התנהגות קודמת) כשהמשפחה אינה רשומה.
     const bLvl = HEADING_LEVEL_OF_BAND_LEGACY[b.kind];
-    const bFam = bLvl != null ? (settings[`heading-${bLvl}-font`] || 'DavidLibre-Bold') : null;
-    const bApi = (bLvl != null && apiFor(bFam)) || hApi;
+    // **EXT-22:** גופן מפורש על הפס (siman-font/endnote-title-font — מהמודל)
+    // גובר; בלי — גופן הרמה מההגדרות כמו קודם. ברירות המחדל נופלות ל-hApi
+    // (DavidLibre-Bold) — אותה התנהגות בדיוק.
+    const bFam = b.font ? String(b.font) : (bLvl != null ? (settings[`heading-${bLvl}-font`] || 'DavidLibre-Bold') : null);
+    const bApi = (b.font && apiFor(bFam)) || (bLvl != null && apiFor(bFam)) || hApi;
     const words = placeWords(b.text.split(' '), bApi, bandLeft, bandW, b.sizePt, 'center', baseY);
-    const bKey = (bLvl != null && apiFor(bFam)) ? fontKeyOf(bFam) : 'heading';
+    const bKey = (bApi !== hApi && apiFor(bFam)) ? fontKeyOf(bFam) : 'heading';
     // **S73:** צבע הפס מההגדרות (כותרת הערות ⇒ endnote-title-color; רמה ⇒ heading-N-color)
     const bColor = bandColorOf(b);
     for (const w of words) { w.fontKey = bKey; if (bColor) w.color = bColor; }
@@ -22411,7 +23870,15 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
     'shaar-back': { x: 95 * MMpx, w: 377.98 },
     'shaar-sub': { x: 15 * MMpx, w: GEO.PAGE_W - 110 * MMpx }
   };
-  const gbox = GATE_BOX[pg.type] || { x: bandLeft, w: bandW };
+  // **EXT-22 (builder-{main,sub,back}-{left,right} של המקור):** שוליים מפורשים
+  // במ״מ גוברים על הקבועים המכוילים (0=אוטומטי — ההתנהגות הקיימת בדיוק).
+  const gbBase = GATE_BOX[pg.type] || { x: bandLeft, w: bandW };
+  const gateKind = pg.type === 'shaar-main' ? 'main' : pg.type === 'shaar-sub' ? 'sub' : 'back';
+  const ovL = Number(settings[`shaar-${gateKind}-box-left`]);
+  const ovR = Number(settings[`shaar-${gateKind}-box-right`]);
+  const effL = ovL > 0 ? Math.round(ovL * MMpx) : gbBase.x;
+  const effR = ovR > 0 ? Math.round(ovR * MMpx) : Math.max(0, GEO.PAGE_W - gbBase.x - gbBase.w);
+  const gbox = (ovL > 0 || ovR > 0) ? { x: effL, w: Math.max(40, GEO.PAGE_W - effL - effR) } : gbBase;
   for (const g of (pg.gateLines || [])) {
     const h = g.sizePt * (96 / 72) * 1.3;
     const baseY = baselineOf(g.y, h, g.sizePt, ascent, descent);
@@ -22747,10 +24214,11 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
       rowLines.forEach((rowText, rli) => {
         const lineY = r.y + rli * 26;
         const baseY = baselineOf(lineY, 26, r.sizePt, ascent, descent);
-      // כותרת מימין (במדרגות לפי רמה), מספר משמאל; **S5.1:** גופן הרמה
-      // מההגדרות (כמו ה-DOM — heading-N-font), נפילה ל-hApi כשאינה רשומה.
+      // כותרת מימין (במדרגות לפי רמה), מספר משמאל; **S5.1+EXT-22:** גופן הרמה
+      // מהמודל (r.font — ההגדרה החיה toc-gfont-N/toc-dfont-N מקובעת שם;
+      // תצוגה=ייצוא), נפילה ל-heading-N-font ואז ל-hApi כשאינה רשומה.
       const rLvl = r.level != null ? r.level : 2;
-      const rFam = settings[`heading-${rLvl}-font`] || 'DavidLibre-Bold';
+      const rFam = r.font ? String(r.font) : (settings[`heading-${rLvl}-font`] || 'DavidLibre-Bold');
       const rFamApi = apiFor(rFam);
       const rApi = rFamApi || hApi;
       // **S73:** צבע שורת ה-TOC — heading-N-color של הרמה (כמו ה-DOM)
@@ -22864,6 +24332,18 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
       if (ink && ink.type === 'svg') {
         paint = parseSvgPaint(ink.svg);
         if (paint) pdfOps = svgToPdfOps(paint, d, hPt, PX_TO_PT);
+      } else if (ink && ink.type === 'image' && /^data:image\/svg\+xml/i.test(String(ink.uri || ''))) {
+        // **EXT-21 (שערים ב-PDF — דיווח משתמש "השערים לא נמתחים על כל
+        // העמוד"):** עד כאן עיצוב שער מהספרייה (shaar-design — d.image =
+        // data-URI) לא צויר בכלל ב-PDF ("תמונות רסטר אינן מצוירות" — גם
+        // אחדות SVG). כעת: פענוח ה-SVG מה-URI → אותו פענוח וקטורי של
+        // ornament-ink → פעולות מילוי. מצב 'stretch' ל-shaar-design —
+        // מתיחה מלאה לעמוד כולו (כמו background-size:100% 100% ב-DOM
+        // ובמקור הירוק); גרדיאנטים נפתרים לצבע ממוצע; מסגרות stroke
+        // מצוירות (אופציית strokes).
+        const svg = decodeDataUriSvg(ink.uri);
+        paint = svg ? parseSvgPaint(svg, { strokes: true }) : null;
+        if (paint) pdfOps = svgToPdfOps(paint, d, hPt, PX_TO_PT, d.kind === 'shaar-design' ? 'stretch' : 'meet');
       } else if (ink && ink.type === 'rect') {
         // **D-89:** מלבן בצבע אחיד — פאנלי השערים, מסגרות וכלל הכותרת.
         const yTop = hPt - (d.y + d.h) * PX_TO_PT;
@@ -22877,6 +24357,7 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
         kindStyle: d.kindStyle || null, inkType: ink ? ink.type : null,
         inkUri: ink && ink.uri ? ink.uri : null,
         inkColor: ink && ink.type === 'rect' ? cssColor(ink.color) : null,
+        behind: d.behind === true, // **EXT-21:** רקע שער — מצויר לפני הטקסט (z-כמו ב-DOM)
         paint, pdfOps
       };
     });
@@ -23310,6 +24791,59 @@ const DISPOSITIONS = {
   'f-note-title': { kind: 'mapped', to: 'endnote-title-font', transform: resolveStack, reason: 'S6.3: גופן כותרת ההערות' },
   'f-h0-body': { kind: 'mapped', to: 'heading-0-body-font', transform: resolveStack, reason: 'S6.3: גופן גוף ההקדמה (Frank Ruhl Libre במקור)' },
   's-h0-body': { kind: 'mapped', to: 'heading-0-body-size-pt', transform: parseFloat, reason: 'RC-2a (i004): גודל גוף ההקדמה (s-h0-body=11.5 במקור) — עד כאן לא מופה ייבוא ⇒ ההקדמה זרמה ב-12pt במקום 11.5 (הוכח מה-PDF הישן: p43 כולו 11.5pt בפיץ׳ 15.5 בקירוב)' },
+
+  // ============ **EXT-22 (בדיקת השוואה עם המקור הירוק 25.11 — "לגבי הוספה!
+  // לא הורדה!!"):** אפשרויות המקור שנוספו לרישום RED וללוח ההגדרות ============
+  // העיקר: גופן/גודל פר-רמה לכל תוכן-עניינים (f/s-gtoc-N, f/s-dtoc-N —
+  // ביחוד לגבי תוכן העניינים). ברירות המחדל של המקור זהות לברירות
+  // הרישום (David Libre; 12/11/10.5×4/8.8) — הייבוא שקוף לפלט המכויל.
+  ...[1, 2, 3, 4, 5, 6, 7].flatMap(lvl => [
+    { green: `f-gtoc-${lvl}`, red: `toc-gfont-${lvl}` },
+    { green: `f-dtoc-${lvl}`, red: `toc-dfont-${lvl}` },
+    { green: `s-gtoc-${lvl}`, red: `toc-gsize-${lvl}`, num: true },
+    { green: `s-dtoc-${lvl}`, red: `toc-dsize-${lvl}`, num: true },
+  ]).reduce((acc, e) => {
+    acc[e.green] = e.num
+      ? { kind: 'mapped', to: e.red, transform: parseFloat, reason: `EXT-22: גודל רמה ${e.green.slice(-1)} בתוכן-העניינים` }
+      : { kind: 'mapped', to: e.red, transform: firstFamily, reason: `EXT-22: גופן רמה ${e.green.slice(-1)} בתוכן-העניינים (מחסנית המקור נפתרת למשפחה ראשונה זמינה)` };
+    return acc;
+  }, {}),
+  // **EXT-22:** התנהגויות פתיחה/סימן שהיו ui-state — הייבוא ממופה למפתחות
+  // הרישום החדשים (ערכי המקור זהים לברירות המחדל המכוילות — שקוף).
+  'odd-h0': { kind: 'mapped', to: 'odd-h0', transform: (v) => v === true || v === 'true', reason: 'EXT-22: פתיחת H0 בעמוד אי-זוגי — שליטה חיה' },
+  'odd-h1': { kind: 'mapped', to: 'odd-h1', transform: (v) => v === true || v === 'true', reason: 'EXT-22: פתיחת H1 בעמוד אי-זוגי — שליטה חיה' },
+  'odd-h2': { kind: 'mapped', to: 'odd-h2', transform: (v) => v === true || v === 'true', reason: 'EXT-22: פתיחת H2 בעמוד אי-זוגי — שליטה חיה' },
+  'h2-auto-siman': { kind: 'mapped', to: 'h2-auto-siman', transform: (v) => v === true || v === 'true', reason: 'EXT-22: מספור סימן אוטומטי — שליטה חיה (S4.20/EXT-16)' },
+  'h2-reset-siman': { kind: 'mapped', to: 'h2-reset-siman', transform: (v) => v === true || v === 'true', reason: 'EXT-22: איפוס מונה סימנים לכל פרק — שליטה חיה' },
+  's-siman': { kind: 'mapped', to: 'siman-size-pt', transform: parseFloat, reason: 'EXT-22: גודל פס הסימן (20 במקור = הקבוע המכויל)' },
+  'note-marker-size': { kind: 'mapped', to: 'note-marker-size', transform: parseFloat, reason: 'EXT-22: גודל מילת-הסמן — שליטה חיה (EXT-17)' },
+  'note-listing-num-size': { kind: 'mapped', to: 'note-listing-num-size', transform: parseFloat, reason: 'EXT-22: גודל סמן הרישום — שליטה חיה (EXT-17)' },
+  'note-num-separator': { kind: 'mapped', to: 'note-num-separator', reason: 'EXT-22: המפריד אחרי מספר ההערה — שליטה חיה (EXT-17)' },
+  'main-shaar-show-number': { kind: 'mapped', to: 'main-shaar-show-number', transform: (v) => v === true || v === 'true', reason: 'EXT-22: הצגת גיליון על השער הראשי (EXT-18: הצגה/מנייה נפרדות)' },
+  'back-shaar-show-number': { kind: 'mapped', to: 'back-shaar-show-number', transform: (v) => v === true || v === 'true', reason: 'EXT-22: הצגת גיליון על השער האחורי (EXT-18)' },
+  'sub-shaar-show-number': { kind: 'mapped', to: 'sub-shaar-show-number', transform: (v) => v === true || v === 'true', reason: 'EXT-22: הצגת גיליון על שער-המשנה (EXT-18)' },
+  'hdr-divider-style': { kind: 'mapped', to: 'header-separator-line', reason: 'EXT-22: כלל הכותרת התחתון — אותו אוצר-מילים (none/gray/black); הגשר החי כבר קיים (EXT-20)' },
+  // **EXT-22 (שימור הפלט המכויל):** builder-* (תיבות השער), f-siman, s-note-title
+  // ו-f-paren — האפשרויות נוספו ללוח ההגדרות (0=אוטומטי / ירושה), אך ערכי
+  // ברירת-המחדל של המקור אינם מיובאים — הם סוטים מהפלט המכויל (בפרט
+  // builder-*: 20/16/15/15 מול התיבה של העיצוב/40-40-30-30). הערכים נשמרים
+  // ב-_imudRaw; שינוי חי בפאנל משפיע מיד.
+  'builder-main-top': { kind: 'ui-state', reason: 'EXT-22: תיבת שער ראשי — שליטה חיה דרך shaar-main-box-top (0=אוטומטי); ערך המקור לא מיובא כדי לשמר את התיבה המכוילה' },
+  'builder-main-bottom': { kind: 'ui-state', reason: 'EXT-22: כנ"ל — shaar-main-box-bottom' },
+  'builder-main-right': { kind: 'ui-state', reason: 'EXT-22: כנ"ל — shaar-main-box-right' },
+  'builder-main-left': { kind: 'ui-state', reason: 'EXT-22: כנ"ל — shaar-main-box-left' },
+  'builder-back-top': { kind: 'ui-state', reason: 'EXT-22: תיבת שער אחורי — shaar-back-box-*; ערך המקור לא מיובא (שימור הפלט)' },
+  'builder-back-bottom': { kind: 'ui-state', reason: 'EXT-22: כנ"ל' },
+  'builder-back-right': { kind: 'ui-state', reason: 'EXT-22: כנ"ל' },
+  'builder-back-left': { kind: 'ui-state', reason: 'EXT-22: כנ"ל' },
+  'builder-sub-top': { kind: 'ui-state', reason: 'EXT-22: תיבת שער-משנה — shaar-sub-box-*; ערך המקור לא מיובא (שימור הפלט)' },
+  'builder-sub-bottom': { kind: 'ui-state', reason: 'EXT-22: כנ"ל' },
+  'builder-sub-right': { kind: 'ui-state', reason: 'EXT-22: כנ"ל' },
+  'builder-sub-left': { kind: 'ui-state', reason: 'EXT-22: כנ"ל' },
+  'builder-theme-name': { kind: 'ui-state', reason: 'EXT-22: שם ערכה בבונה המקור — מטא-נתון UI' },
+  'f-siman': { kind: 'ui-state', reason: 'EXT-22: גופן הסימן — שליטה חיה דרך siman-font (ריק=ירושת כותרות); מחסנית המקור לא מיובאת כדי לשמר את המודל המכויל' },
+  's-note-title': { kind: 'ui-state', reason: 'EXT-22: גודל כותרת ההערות — שליטה חיה דרך endnote-title-size-pt (17=המכויל); 9 של המקור לא מיובא כדי לשמר את הפלט' },
+  'f-paren': { kind: 'ui-state', reason: 'EXT-22: גופן הסוגריים — טרם מומש במנוע המורשת (סוגריים בגודל-גוף מוקטן בתוך שורות מעורבות; דורש דגל-מילה במודל)' },
 
   // ============ כותרות עליונות (25 מפתחות hdr-*) ============
   'hdr-title-split': { kind: 'ui-state', reason: 'פיצול שם הספר לחצאים בכותרת העליונה — מיושם תמידית ב-legacy (hdrR/hdrL) כמו בייחוס — S4.20/EXT-19' },

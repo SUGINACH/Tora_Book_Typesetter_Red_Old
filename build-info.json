@@ -1,7 +1,1 @@
-{
- "profile": "legacy",
- "branch": "old-engine",
- "commit": "0518dee",
- "builtAt": "2026-11-24",
- "note": "EXT-20: חיווט מלא של לוח ההגדרות בנתיב המורשת + בוררי הספרייה"
-}
+{"profile": "legacy", "branch": "old-engine", "commit": "EXT-22", "builtAt": "2026-11-25", "note": "EXT-20: חיווט מלא של לוח ההגדרות בנתיב המורשת + בוררי הספרייה"}
