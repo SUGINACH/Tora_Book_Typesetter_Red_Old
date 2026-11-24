@@ -3891,7 +3891,8 @@ function legacyTypeset(rawText, settings, env) {
         try { designUri = (resolveDesignRef(designRef) || {}).uri || null; } catch (e) { designUri = null; }
       }
       if (designUri) {
-        dec(p, { x: 0, y: 0, w: GEO.PAGE_W, h: GEO.PAGE_H, kind: 'shaar-design', image: designUri });
+        // **EXT-21:** behind — רקע עמוד-מלא; מצויר לפני הטקסט (PDF) וב-z:0 (DOM)
+        dec(p, { x: 0, y: 0, w: GEO.PAGE_W, h: GEO.PAGE_H, kind: 'shaar-design', image: designUri, behind: true });
         // **S6.3 (בורר המפריד):** הפניית המפריד של הבורר (imud-divider) גוברת
         // על ה-raw — מוזרקת כדיו גם על גבי עיצוב השער-משנה (רק הפניה אמיתית).
         if (p.type === 'shaar-sub') {
@@ -3904,7 +3905,8 @@ function legacyTypeset(rawText, settings, env) {
         continue; // עיצוב מלא — לא שלד
       }
       if (p.type === 'shaar-sub') {
-        dec(p, { x: 0.55 * GEO.PAGE_W, y: 0, w: 0.45 * GEO.PAGE_W, h: GEO.PAGE_H, kind: 'shaar-panel', kindStyle: 'rect:#F4F4F4' });
+        // **EXT-21:** behind — הפאנל מאחורי הטקסט ב-PDF (כמו z:0 ב-DOM)
+        dec(p, { x: 0.55 * GEO.PAGE_W, y: 0, w: 0.45 * GEO.PAGE_W, h: GEO.PAGE_H, kind: 'shaar-panel', kindStyle: 'rect:#F4F4F4', behind: true });
         // **S74 (בעיה 3):** הגל בין שני חלקי הכותרת — מעוגן לראש כותרת-המשנה
         // בפועל (subTop−40.8 — היחס המכויל מהייחוס), לא למיקום קבוע. בעבר
         // נקבע לפי מספר השורות (>1) — כותרת שנעטפה ללא כותרת-משנה קיבלה גל
@@ -3924,7 +3926,8 @@ function legacyTypeset(rawText, settings, env) {
           dec(p, { x: 175.7, y: subLines[0].y - 40.8, w: 140, h: 25, kind: 'shaar-divider', kindStyle: style });
         }
       } else if (p.type === 'shaar-back') {
-        dec(p, { x: 0, y: 0, w: 0.45 * GEO.PAGE_W, h: GEO.PAGE_H, kind: 'shaar-panel', kindStyle: 'rect:#F4F4F4' });
+        // **EXT-21:** behind — הפאנל מאחורי הטקסט ב-PDF (כמו z:0 ב-DOM)
+        dec(p, { x: 0, y: 0, w: 0.45 * GEO.PAGE_W, h: GEO.PAGE_H, kind: 'shaar-panel', kindStyle: 'rect:#F4F4F4', behind: true });
       } else if (p.type === 'shaar-main') {
         dec(p, { x: 96, y: 0, w: 1.33, h: GEO.PAGE_H, kind: 'frame-v', kindStyle: 'rect:#CCCCCC' });
         dec(p, { x: 697.33, y: 0, w: 1.33, h: GEO.PAGE_H, kind: 'frame-v', kindStyle: 'rect:#CCCCCC' });

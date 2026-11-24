@@ -314,6 +314,14 @@ function writePdf(opts) {
   // ---- תוכן לכל עמוד (content streams) ----
   const contents = pages.map((pg) => {
     const ops = [];
+    // **EXT-21 (שערים ב-PDF):** רקעי שער (עיצוב/פאנל) — מצוירים ראשונים,
+    // לפני הטקסט — אותו z-סדר כמו ה-DOM (z:0 + insertBefore ראשון). בלי
+    // זה הפאנל האפור של השער-משנה/אחורי ועיצובי השער נצבעו מעל הטקסט.
+    if (pg.decorations && pg.decorations.length) {
+      for (const d of pg.decorations) {
+        if (d.behind && Array.isArray(d.pdfOps)) ops.push(...d.pdfOps);
+      }
+    }
     // **S6.0 (R5-M2 — צבע דביק):** מצב מילוי נוכחי לכל אורך מסלול התוכן
     // של העמוד. בעבר 'rg' נפלט רק למילים צבועות ולא אופס לעולם ⇒ מילה
     // צבועה (הערת-שוליים אפורה) צבעה את כל הטקסט שאחריה בעמוד — הערות
@@ -459,10 +467,12 @@ function writePdf(opts) {
     }
     // **EXT-4 (ציור עיטורים):** פעולות הציור מגיעות מוכנות מהפרויקטור
     // (d.pdfOps — פוענחו שם מה-SVG במקור היחיד ornament-ink; הכותב עצמו
-    // חף-תלויות ואוסף אובייקטים בלבד). תמונות רסטר אינן מצוירות כאן (מתועד).
+    // חף-תלויות ואוסף אובייקטים בלבד). **EXT-21:** רק העיטורים שאינם-רקע
+    // (הרקעים כבר צוירו לפני הטקסט לעיל); תמונות רסטר אינן מצוירות כאן
+    // (מתועד) — עיצובי שער SVG כן (פוענחו בפרויקטור).
     if (pg.decorations && pg.decorations.length) {
       for (const d of pg.decorations) {
-        if (Array.isArray(d.pdfOps)) ops.push(...d.pdfOps);
+        if (!d.behind && Array.isArray(d.pdfOps)) ops.push(...d.pdfOps);
       }
     }
     // סימני חיתוך (**S6.0 R5-M6** — בחוץ ל-TrimBox, כמו המסמך; בעבר צוירו

@@ -16,7 +16,7 @@ const { GEO, SZ, parenCenterRaisePx } = require('../layout/legacy-imud-flow');
 // הטקסט המוקרן: גוף/כותרות/שער/כותרות-עליונות/גיליון/הערות — כמו ה-DOM.
 const { lineFontFamily, hexColorToRgb } = require('./line-font');
 const { MeasureAPI, registeredFonts, resolveMeasureImpl } = require('../typography/measure-api');
-const { ornamentInk, parseSvgPaint, svgToPdfOps } = require('../decoration/ornament-ink'); // **EXT-4:** הדיו — מקור יחיד
+const { ornamentInk, parseSvgPaint, svgToPdfOps, decodeDataUriSvg } = require('../decoration/ornament-ink'); // **EXT-4:** הדיו — מקור יחיד; **EXT-21:** decodeDataUriSvg לעיצובי שער
 
 const COL_R = { x: GEO.COL_R_X, w: GEO.COL_W };
 const COL_L = { x: GEO.COL_L_X, w: GEO.COL_W };
@@ -710,6 +710,18 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
       if (ink && ink.type === 'svg') {
         paint = parseSvgPaint(ink.svg);
         if (paint) pdfOps = svgToPdfOps(paint, d, hPt, PX_TO_PT);
+      } else if (ink && ink.type === 'image' && /^data:image\/svg\+xml/i.test(String(ink.uri || ''))) {
+        // **EXT-21 (שערים ב-PDF — דיווח משתמש "השערים לא נמתחים על כל
+        // העמוד"):** עד כאן עיצוב שער מהספרייה (shaar-design — d.image =
+        // data-URI) לא צויר בכלל ב-PDF ("תמונות רסטר אינן מצוירות" — גם
+        // אחדות SVG). כעת: פענוח ה-SVG מה-URI → אותו פענוח וקטורי של
+        // ornament-ink → פעולות מילוי. מצב 'stretch' ל-shaar-design —
+        // מתיחה מלאה לעמוד כולו (כמו background-size:100% 100% ב-DOM
+        // ובמקור הירוק); גרדיאנטים נפתרים לצבע ממוצע; מסגרות stroke
+        // מצוירות (אופציית strokes).
+        const svg = decodeDataUriSvg(ink.uri);
+        paint = svg ? parseSvgPaint(svg, { strokes: true }) : null;
+        if (paint) pdfOps = svgToPdfOps(paint, d, hPt, PX_TO_PT, d.kind === 'shaar-design' ? 'stretch' : 'meet');
       } else if (ink && ink.type === 'rect') {
         // **D-89:** מלבן בצבע אחיד — פאנלי השערים, מסגרות וכלל הכותרת.
         const yTop = hPt - (d.y + d.h) * PX_TO_PT;
@@ -723,6 +735,7 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
         kindStyle: d.kindStyle || null, inkType: ink ? ink.type : null,
         inkUri: ink && ink.uri ? ink.uri : null,
         inkColor: ink && ink.type === 'rect' ? cssColor(ink.color) : null,
+        behind: d.behind === true, // **EXT-21:** רקע שער — מצויר לפני הטקסט (z-כמו ב-DOM)
         paint, pdfOps
       };
     });

@@ -4468,7 +4468,8 @@ function legacyTypeset(rawText, settings, env) {
         try { designUri = (resolveDesignRef(designRef) || {}).uri || null; } catch (e) { designUri = null; }
       }
       if (designUri) {
-        dec(p, { x: 0, y: 0, w: GEO.PAGE_W, h: GEO.PAGE_H, kind: 'shaar-design', image: designUri });
+        // **EXT-21:** behind — רקע עמוד-מלא; מצויר לפני הטקסט (PDF) וב-z:0 (DOM)
+        dec(p, { x: 0, y: 0, w: GEO.PAGE_W, h: GEO.PAGE_H, kind: 'shaar-design', image: designUri, behind: true });
         // **S6.3 (בורר המפריד):** הפניית המפריד של הבורר (imud-divider) גוברת
         // על ה-raw — מוזרקת כדיו גם על גבי עיצוב השער-משנה (רק הפניה אמיתית).
         if (p.type === 'shaar-sub') {
@@ -4481,7 +4482,8 @@ function legacyTypeset(rawText, settings, env) {
         continue; // עיצוב מלא — לא שלד
       }
       if (p.type === 'shaar-sub') {
-        dec(p, { x: 0.55 * GEO.PAGE_W, y: 0, w: 0.45 * GEO.PAGE_W, h: GEO.PAGE_H, kind: 'shaar-panel', kindStyle: 'rect:#F4F4F4' });
+        // **EXT-21:** behind — הפאנל מאחורי הטקסט ב-PDF (כמו z:0 ב-DOM)
+        dec(p, { x: 0.55 * GEO.PAGE_W, y: 0, w: 0.45 * GEO.PAGE_W, h: GEO.PAGE_H, kind: 'shaar-panel', kindStyle: 'rect:#F4F4F4', behind: true });
         // **S74 (בעיה 3):** הגל בין שני חלקי הכותרת — מעוגן לראש כותרת-המשנה
         // בפועל (subTop−40.8 — היחס המכויל מהייחוס), לא למיקום קבוע. בעבר
         // נקבע לפי מספר השורות (>1) — כותרת שנעטפה ללא כותרת-משנה קיבלה גל
@@ -4501,7 +4503,8 @@ function legacyTypeset(rawText, settings, env) {
           dec(p, { x: 175.7, y: subLines[0].y - 40.8, w: 140, h: 25, kind: 'shaar-divider', kindStyle: style });
         }
       } else if (p.type === 'shaar-back') {
-        dec(p, { x: 0, y: 0, w: 0.45 * GEO.PAGE_W, h: GEO.PAGE_H, kind: 'shaar-panel', kindStyle: 'rect:#F4F4F4' });
+        // **EXT-21:** behind — הפאנל מאחורי הטקסט ב-PDF (כמו z:0 ב-DOM)
+        dec(p, { x: 0, y: 0, w: 0.45 * GEO.PAGE_W, h: GEO.PAGE_H, kind: 'shaar-panel', kindStyle: 'rect:#F4F4F4', behind: true });
       } else if (p.type === 'shaar-main') {
         dec(p, { x: 96, y: 0, w: 1.33, h: GEO.PAGE_H, kind: 'frame-v', kindStyle: 'rect:#CCCCCC' });
         dec(p, { x: 697.33, y: 0, w: 1.33, h: GEO.PAGE_H, kind: 'frame-v', kindStyle: 'rect:#CCCCCC' });
@@ -13172,8 +13175,51 @@ function pathToSubpaths(d, transform) {
   return { subpaths, x, y };
 }
 
-/** פענוח SVG שלם → { vbW, vbH, shapes: [{subpaths, fill}] } (מרחב viewBox). */
-function parseSvgPaint(svg) {
+/** **EXT-21 (שערים ב-PDF):** מטריצת טרנספורמציה [a,b,c,d,e,f] — הרכבה
+ * "החל A ואז B" (תואם לסדר SVG: אלמנט פנימי קודם, ה-<g> העוטף אחריו). */
+function composeMtx(A, B) {
+  return [
+    B[0] * A[0] + B[2] * A[1],
+    B[1] * A[0] + B[3] * A[1],
+    B[0] * A[2] + B[2] * A[3],
+    B[1] * A[2] + B[3] * A[3],
+    B[0] * A[4] + B[2] * A[5] + B[4],
+    B[1] * A[4] + B[3] * A[5] + B[5],
+  ];
+}
+
+/** **EXT-21:** פענוח transform מאטריבוט אלמנט/קבוצה למטריצה אחת (או null). */
+function parseTransformList(tr) {
+  if (!tr) return null;
+  const funcs = [];
+  const fre = /(matrix|translate|scale|rotate)\s*\(\s*([^)]+)\)/g;
+  let fm;
+  while ((fm = fre.exec(String(tr)))) {
+    const a = String(fm[2]).split(/[\s,]+/).map(Number);
+    if (fm[1] === 'matrix' && a.length >= 6) funcs.push([a[0], a[1], a[2], a[3], a[4], a[5]]);
+    else if (fm[1] === 'translate') funcs.push([1, 0, 0, 1, a[0] || 0, a[1] || 0]);
+    else if (fm[1] === 'scale') {
+      const kx = a[0] != null ? a[0] : 1, ky = a[1] != null ? a[1] : (a[0] != null ? a[0] : 1);
+      funcs.push([kx, 0, 0, ky, 0, 0]);
+    } else if (fm[1] === 'rotate') {
+      const ang = (a[0] || 0) * Math.PI / 180, cos = Math.cos(ang), sin = Math.sin(ang);
+      const cx = a[1] || 0, cy = a[2] || 0;
+      funcs.push([cos, sin, -sin, cos, cx - cos * cx + sin * cy, cy - sin * cx - cos * cy]);
+    }
+  }
+  if (!funcs.length) return null;
+  let acc = [1, 0, 0, 1, 0, 0];
+  for (const F of funcs) acc = composeMtx(acc, F);
+  return acc;
+}
+
+/** פענוח SVG שלם → { vbW, vbH, shapes: [{subpaths, fill, stroke}] } (מרחב viewBox).
+ * **EXT-21 (שערים ב-PDF):** הורחב — מילויי url(#grad) נפתרים לצבע הממוצע
+ * של עצירות הגרדיאנט; transform פר-אלמנט (כולל matrix של שער אחורי
+ * משוקף); <line>; ובאופציה {strokes:true} — גם קו מתאר (stroke) לצורות
+ * (מצויר כמסגרת-קוודים דקה). ברירות המחדל של הקטלוגים לא השתנו: מילוי
+ * בלבד, ללא strokes — כל הקריאות הקיימות מקבלות את אותה תוצאה. */
+function parseSvgPaint(svg, opts) {
   const s = String(svg || '');
   if (!s) return null;
   const vb = /viewBox\s*=\s*"([^"]+)"/.exec(s);
@@ -13187,43 +13233,43 @@ function parseSvgPaint(svg) {
   if (!vbH && hm) vbH = parseFloat(hm[1]);
   if (!vbW || !vbH) return null;
 
+  // **EXT-21:** מלאי גרדיאנטים מ-<defs> — לפי מזהה; צבע = ממוצע העצירות
+  // (קירוב דפוסי: הפרשי הגרדיאנטים של ערכות השערים עדינים, #f2f2f2→#e2e2e2).
+  const gradients = new Map();
+  const gradRe = /<(linearGradient|radialGradient)\b([^>]*)>([\s\S]*?)<\/\1\s*>/g;
+  let gm;
+  while ((gm = gradRe.exec(s))) {
+    const idm = /\bid\s*=\s*"([^"]+)"/.exec(gm[2]);
+    if (!idm) continue;
+    const cols = [];
+    const stopRe = /<stop\b([^>]*)>/g;
+    let sm;
+    while ((sm = stopRe.exec(gm[3]))) {
+      const cm = /stop-color\s*=\s*"([^"]+)"/.exec(sm[1]);
+      if (cm) cols.push(parseColor(cm[1]));
+    }
+    if (cols.length) gradients.set(idm[1], [0, 1, 2].map(k => cols.reduce((acc, c) => acc + (c ? c[k] : 0), 0) / cols.length));
+  }
+  const resolveFillAttr = (f) => {
+    if (f == null) return [0, 0, 0]; // ברירת המחדל של SVG — שחור
+    const t = String(f).trim();
+    if (t === 'none' || t === 'transparent') return null;
+    const um = /^url\(\s*['"]?#([^'")\s]+)/.exec(t);
+    if (um) return gradients.get(um[1]) || null; // גרדיאנט לא ידוע — שקוף
+    return parseColor(t);
+  };
+
   // transform של <g> — **S70 (R6):** תמיכה מלאה ב-translate/scale/matrix
   // (כולל רשימות) עם הרכבה לפי סדר SVG: הפונקציה השמאלית מוחלת אחרונה.
   let tx = 0, ty = 0, sx = 1, sy = 1;
   let mtx = null; // [a,b,c,d,e,f] כאשר x' = a·x + c·y + e ; y' = b·x + d·y + f
   const gt = /<g\b[^>]*transform\s*=\s*"([^"]+)"/.exec(s);
   if (gt) {
-    const tr = gt[1];
-    const funcs = [];
-    const fre = /(matrix|translate|scale)\s*\(\s*([^)]+)\)/g;
-    let fm;
-    while ((fm = fre.exec(tr))) {
-      const a = fm[2].split(/[\s,]+/).map(Number);
-      if (fm[1] === 'matrix' && a.length >= 6) funcs.push([a[0], a[1], a[2], a[3], a[4], a[5]]);
-      else if (fm[1] === 'translate') funcs.push([1, 0, 0, 1, a[0] || 0, a[1] || 0]);
-      else if (fm[1] === 'scale') {
-        const kx = a[0] != null ? a[0] : 1, ky = a[1] != null ? a[1] : (a[0] != null ? a[0] : 1);
-        funcs.push([kx, 0, 0, ky, 0, 0]);
-      }
-    }
-    // הרכבה לפי סדר SVG: השמאלית חיצונית (מוחלת אחרונה) — acc_new = acc ∘ F
-    // (אימות: "translate(10,0) scale(2)" ⇒ x'=2x+10 ✓)
-    let acc = [1, 0, 0, 1, 0, 0];
-    for (const F of funcs) {
-      acc = [
-        acc[0] * F[0] + acc[2] * F[1],
-        acc[1] * F[0] + acc[3] * F[1],
-        acc[0] * F[2] + acc[2] * F[3],
-        acc[1] * F[2] + acc[3] * F[3],
-        acc[0] * F[4] + acc[2] * F[5] + acc[4],
-        acc[1] * F[4] + acc[3] * F[5] + acc[5],
-      ];
-    }
-    mtx = acc;
+    mtx = parseTransformList(gt[1]);
     // תאימות לאחור: טרנספורמציה בודדת translate/scale — שמירת tx/ty/sx/sy
-    const tm = /translate\(\s*([-\d.]+)[\s,]+([-\d.]+)/.exec(tr);
+    const tm = /translate\(\s*([-\d.]+)[\s,]+([-\d.]+)/.exec(gt[1]);
     if (tm) { tx = parseFloat(tm[1]); ty = parseFloat(tm[2]); }
-    const sm = /scale\(\s*([-\d.]+)(?:[\s,]+([-\d.]+))?\)/.exec(tr);
+    const sm = /scale\(\s*([-\d.]+)(?:[\s,]+([-\d.]+))?\)/.exec(gt[1]);
     if (sm) { sx = parseFloat(sm[1]); sy = sm[2] != null ? parseFloat(sm[2]) : sx; }
   }
   const transform = (pts) => {
@@ -13237,16 +13283,49 @@ function parseSvgPaint(svg) {
     }
     return out;
   };
-
-  const shapes = [];
-  const pushShape = (d, fillAttr, strokeAttr) => {
-    if (strokeAttr && strokeAttr !== 'none') return; // קווים חיצוניים — מחוץ לתת-הקבוצה (לא קיימים בקטלוג)
-    const { subpaths } = pathToSubpaths(d, transform);
-    if (!subpaths.length) return;
-    shapes.push({ subpaths, fill: parseColor(fillAttr) });
+  // **EXT-21:** הרכבת transform פר-אלמנט על זה של ה-<g> (האלמנט פנימי — קודם).
+  const shapeTransform = (attrs) => {
+    const tm = /\btransform\s*=\s*"([^"]+)"/.exec(attrs || '');
+    if (!tm) return transform;
+    const el = parseTransformList(tm[1]);
+    if (!el) return transform;
+    if (mtx) {
+      const comb = composeMtx(el, mtx);
+      return (pts) => {
+        const out = [];
+        for (let i = 0; i + 1 < pts.length; i += 2) out.push(comb[0] * pts[i] + comb[2] * pts[i + 1] + comb[4], comb[1] * pts[i] + comb[3] * pts[i + 1] + comb[5]);
+        return out;
+      };
+    }
+    return (pts) => {
+      const out = [];
+      for (let i = 0; i + 1 < pts.length; i += 2) out.push(el[0] * pts[i] + el[2] * pts[i + 1] + el[4], el[1] * pts[i] + el[3] * pts[i + 1] + el[5]);
+      return out;
+    };
   };
 
-  // <path> — fill מהאלמנט או מה-<g> שעוטף (inherit)
+  const wantStrokes = !!(opts && opts.strokes);
+  const shapes = [];
+  const pushShape = (d, fillAttr, strokeAttr, strokeWAttr, attrs) => {
+    // **EXT-21:** צורות עם stroke — עד כאן נדחו סופית; כעת נשמרות (מילוי +
+    // מסגרת) רק כשהאופציה הופעלה (עיצובי שער מהספרייה). ברירת המחדל —
+    // התנהגות הקטלוגים ההיסטורית נשמרת במדויק (דחייה).
+    if (strokeAttr && strokeAttr !== 'none' && !wantStrokes) return;
+    const fillCol = resolveFillAttr(fillAttr);
+    const strokeCol = (wantStrokes && strokeAttr && strokeAttr !== 'none') ? parseColor(strokeAttr) : null;
+    if (fillCol == null && !strokeCol) return;
+    const tf = shapeTransform(attrs);
+    const { subpaths } = pathToSubpaths(d, tf);
+    if (!subpaths.length) return;
+    let stroke = null;
+    if (strokeCol) {
+      const w = /([\d.]+)/.exec(String(strokeWAttr != null ? strokeWAttr : ''));
+      stroke = { color: strokeCol, width: w ? parseFloat(w[1]) : 1 };
+    }
+    shapes.push({ subpaths, fill: fillCol, stroke });
+  };
+
+  // <path> — fill מהאלמנט או מה-<g> שעוטף (inherit); **EXT-21:** + stroke-width/transform פר-אלמנט
   const gFill = /<g\b[^>]*\bfill\s*=\s*"([^"]+)"/.exec(s);
   const gStroke = /<g\b[^>]*\bstroke\s*=\s*"([^"]+)"/.exec(s);
   const pathRe = /<path\b([^>]*)>/g;
@@ -13257,7 +13336,8 @@ function parseSvgPaint(svg) {
     if (!d) continue;
     const fill = /fill\s*=\s*"([^"]+)"/.exec(attrs);
     const stroke = /stroke\s*=\s*"([^"]+)"/.exec(attrs);
-    pushShape(d[1], fill ? fill[1] : (gFill ? gFill[1] : '#000'), stroke ? stroke[1] : (gStroke ? gStroke[1] : 'none'));
+    const sw = /stroke-width\s*=\s*"([^"]+)"/.exec(attrs);
+    pushShape(d[1], fill ? fill[1] : (gFill ? gFill[1] : '#000'), stroke ? stroke[1] : (gStroke ? gStroke[1] : 'none'), sw ? sw[1] : null, attrs);
   }
   // <circle>/<ellipse> — ארבע קשתות בזייה
   const circRe = /<(circle|ellipse)\b([^>]*)>/g;
@@ -13275,17 +13355,45 @@ function parseSvgPaint(svg) {
       + `C ${cx - rx * k} ${cy + ry} ${cx - rx} ${cy + ry * k} ${cx - rx} ${cy} Z`;
     const fill = /fill\s*=\s*"([^"]+)"/.exec(at);
     const stroke = /stroke\s*=\s*"([^"]+)"/.exec(at);
-    pushShape(d, fill ? fill[1] : '#000', stroke ? stroke[1] : 'none');
+    const sw = /stroke-width\s*=\s*"([^"]+)"/.exec(at);
+    pushShape(d, fill ? fill[1] : '#000', stroke ? stroke[1] : 'none', sw ? sw[1] : null, at);
   }
-  // <rect>
-  const rectRe = /<rect\b([^>]*)>/g;
+  // <rect> — **EXT-21:** גם transform פר-אלמנט + stroke/stroke-width (אופציונלי)
+  const rectRe = /<rect\b([^>]*)(?:\/>|>)/g;
   while ((m = rectRe.exec(s))) {
     const at = m[1];
-    const num = (k) => { const r = new RegExp(`\\b${k}\\s*=\\s*"([\\d.]+)"`).exec(at); return r ? parseFloat(r[1]) : 0; };
+    const num = (k) => { const r = new RegExp(`\\b${k}\\s*=\\s*"([-\\d.]+)"`).exec(at); return r ? parseFloat(r[1]) : 0; };
     const x0 = num('x'), y0 = num('y'), w = num('width'), h = num('height');
     if (!w || !h) continue;
     const fill = /fill\s*=\s*"([^"]+)"/.exec(at);
-    pushShape(`M ${x0} ${y0} L ${x0 + w} ${y0} L ${x0 + w} ${y0 + h} L ${x0} ${y0 + h} Z`, fill ? fill[1] : '#000', 'none');
+    const stroke = /stroke\s*=\s*"([^"]+)"/.exec(at);
+    const sw = /stroke-width\s*=\s*"([^"]+)"/.exec(at);
+    pushShape(`M ${x0} ${y0} L ${x0 + w} ${y0} L ${x0 + w} ${y0 + h} L ${x0} ${y0 + h} Z`, fill ? fill[1] : '#000', stroke ? stroke[1] : 'none', sw ? sw[1] : null, at);
+  }
+  // **EXT-21:** <line> — קטע עם stroke ⇒ מלבן דק ממולא לאורך הקטע (רק עם strokes)
+  if (wantStrokes) {
+    const lineRe = /<line\b([^>]*)(?:\/>|>)/g;
+    while ((m = lineRe.exec(s))) {
+      const at = m[1];
+      const num = (k) => { const r = new RegExp(`\\b${k}\\s*=\\s*"([-\\d.]+)"`).exec(at); return r ? parseFloat(r[1]) : null; };
+      const x1 = num('x1'), y1 = num('y1'), x2 = num('x2'), y2 = num('y2');
+      if (x1 == null || y1 == null || x2 == null || y2 == null) continue;
+      const stroke = /stroke\s*=\s*"([^"]+)"/.exec(at);
+      if (!stroke || stroke[1] === 'none') continue;
+      const sw = /stroke-width\s*=\s*"([^"]+)"/.exec(at);
+      const col = parseColor(stroke[1]);
+      if (!col) continue;
+      const wd = sw ? parseFloat(sw[1]) : 1;
+      const tf = shapeTransform(at);
+      const pts = tf([x1, y1, x2, y2]);
+      const ax = pts[0], ay = pts[1], bx = pts[2], by = pts[3];
+      const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy);
+      if (!len) continue;
+      const nx = (-dy / len) * (wd / 2), ny = (dx / len) * (wd / 2);
+      const d = `M ${ax + nx} ${ay + ny} L ${bx + nx} ${by + ny} L ${bx - nx} ${by - ny} L ${ax - nx} ${ay - ny} Z`;
+      const { subpaths } = pathToSubpaths(d, (p) => p); // הקואורדינטות כבר עברו tf
+      if (subpaths.length) shapes.push({ subpaths, fill: col, stroke: null });
+    }
   }
   // **S70 (R6):** <polygon>/<polyline> — points לנתיב; polygon נסגר (Z)
   // וממולא כברירת מחדל; polyline נצבע רק אם יש לו fill מפורש (קו-בלבד
@@ -13303,7 +13411,7 @@ function parseSvgPaint(svg) {
     let d = `M ${nums[0]} ${nums[1]}`;
     for (let i = 2; i + 1 < nums.length; i += 2) d += ` L ${nums[i]} ${nums[i + 1]}`;
     if (m[1] === 'polygon') d += ' Z';
-    pushShape(d, fill ? fill[1] : (gFill ? gFill[1] : '#000'), stroke ? stroke[1] : (gStroke ? gStroke[1] : 'none'));
+    pushShape(d, fill ? fill[1] : (gFill ? gFill[1] : '#000'), stroke ? stroke[1] : (gStroke ? gStroke[1] : 'none'), null, at);
   }
   if (!shapes.length) return null;
   return { vbW, vbH, shapes };
@@ -13333,37 +13441,75 @@ function parseColor(c) {
  * @param {number} hPt — גובה העמוד ב-pt (היפוך y)
  * @param {number} PX_TO_PT
  * @returns {string[]} פעולות PDF (m/l/c/h/f + rg) */
-function svgToPdfOps(paint, rectPx, hPt, PX_TO_PT) {
+function svgToPdfOps(paint, rectPx, hPt, PX_TO_PT, mode) {
   const { vbW, vbH, shapes } = paint;
-  // meet: סקייל אחיד מרבי שנכנס, ממורכז
-  const s = Math.min(rectPx.w / vbW, rectPx.h / vbH);
-  const drawW = vbW * s, drawH = vbH * s;
-  const offX = rectPx.x + (rectPx.w - drawW) / 2;
-  const offY = rectPx.y + (rectPx.h - drawH) / 2;
-  const X = (vx) => (offX + vx * s) * PX_TO_PT;
-  const Y = (vy) => hPt - (offY + vy * s) * PX_TO_PT;
+  let sX, sY, offX, offY;
+  if (mode === 'stretch') {
+    // **EXT-21 (שערים ב-PDF):** מתיחה מלאה לתיבה — כמו background-size:100% 100%
+    sX = rectPx.w / vbW; sY = rectPx.h / vbH;
+    offX = rectPx.x; offY = rectPx.y;
+  } else {
+    // meet: סקייל אחיד מרבי שנכנס, ממורכז
+    const s = Math.min(rectPx.w / vbW, rectPx.h / vbH);
+    sX = s; sY = s;
+    const drawW = vbW * s, drawH = vbH * s;
+    offX = rectPx.x + (rectPx.w - drawW) / 2;
+    offY = rectPx.y + (rectPx.h - drawH) / 2;
+  }
+  const X = (vx) => (offX + vx * sX) * PX_TO_PT;
+  const Y = (vy) => hPt - (offY + vy * sY) * PX_TO_PT;
   const r2 = (v) => Math.round(v * 100) / 100;
   const ops = [];
   for (const sh of shapes) {
-    const col = sh.fill || [0, 0, 0];
-    ops.push(`${r2(col[0])} ${r2(col[1])} ${r2(col[2])} rg`);
-    for (const sub of sh.subpaths) {
-      let started = false;
-      for (const seg of sub) {
-        const p = seg.pts;
-        if (seg.op === 'M') {
-          if (started) ops.push('h f');
-          ops.push(`${r2(X(p[0]))} ${r2(Y(p[1]))} m`);
-          started = true;
-        } else if (seg.op === 'L') {
-          if (!started) { ops.push(`${r2(X(p[0]))} ${r2(Y(p[1]))} m`); started = true; }
-          ops.push(`${r2(X(p[2]))} ${r2(Y(p[3]))} l`);
-        } else if (seg.op === 'C') {
-          if (!started) { ops.push(`${r2(X(p[0]))} ${r2(Y(p[1]))} m`); started = true; }
-          ops.push(`${r2(X(p[2]))} ${r2(Y(p[3]))} ${r2(X(p[4]))} ${r2(Y(p[5]))} ${r2(X(p[6]))} ${r2(Y(p[7]))} c`);
+    if (sh.fill == null && !sh.stroke) continue;
+    if (sh.fill != null) {
+      const col = sh.fill;
+      ops.push(`${r2(col[0])} ${r2(col[1])} ${r2(col[2])} rg`);
+      for (const sub of sh.subpaths) {
+        let started = false;
+        for (const seg of sub) {
+          const p = seg.pts;
+          if (seg.op === 'M') {
+            if (started) ops.push('h f');
+            ops.push(`${r2(X(p[0]))} ${r2(Y(p[1]))} m`);
+            started = true;
+          } else if (seg.op === 'L') {
+            if (!started) { ops.push(`${r2(X(p[0]))} ${r2(Y(p[1]))} m`); started = true; }
+            ops.push(`${r2(X(p[2]))} ${r2(Y(p[3]))} l`);
+          } else if (seg.op === 'C') {
+            if (!started) { ops.push(`${r2(X(p[0]))} ${r2(Y(p[1]))} m`); started = true; }
+            ops.push(`${r2(X(p[2]))} ${r2(Y(p[3]))} ${r2(X(p[4]))} ${r2(Y(p[5]))} ${r2(X(p[6]))} ${r2(Y(p[7]))} c`);
+          }
+        }
+        if (started) ops.push('h f');
+      }
+    }
+    // **EXT-21:** מסגרת stroke — קווד דק לכל קצה ישר של תת-הנתיב (רוחב הקו
+    // ביחידות viewBox, מוכפל בסקייל הציר; מסגרות השערים 0.3-0.4mm ⇒ ~1px).
+    if (sh.stroke) {
+      const st = sh.stroke;
+      const col = st.color;
+      ops.push(`${r2(col[0])} ${r2(col[1])} ${r2(col[2])} rg`);
+      for (const sub of sh.subpaths) {
+        let prev = null;
+        for (const seg of sub) {
+          const p = seg.pts;
+          let ex, ey;
+          if (seg.op === 'M') { ex = p[0]; ey = p[1]; prev = null; }
+          else if (seg.op === 'L') { ex = p[2]; ey = p[3]; }
+          else if (seg.op === 'C') { ex = p[6]; ey = p[7]; }
+          else continue;
+          if (prev && seg.op === 'L') {
+            const px = prev[0], py = prev[1];
+            const dx = ex - px, dy = ey - py, len = Math.hypot(dx, dy);
+            if (len > 1e-6) {
+              const nx = (-dy / len) * (st.width / 2), ny = (dx / len) * (st.width / 2);
+              ops.push(`${r2(X(px + nx))} ${r2(Y(py + ny))} m ${r2(X(ex + nx))} ${r2(Y(ey + ny))} l ${r2(X(ex - nx))} ${r2(Y(ey - ny))} l ${r2(X(px - nx))} ${r2(Y(py - ny))} l h f`);
+            }
+          }
+          prev = [ex, ey];
         }
       }
-      if (started) ops.push('h f');
     }
   }
   return ops;
@@ -13397,8 +13543,8 @@ function svgInkBBox(paint, rectPx) {
 }
 
 module.exports = {
-  BUILTIN_SVGS, ornamentInk, svgToDataUri,
-  parseSvgPaint, svgToPdfOps, svgInkBBox, parsePathD, pathToSubpaths, parseColor
+  BUILTIN_SVGS, ornamentInk, svgToDataUri, decodeDataUriSvg,
+  parseSvgPaint, svgToPdfOps, svgInkBBox, parsePathD, pathToSubpaths, parseColor, composeMtx, parseTransformList
 };
 
 };
@@ -14456,6 +14602,14 @@ function writePdf(opts) {
   // ---- תוכן לכל עמוד (content streams) ----
   const contents = pages.map((pg) => {
     const ops = [];
+    // **EXT-21 (שערים ב-PDF):** רקעי שער (עיצוב/פאנל) — מצוירים ראשונים,
+    // לפני הטקסט — אותו z-סדר כמו ה-DOM (z:0 + insertBefore ראשון). בלי
+    // זה הפאנל האפור של השער-משנה/אחורי ועיצובי השער נצבעו מעל הטקסט.
+    if (pg.decorations && pg.decorations.length) {
+      for (const d of pg.decorations) {
+        if (d.behind && Array.isArray(d.pdfOps)) ops.push(...d.pdfOps);
+      }
+    }
     // **S6.0 (R5-M2 — צבע דביק):** מצב מילוי נוכחי לכל אורך מסלול התוכן
     // של העמוד. בעבר 'rg' נפלט רק למילים צבועות ולא אופס לעולם ⇒ מילה
     // צבועה (הערת-שוליים אפורה) צבעה את כל הטקסט שאחריה בעמוד — הערות
@@ -14601,10 +14755,12 @@ function writePdf(opts) {
     }
     // **EXT-4 (ציור עיטורים):** פעולות הציור מגיעות מוכנות מהפרויקטור
     // (d.pdfOps — פוענחו שם מה-SVG במקור היחיד ornament-ink; הכותב עצמו
-    // חף-תלויות ואוסף אובייקטים בלבד). תמונות רסטר אינן מצוירות כאן (מתועד).
+    // חף-תלויות ואוסף אובייקטים בלבד). **EXT-21:** רק העיטורים שאינם-רקע
+    // (הרקעים כבר צוירו לפני הטקסט לעיל); תמונות רסטר אינן מצוירות כאן
+    // (מתועד) — עיצובי שער SVG כן (פוענחו בפרויקטור).
     if (pg.decorations && pg.decorations.length) {
       for (const d of pg.decorations) {
-        if (Array.isArray(d.pdfOps)) ops.push(...d.pdfOps);
+        if (!d.behind && Array.isArray(d.pdfOps)) ops.push(...d.pdfOps);
       }
     }
     // סימני חיתוך (**S6.0 R5-M6** — בחוץ ל-TrimBox, כמו המסמך; בעבר צוירו
@@ -14930,7 +15086,7 @@ const { GEO, SZ, parenCenterRaisePx } = require('../layout/legacy-imud-flow');
 // הטקסט המוקרן: גוף/כותרות/שער/כותרות-עליונות/גיליון/הערות — כמו ה-DOM.
 const { lineFontFamily, hexColorToRgb } = require('./line-font');
 const { MeasureAPI, registeredFonts, resolveMeasureImpl } = require('../typography/measure-api');
-const { ornamentInk, parseSvgPaint, svgToPdfOps } = require('../decoration/ornament-ink'); // **EXT-4:** הדיו — מקור יחיד
+const { ornamentInk, parseSvgPaint, svgToPdfOps, decodeDataUriSvg } = require('../decoration/ornament-ink'); // **EXT-4:** הדיו — מקור יחיד; **EXT-21:** decodeDataUriSvg לעיצובי שער
 
 const COL_R = { x: GEO.COL_R_X, w: GEO.COL_W };
 const COL_L = { x: GEO.COL_L_X, w: GEO.COL_W };
@@ -15624,6 +15780,18 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
       if (ink && ink.type === 'svg') {
         paint = parseSvgPaint(ink.svg);
         if (paint) pdfOps = svgToPdfOps(paint, d, hPt, PX_TO_PT);
+      } else if (ink && ink.type === 'image' && /^data:image\/svg\+xml/i.test(String(ink.uri || ''))) {
+        // **EXT-21 (שערים ב-PDF — דיווח משתמש "השערים לא נמתחים על כל
+        // העמוד"):** עד כאן עיצוב שער מהספרייה (shaar-design — d.image =
+        // data-URI) לא צויר בכלל ב-PDF ("תמונות רסטר אינן מצוירות" — גם
+        // אחדות SVG). כעת: פענוח ה-SVG מה-URI → אותו פענוח וקטורי של
+        // ornament-ink → פעולות מילוי. מצב 'stretch' ל-shaar-design —
+        // מתיחה מלאה לעמוד כולו (כמו background-size:100% 100% ב-DOM
+        // ובמקור הירוק); גרדיאנטים נפתרים לצבע ממוצע; מסגרות stroke
+        // מצוירות (אופציית strokes).
+        const svg = decodeDataUriSvg(ink.uri);
+        paint = svg ? parseSvgPaint(svg, { strokes: true }) : null;
+        if (paint) pdfOps = svgToPdfOps(paint, d, hPt, PX_TO_PT, d.kind === 'shaar-design' ? 'stretch' : 'meet');
       } else if (ink && ink.type === 'rect') {
         // **D-89:** מלבן בצבע אחיד — פאנלי השערים, מסגרות וכלל הכותרת.
         const yTop = hPt - (d.y + d.h) * PX_TO_PT;
@@ -15637,6 +15805,7 @@ function projectLegacyPage(pg, settings, api, winApi, headingApi = null, fnApi =
         kindStyle: d.kindStyle || null, inkType: ink ? ink.type : null,
         inkUri: ink && ink.uri ? ink.uri : null,
         inkColor: ink && ink.type === 'rect' ? cssColor(ink.color) : null,
+        behind: d.behind === true, // **EXT-21:** רקע שער — מצויר לפני הטקסט (z-כמו ב-DOM)
         paint, pdfOps
       };
     });
